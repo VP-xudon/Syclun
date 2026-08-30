@@ -1,0 +1,26 @@
+&io;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // A pair packed into a tuple.  打包成元组的键值对。
+        -(std::Tuple pair) << (100, 200);
+
+        // Single scalar variable assigned a tuple: it takes the FIRST element.
+        // 单个标量变量被赋元组：自动取首项。
+        -(std::Number first) << pair;
+        out << "first of (100,200) = "; out << first;
+
+        // A tuple variable keeps the WHOLE tuple (no destructuring).
+        // 元组变量保留整个元组（不被拆解）。
+        -(std::Tuple whole) << pair;
+        -(std::Number sz) << whole.size();
+        out << " whole tuple size = "; out << sz;
+
+        // A list variable also keeps the whole value.
+        // 列表变量同样保留整体值。
+        -(std::Array arr) << pair;
+        -(std::Number asz) << arr.size();
+        out << " array from tuple size = "; out << asz;
+    }];
+}

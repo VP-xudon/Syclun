@@ -1,0 +1,29 @@
+&io;
+&maths;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        -(maths::Maths m);
+
+        -(std::Number r) << m.sqrt(16);
+        out << "sqrt(16) = "; out << r;
+
+        -(std::Number p) << m.pi();
+        out << " pi = "; out << p;
+
+        -(std::Number c) << m.cos(0);
+        out << " cos(0) = "; out << c;
+
+        -(std::Number lo) << m.floor(3.9);
+        out << " floor(3.9) = "; out << lo;
+
+        -(std::Number hi) << m.ceil(3.1);
+        out << " ceil(3.1) = "; out << hi;
+
+        -(std::Number small) << m.min(7, 3);
+        out << " min(7,3) = "; out << small;
+
+        -(std::Number e) << m.e();
+        out << " e = "; out << e;
+    }];
+}

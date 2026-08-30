@@ -1,0 +1,21 @@
+&io;
+// Output demo: shows both the flow style (`out << value`, routed to the
+// `:=` receive behavior) and the explicit method style (`out.push` /
+// `out.push_line`). 输出示例：同时演示流风格（`out << value`，分派到
+// `:=` 接收行为）与显式方法风格（`out.push` / `out.push_line`）。
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // flow style, no trailing newline / 流风格，不换行
+        out << "flow: ";
+        out << "Hello";
+
+        // method style, no trailing newline / 方法风格，不换行
+        out.push(" | push: ");
+        out.push("World");
+
+        // method style WITH newline / 方法风格，自带换行
+        out.push_line(" | push_line: done");
+    }];
+}

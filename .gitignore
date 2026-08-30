@@ -1,0 +1,138 @@
+###############################################################################
+# Syclun / Synth-OOP — files that must never be committed
+# Syclun / Synth-OOP —— 绝不应提交的文件
+#
+# The rule / 原则：
+#   `build/` is disposable. `bash build.sh --clean` deletes it wholesale, so
+#   NOTHING needed to build, package or release may live inside it. Every
+#   release-critical file lives at the repository root or in its own directory:
+#       CMakeLists.txt   cmake/          build.sh       package.sh
+#       .gitattributes   .github/        src/  lib/  examples/  verify/  doc/
+#       vscode-synth-oop/build_vsix.py
+#   `build/` 是一次性的：`bash build.sh --clean` 会整个删掉它，因此任何构建、
+#   打包、发布所必需的文件都不许放进去。发布必需文件全部位于仓库根目录或各自目录
+#   （见上行清单）。
+#
+#   WARNING for editors of this file: .gitignore has NO inline comments.
+#   A `#` only starts a comment at the beginning of a line — `build/   # note`
+#   is parsed as one long pattern and silently matches nothing. Comments go on
+#   their own line.
+#   编辑本文件的警告：.gitignore **不支持行尾注释**。`#` 只有在行首才是注释，
+#   `build/   # 说明` 会被当成一整个 pattern，结果什么都匹配不到。注释请独占一行。
+#
+#   Handy checks / 自查命令：
+#       git check-ignore -v <file>      # why is this ignored? / 它为何被忽略
+#       git add -f <file>               # commit it anyway / 仍要提交
+###############################################################################
+
+# -----------------------------------------------------------------------------
+# 1. Build output / 构建产物
+# -----------------------------------------------------------------------------
+# The whole CMake tree: binaries, release packages, and the generated .vsix.
+build/
+# CLion's default out-of-source directory, and another common name.
+cmake-build-*/
+out/
+# synth.exe and the three assertion suites (Windows).
+*.exe
+# MinGW runtime DLLs that package.sh copies next to the executable.
+*.dll
+
+# -----------------------------------------------------------------------------
+# 2. CMake / Ninja / Make cache and generated files
+#    CMake / Ninja / Make 的缓存与生成文件
+#    `build/` already covers these; they are listed again in case someone
+#    configures in-source.
+#    `build/` 已覆盖这些；再次列出以防有人在源码目录内 configure。
+# -----------------------------------------------------------------------------
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+# `Makefile` is deliberately absent here: CMake only ever generates one inside
+# build/ (already ignored), and ignoring the name outright would silently
+# swallow a hand-written Makefile if this project ever gains one.
+# 这里刻意不列 `Makefile`：CMake 只会在 build/ 内生成它（已被忽略），而无条件
+# 忽略该名字会把将来手写的 Makefile 悄悄吞掉。
+
+# -----------------------------------------------------------------------------
+# 3. Compiler intermediates / 编译中间产物
+# -----------------------------------------------------------------------------
+*.o
+*.obj
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.d
+
+# -----------------------------------------------------------------------------
+# 4. Packaged artifacts / 打包产物
+#    The extension package is generated into build/ by
+#    vscode-synth-oop/build_vsix.py, so the extension source tree stays clean.
+#    `assets/` is the staging directory the release workflow uses.
+#    插件 .vsix 由 vscode-synth-oop/build_vsix.py 生成到 build/，故插件源目录
+#    保持干净；`assets/` 是发布工作流的中转目录。
+# -----------------------------------------------------------------------------
+*.vsix
+assets/
+
+# -----------------------------------------------------------------------------
+# 5. Editor / IDE local configuration / 编辑器与 IDE 的本地配置
+#    Machine-specific paths (include dirs, compiler paths, MinGW location).
+#    To share a task config anyway, force-add it:  git add -f .vscode/tasks.json
+#    内含机器相关路径（头文件目录、编译器路径、MinGW 位置）。确实要共享某个任务
+#    配置时用 `git add -f .vscode/tasks.json` 强制添加。
+# -----------------------------------------------------------------------------
+.vscode/
+*.code-workspace
+
+# -----------------------------------------------------------------------------
+# 6. AI-assistant memory / AI 助手记忆
+#    Local workspace data, not project content.
+#    本地工作区数据，非项目内容。
+# -----------------------------------------------------------------------------
+.workbuddy/
+
+# -----------------------------------------------------------------------------
+# 7. OS noise / 操作系统杂项
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# 8. Editor backups / 编辑器备份与交换文件
+# -----------------------------------------------------------------------------
+*.swp
+*.swo
+*.bak
+*~
+
+# -----------------------------------------------------------------------------
+# 9. Test and demo scratch files / 测试与演示的临时文件
+# -----------------------------------------------------------------------------
+# Written by assert_parser's child-process check.
+_cli_out.txt
+_neg_tmp.sy
+# Written by verify/philosophy/file_demo.syn.
+_demo_out.txt
+# IDE console dumps.
+CliOutput*
+
+# -----------------------------------------------------------------------------
+# 10. Logs / 日志
+# -----------------------------------------------------------------------------
+*.log

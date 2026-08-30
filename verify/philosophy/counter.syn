@@ -1,0 +1,20 @@
+&io;
+$Program {
+    @:: << [() -> () {
+        -(Counter c);
+        c.inc();
+        c.inc();
+        -(io::OStream out);
+        out << c.get();
+    }];
+}
+
+$Counter {
+    -(std::Number value);
+    @get << [() ~> (result) {
+        result << value;
+    }];
+    @inc << [() -> () {
+        value << value.+(1);
+    }];
+}

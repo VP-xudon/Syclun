@@ -1,0 +1,12 @@
+&io;
+// The smallest complete Synth-OOP program. / 最小的完整 Synth-OOP 程序。
+//
+// A program IS the construction of its `$Program` class: the entry point is
+// the `@::` (construct) behavior, and instantiation is the whole lifecycle.
+// 程序就是 `$Program` 类的构造过程：入口是 `@::`（构造行为），实例化即整个生命周期。
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        out.push_line("Hello, Synth-OOP!");
+    }];
+}

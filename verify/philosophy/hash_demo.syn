@@ -1,0 +1,21 @@
+&io;
+&hash;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        -(hash::Hash h);
+
+        -(std::String s) << h.sha256("abc");
+        out << "sha256(abc) = ";
+        out << s;
+        out << " (expected ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad)";
+
+        -(std::Number c) << h.crc32("abc");
+        out << " crc32(abc) = ";
+        out << c;
+
+        -(std::String f) << h.fnv1a("abc");
+        out << " fnv1a(abc) = ";
+        out << f;
+    }];
+}

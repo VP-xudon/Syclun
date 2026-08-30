@@ -1,0 +1,39 @@
+// lib/sugar.synl
+//
+// Standard library: sugar (Synth-OOP interface).
+// 标准库：sugar（Synth-OOP 接口）。
+//
+// The behavioral face of the `sugar` library — a small bag of syntactic
+// helpers the core interpreter does not ship natively. Its first class is
+// `Infix`, an arithmetic-expression evaluator. The real work is done by the
+// C++ backend in lib/sugar.hpp; the class definition here documents the
+// public shape. A `$Program` class in a library is ignored.
+// `sugar` 库的行为形态——一个核心解释器不原生提供的小型语法糖包。其首个
+// 类是 `Infix`（算术表达式求值器）。真实工作由 lib/sugar.hpp 的 C++ 底层
+// 完成，此处类定义仅作公开形态的文档。库中的 `$Program` 类会被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary. The authoritative enforced signatures
+// live in lib/cpp/sugar.hpp's make_sign; this file mirrors them.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查。强制检查的权威签名
+// 位于 lib/cpp/sugar.hpp 的 make_sign；本文件是其可读镜像。
+
+$Infix {
+    // Construct with an expression string, or build empty and @set later.
+    // 以表达式字符串构造，或留空后用 @set 设置。
+    @::   << [(expr[std::String]) ~> () { }];
+
+    // Replace the expression text.
+    // 替换表达式文本。
+    @set  << [(expr[std::String]) ~> () { }];
+
+    // Bind identifiers to values held in a std::Dict.
+    // 把标识符绑定到 std::Dict 中的值。
+    @env  << [(env[std::Dict]) ~> () { }];
+
+    // Evaluate and return a std::Number. A missing environment or an
+    // unresolved identifier raises a runtime error attributed to `parse`.
+    // 求值并返回 std::Number。环境缺失或标识符未解析时，抛出归属 `parse`
+    // 的运行时错误。
+    @parse << [() ~> (value[std::Number]) { }];
+}

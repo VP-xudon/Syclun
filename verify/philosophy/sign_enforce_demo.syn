@@ -1,0 +1,55 @@
+// verify/philosophy/sign_enforce_demo.syn
+//
+// Demonstrates call-boundary signature enforcement for standard libraries.
+// 演示标准库在调用边界的签名强制检查。
+//
+// Every native/built-in method carries a make_sign with concrete type tags
+// (e.g. maths abs(x[std::Number]), re compile(pattern[std::String])). The
+// interpreter checks the argument types before the C++ body runs. A wrong
+// type is rejected with an "Argument type mismatch" poison instead of
+// failing deep inside the library. The matching .synl files mirror these
+// constraints.
+// 每个原生/内建方法都带一个含具体类型标签的 make_sign（如 maths 的
+// abs(x[std::Number])、re 的 compile(pattern[std::String])）。解释器在 C++
+// 方法体运行前检查实参类型。类型不符时在边界即被拒，产生
+// "Argument type mismatch" 毒水，而非在库内部深处崩溃。对应的 .synl
+// 文件镜像了这些约束。
+
+&io;
+&maths;
+&re;
+
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // ---- maths: abs ----
+        // maths：abs
+        -(maths::Maths m);
+
+        // CORRECT: a std::Number argument is accepted.
+        // 正确：std::Number 实参被接受。
+        -(std::Number good) << m.abs(-(std::Number x) << 4);
+        out << "maths.abs(4)        => ";
+        out << good;
+
+        // WRONG: a std::String argument is rejected at the call boundary.
+        // 错误：std::String 实参在调用边界被拒。
+        out << "maths.abs(STRING)   => ";
+        out << m.abs(-(std::String t) << "four");
+
+        // ---- re: compile ----
+        // re：compile
+        -(re::Re r);
+
+        // CORRECT: a std::String pattern source is accepted.
+        // 正确：std::String 模式源被接受。
+        -(re::Pattern ok) << r.compile(-(std::String pat) << "[0-9]+");
+        out << "re.compile(STRING)  => (a Pattern, non-poison)";
+
+        // WRONG: passing a std::Number instead of a std::String pattern.
+        // 错误：传入 std::Number 而非 std::String 模式。
+        out << "re.compile(123)      => ";
+        out << r.compile(-(std::Number n) << 123);
+    }];
+}

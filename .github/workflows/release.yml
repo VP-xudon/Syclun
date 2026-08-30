@@ -1,0 +1,193 @@
+# ============================================================
+# release.yml — build & publish the five Synth-OOP distributions
+# release.yml —— 构建并发布五个 Synth-OOP 分发包
+#
+# This is the CI path that actually produces ALL five packages from one
+# trigger, because a single host can only build the targets matching its
+# own OS/architecture. Each matrix leg runs `package.sh` on the runner that
+# can build that target; the aggregated `release` job then publishes them as
+# GitHub release assets on a tag push (or manually via workflow_dispatch).
+#
+# 单一宿主只能构建与其自身 OS/架构匹配的目标，故本工作流用矩阵把五个包分散到
+# 对应 runner 上各跑一次 `package.sh`；聚合的 `release` 作业在打 tag 推送时
+# （或手动 workflow_dispatch）把五个包作为 GitHub Release 附件发布。
+#
+# Targets / 目标：
+#   windows-x64   -> windows-latest (native MinGW-w64)
+#   windows-arm64 -> ubuntu-latest  (cross via gcc-mingw-w64-aarch64)
+#   macos-x64     -> macos-latest   (x86_64 slice)
+#   macos-arm64   -> macos-latest   (arm64 slice)
+#   linux-x64     -> ubuntu-latest  (native)
+# ============================================================
+name: Release Packages / 发布分发包
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Limit to one target (e.g. windows-x64); leave empty for all.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # required to create a GitHub release / 创建 Release 所需
+
+jobs:
+  package:
+    name: package ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    # windows-arm64 is a best-effort cross-build; do not fail the whole run.
+    # windows-arm64 为尽力而为的交叉构建，不阻断整体流程。
+    continue-on-error: ${{ matrix.continue-on-error || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            os: windows-latest
+            setup: msys2-mingw64
+          - target: windows-arm64
+            os: ubuntu-latest
+            cross: mingw-aarch64
+            continue-on-error: true
+          - target: macos-x64
+            os: macos-latest
+          - target: macos-arm64
+            os: macos-latest
+          - target: linux-x64
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Windows x64: native MinGW-w64 (gives a self-contained exe + DLLs) -
+      - name: Set up MSYS2 (MinGW-w64 x64) / 配置 MSYS2（MinGW-w64 x64）
+        if: matrix.setup == 'msys2-mingw64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+
+      # --- Windows ARM64 cross toolchain on Linux --------------------------
+      - name: Install aarch64-w64-mingw32 cross toolchain / 安装 aarch64 交叉工具链
+        if: matrix.cross == 'mingw-aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-aarch64
+
+      # --- Build & package / 构建并打包 -------------------------------------
+      # Run package.sh for this target. On the MSYS2 runner the `msys2` shell
+      # exposes MinGW-w64 g++/cmake; elsewhere the default bash shell is used.
+      # 构建本目标对应的 package。MSYS2 runner 上用 `msys2` 外壳以暴露 MinGW-w64
+      # 的 g++/cmake；其余 runner 用默认 bash 外壳。
+      - name: Run package.sh / 执行 package.sh
+        shell: ${{ matrix.setup == 'msys2-mingw64' && 'msys2 {0}' || 'bash' }}
+        env:
+          PACKAGE_TARGETS: ${{ matrix.target }}
+          # Force-build even though the host OS differs (cross scenario).
+          # 跨平台场景下强制构建（宿主系统与目标不符时）。
+          SYNTH_FORCE_BUILD: '1'
+        run: bash package.sh
+
+      - name: Upload artifact / 上传产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synth-${{ matrix.target }}
+          path: build/dist/synth-${{ matrix.target }}
+          if-no-files-found: warn
+
+  # The VS Code syntax-highlighting extension: built offline with the Python
+  # standard library only, and attached to the release next to the five
+  # interpreter packages.
+  # VS Code 语法高亮插件：仅用 Python 标准库离线构建，随五个解释器包一同附在
+  # Release 上。
+  vsix:
+    name: package VS Code extension / 打包 VS Code 插件
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python / 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # Offline by design: no `vsce`, no npm install, no network required.
+      # 离线设计：无需 vsce、无需 npm 安装、无需联网。
+      - name: Build the .vsix / 构建 .vsix
+        run: python vscode-synth-oop/build_vsix.py
+
+      - name: Upload artifact / 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: synth-oop-vsix
+          path: build/*.vsix
+          if-no-files-found: error
+
+  release:
+    name: publish release / 发布 Release
+    needs: [package, vsix]
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+      || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Download all artifacts / 下载全部产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Archive packages / 打包为压缩文件
+        run: |
+          cd artifacts
+          shopt -s nullglob
+          for d in synth-*; do
+            if [ -d "$d" ]; then
+              echo "archiving $d ..."
+              zip -r "../$d.zip" "$d"
+            fi
+          done
+          cd ..
+          # Collect the VS Code extension produced by the `vsix` job.
+          # 收集由 `vsix` 作业产出的 VS Code 插件。
+          mkdir -p assets
+          cp -f artifacts/synth-oop-vsix/*.vsix assets/ 2>/dev/null \
+            || echo "no .vsix artifact found"
+          ls -la *.zip assets/
+
+      - name: Create GitHub release / 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # For a tag push this resolves to the tag name automatically.
+          # 打 tag 推送时自动取对应 tag 名。
+          tag_name: ${{ github.ref_name }}
+          name: Synth-OOP ${{ github.ref_name }}
+          body: |
+            Prebuilt Syclun (Synth-OOP) interpreter distributions, plus the
+            VS Code syntax-highlighting extension.
+
+            预构建的 Syclun（Synth-OOP）解释器发行包，外加 VS Code 语法高亮插件：
+
+            - synth-windows-x64.zip
+            - synth-windows-arm64.zip (best-effort cross build / 尽力而为的交叉构建)
+            - synth-macos-x64.zip
+            - synth-macos-arm64.zip
+            - synth-linux-x64.zip
+            - `synth-oop-<version>.vsix` — VS Code syntax highlighting for
+              `.syn` / `.synl` / `.syni` / VS Code 语法高亮插件
+
+            Each zip unpacks to `synth-<target>/` containing `bin/synth(.exe)`,
+            `libs/*.synl`, `examples/`, and docs.
+            每个 zip 解压出 `synth-<target>/`，内含 `bin/synth(.exe)`、
+            `libs/*.synl`、`examples/` 与文档。
+          files: |
+            *.zip
+            assets/*.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

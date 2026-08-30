@@ -1,0 +1,41 @@
+// lib/async.synl
+//
+// Standard library: async (Synth-OOP interface).
+// 标准库：async（Synth-OOP 接口）。
+//
+// The behavioral face of the `async` library — a modern async runtime. The
+// C++ backend in lib/async.hpp supplies the real behavior; the class shapes
+// here document the public API. A `$Program` class in a library is ignored.
+// `async` 库的行为形态——现代异步运行时。真实行为由 lib/async.hpp 的 C++
+// 底层提供，此处的类定义仅记录公开 API。库中 `$Program` 类会被忽略。
+//
+// Signatures below carry type constraints, enforced at the call boundary.
+// 下列签名均带类型约束，在调用边界强制检查。
+
+$Reactor {
+    // tasks: an Array of behavior closures. / tasks：行为闭包的数组。
+    @set         << [(tasks[std::Array]) -> () { }];
+    @set_limit   << [(max[std::Number]) -> () { }];
+    @set_timeout << [(ms[std::Number]) -> () { }];
+    @cancel      << [() -> () { }];
+    @start       << [(timeout[std::Number]) ~> (results[std::Tuple]) { }];
+    // task: a behavior closure; ms: timeout in milliseconds.
+    // task：行为闭包；ms：超时毫秒数。
+    @with_timeout << [(task[@], ms[std::Number]) ~> (result[std::Tuple]) { }];
+    // task: a behavior closure. / task：行为闭包。
+    @spawn       << [(task[@]) ~> (handle[async::Task]) { }];
+    @submit      << [(task[@]) ~> (handle[async::Task]) { }];
+    @async_sleep << [(ms[std::Number]) ~> (handle[async::Task]) { }];
+}
+
+$Task {
+    @await   << [(timeout[std::Number]) ~> (result[std::Tuple]) { }];
+    @result  << [() ~> (result[std::Tuple]) { }];
+    @cancel  << [() -> () { }];
+    @is_done << [() ~> (ok[std::Boolean]) { }];
+}
+
+$Error {
+    @message << [() ~> (text[std::String]) { }];
+    @kind    << [() ~> (text[std::String]) { }];
+}

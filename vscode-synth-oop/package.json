@@ -1,0 +1,50 @@
+{
+  "name": "synth-oop",
+  "displayName": "Synth-OOP",
+  "description": "Syntax highlighting for the Synth-OOP language (.syn, .synl, .syni)",
+  "version": "1.3.5",
+  "publisher": "VP_xudon",
+  "author": "VP_xudon",
+  "license": "MIT",
+  "icon": "./icons/synth-icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "synth-oop",
+    "syn",
+    "synl",
+    "syni"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "synth-oop",
+        "aliases": [
+          "Synth-OOP",
+          "synth-oop"
+        ],
+        "extensions": [
+          ".syn",
+          ".synl",
+          ".syni"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/synth-icon.png",
+          "dark": "./icons/synth-icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "synth-oop",
+        "scopeName": "source.synth-oop",
+        "path": "./syntaxes/synth-oop.tmLanguage.json"
+      }
+    ]
+  }
+}

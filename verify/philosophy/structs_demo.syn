@@ -1,0 +1,63 @@
+&io;
+&structs;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // ---- Queue (FIFO) / 队列 ----
+        // 队列先进先出：先入的先出。
+        -(structs::Queue q);
+        q.push(-(std::Number n) << 10);
+        q.push(-(std::Number n) << 20);
+        q.push(-(std::Number n) << 30);
+        out << "queue size: "; out << q.size();          // 3
+        out << "queue pop (FIFO): "; out << q.pop();     // 10
+        out << "queue peek: "; out << q.peek();          // 20
+        out << "queue empty? "; out << q.empty();        // false
+
+        // ---- Stack (LIFO) / 栈 ----
+        // 栈后进先出：后入的先出。
+        -(structs::Stack s);
+        s.push(-(std::Number n) << 1);
+        s.push(-(std::Number n) << 2);
+        s.push(-(std::Number n) << 3);
+        out << "stack pop (LIFO): "; out << s.pop();     // 3
+        out << "stack top: "; out << s.top();            // 2
+
+        // ---- Tree (BST) / 二叉搜索树 ----
+        // 二叉搜索树，中序遍历为升序。
+        -(structs::Tree t);
+        t.insert(-(std::Number n) << 50);
+        t.insert(-(std::Number n) << 20);
+        t.insert(-(std::Number n) << 80);
+        t.insert(-(std::Number n) << 10);
+        out << "tree contains 20? "; out << t.contains(-(std::Number n) << 20);  // true
+        out << "tree min: "; out << t.min();            // 10
+        out << "tree max: "; out << t.max();            // 80
+        out << "tree inorder: "; out << t.inorder();    // [10,20,50,80]
+        out << "tree remove 20: "; out << t.remove(-(std::Number n) << 20);      // true
+
+        // ---- Map (associative) / 关联映射 ----
+        // 键值映射。
+        -(structs::Map m);
+        m.put(-(std::String k) << "a", -(std::Number n) << 1);
+        m.put(-(std::String k) << "b", -(std::Number n) << 2);
+        out << "map has b? "; out << m.has(-(std::String k) << "b");            // true
+        out << "map get a: "; out << m.get(-(std::String k) << "a");            // 1
+        out << "map keys: "; out << m.keys();              // [a,b]
+
+        // ---- Graph (BFS + shortest path) / 图 ----
+        // 无向带权图，BFS 与最短路径。
+        -(structs::Graph g);
+        g.add_node(-(std::Number n) << 1);
+        g.add_node(-(std::Number n) << 2);
+        g.add_node(-(std::Number n) << 3);
+        g.add_node(-(std::Number n) << 4);
+        g.add_edge(-(std::Number n) << 1, -(std::Number n) << 2);
+        g.add_edge(-(std::Number n) << 2, -(std::Number n) << 3);
+        g.add_edge(-(std::Number n) << 3, -(std::Number n) << 4);
+        out << "graph nodes: "; out << g.node_count();    // 4
+        out << "graph neighbors of 2: "; out << g.neighbors(-(std::Number n) << 2);  // [1,3]
+        out << "graph shortest 1->4: "; out << g.shortest_path(-(std::Number n) << 1, -(std::Number n) << 4);  // [1,2,3,4]
+    }];
+}

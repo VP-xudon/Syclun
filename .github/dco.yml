@@ -1,0 +1,10 @@
+# Configuration for the DCO GitHub App / DCO 应用的配置文件
+# https://github.com/probot/dco
+#
+# Sign-off is required from EVERY contributor, including repository members and
+# the maintainer themselves: a project that enforces the DCO unevenly has no
+# clean provenance record, which defeats the point.
+# 所有贡献者（含仓库成员与维护者本人）都必须签名：对 DCO 执行得参差不齐就得不到
+# 干净的来源记录，也就失去了意义。
+require:
+  members: true

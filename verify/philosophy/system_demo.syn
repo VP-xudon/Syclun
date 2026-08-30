@@ -1,0 +1,22 @@
+&io;
+&system;
+$Program {
+    @:: << [() -> () {
+        -(system::System s);
+        -(io::OStream out);
+
+        // Shell execution / 命令执行
+        out << s.run("echo hello-from-system");
+
+        // Time inspection / 时间查看
+        out << "now(ms): "; out << s.now();
+        out << "time: "; out << s.time();
+        out << "date: "; out << s.date();
+        out << "datetime: "; out << s.datetime();
+
+        // Non-blocking sleep / 非阻塞计时：阻塞 50ms 后继续
+        out << "before wait";
+        s.wait(50);
+        out << " after wait(50ms)";
+    }];
+}

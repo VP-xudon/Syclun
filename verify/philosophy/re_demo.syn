@@ -1,0 +1,31 @@
+&io;
+&re;
+$Program {
+    @:: << [() -> () {
+        -(re::Re r);
+        -(io::OStream out);
+
+        // Static convenience: compile on the fly / 静态便捷：即时编译
+        out << "test \\d+: "; out << r.test(-(std::String pat) << "\d+", -(std::String txt) << "abc123");
+        out << "match \\d+ (matched/text): ";
+        out << r.match(-(std::String pat) << "\d+", -(std::String txt) << "123").matched;
+        out << " ";
+        out << r.match(-(std::String pat) << "\d+", -(std::String txt) << "123").text;
+        out << "findall \\d+: "; out << r.findall(-(std::String pat) << "\d+", -(std::String txt) << "a1b22c333");
+
+        // Precompiled Pattern / 预编译 Pattern
+        -(re::Pattern p) << r.compile(-(std::String pat) << "[a-z]+@[a-z]+\.[a-z]+");
+        out << "pattern test email: ";
+        out << p.test(-(std::String txt) << "foo@bar.com");
+        out << "pattern search email text: ";
+        out << p.search(-(std::String txt) << "contact me at foo@bar.com now").text;
+
+        // replace / 替换
+        out << "replace digits: ";
+        out << r.replace(-(std::String pat) << "\d", -(std::String txt) << "a1b2", -(std::String rep) << "#");
+
+        // split / 切分
+        out << "split by comma: ";
+        out << r.split(-(std::String pat) << ",", -(std::String txt) << "x,y,z");
+    }];
+}

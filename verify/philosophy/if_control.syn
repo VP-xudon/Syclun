@@ -1,0 +1,13 @@
+&io;
+$Program {
+    @:: << [() -> () {
+        -(std::Number a) << 10;
+        -(std::Number b) << 20;
+        -(std::Number result) << (a.>(b)).if_(
+            [() ~> (value) { value << a; }],
+            [() ~> (value) { value << b; }]
+        );
+        -(io::OStream out);
+        out << result;
+    }];
+}

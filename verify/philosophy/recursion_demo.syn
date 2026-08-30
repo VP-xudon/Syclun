@@ -1,0 +1,23 @@
+&io;
+// Recursion guard: a runaway self-recursion is force-interrupted at
+// RECURSION_LIMIT (default 1000) with a clear RecursionLimitException
+// instead of a stack overflow / hang. The whole call stack is unwound and
+// no value is produced.
+// 递归护栏：失控的自递归会在达到上限（默认 1000）时被强制中断，
+// 抛出清晰的 RecursionLimitException，而非栈溢出 / 卡死。整层调用栈
+// 被回卷，不产出任何值。
+//   - Own methods MUST be called via `self.NAME(...)`.
+//     自身方法必须用 `self.NAME(...)` 调用。
+//   - Running this program prints the diagnostic box below and exits 0.
+//     运行本程序会打印下方的诊断框并以退出码 0 结束。
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        out << "starting infinite self-recursion...\n";
+        out << self.count(0);
+    }];
+
+    @count << [(n[std::Number]) -> (r[std::Number]) {
+        r << self.count((n .+(1)));
+    }];
+}

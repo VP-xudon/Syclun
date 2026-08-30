@@ -1,0 +1,132 @@
+// examples/demo.syn
+// A showcase of Synth-OOP syntax, exercising every highlightable construct.
+// 语法高亮演示：覆盖所有可被着色的语法元素。
+
+&io;          // module import / 模块导入
+&maths;
+&structs;
+&assert;       // assert standard library: runtime-state inspector / 运行期状态检查器
+
+// ---- Class declaration (with parent) / 类声明（含父类）----
+// Minimal parent so the "extends" showcase resolves.
+// 最小父类，使"继承"展示可解析。
+$Animal {
+    @!:: << [() ~> () {}];    // constructor / 构造
+    @~  << [() ~> () {}];     // destructor / 析构
+    @=: << [() ~> (out) {}];      // publication / 公布
+    @:= << [(v) -> () {}];    // reception / 接收
+}
+
+$Dog [Animal] {
+    -(std::Number! age);          // constant marker '!' after type
+    @get << [() ~> (result) {     // constant pattern ~>
+        result << age;
+    }];
+    @inc << [() -> () {       // non-constant pattern ->
+        age << age.+(1);
+    }];
+    @!:: << [() ~> () {}];    // const constructor (reserved method)
+    @~  << [() ~> () {}];     // destructor
+    @=: << [() ~> (out) {}];      // publication function
+    @:= << [(v) -> () {}];    // reception function
+}
+
+// ---- Constraint declaration (with parent) / 约束声明（含父约束）----
+// A contract body holds signatures only (no method body).
+// 约束体内只写签名（不带方法体）。
+#Addable {
+    @+ << [(other) -> (result)];
+}
+#Comparable [Addable] {
+    @< << [(other) -> (result)];
+}
+
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // instantiation expression / 实例化表达式
+        -(std::Number a) << 10;
+        -(std::Number b) << 20.5;
+
+        // identifiers may contain digits (e.g. sha2a3 / hashValue42) / 标识符可含数字
+        -(std::Number sha2a3) << 7;
+        -(std::String hashValue42) << "ok";
+        // qualified constant type (const variable must use a constructor) /
+        // 带常量标记限定的库类型（常数变量须用构造器初始化）
+        -(std::Number(1)! frozen);
+
+        // stream assignment & operators (all are method calls) / 流赋值与方法调用
+        out << "sum = ";
+        out << a.+(b);
+        out << (a.>(b)).if_(          // control method if_
+            [() ~> (value) { value << a; }],
+            [() ~> (value) { value << b; }]
+        );
+
+        // behavior literal with zero-side-effect pattern (=>), shown as a
+        // method body and invoked normally. / 零副作用行为字面量（=>），
+        // 以方法体形式呈现并正常调用。
+        -(Calc calc);
+        -(std::Number r) << calc.add3(a);
+
+        // tuple literal + structural decomposition / 元组字面量与解构
+        -(std::Tuple pair) << (100, 200);
+        -(std::Number first, _) << pair;
+
+        // repeat_ runs the body N times, threading a loop state. The loop
+        // state is an untyped behavior output parameter; because the
+        // interpreter now preserves the scalar type a universal `std::Object`
+        // carries (root fix for type-tag degradation), arithmetic *on* the
+        // threaded state works directly — no captured-accumulator workaround.
+        // repeat_ 把 body 跑 N 次，穿线循环状态。该状态是无类型行为输出参数；
+        // 因解释器现已保留通用 std::Object 所携带的标量类型（类型标签退化的
+        // 根源修复），对穿线状态直接做运算即可，无需捕获累加器的绕开写法。
+        -(std::Number n) << 5.repeat_([(st) -> (next) { next << st.+(1); }]);
+        out << "repeat result = "; out << n; out << "\n";
+
+        // constraint used as a parameter qualifier / 约束作参数限定
+        // [(h[@(x)->(y)]) -> () {}]
+
+        // IEEE-754 floating point — division by zero yields inspectable
+        // non-finite results (Infinity / -Infinity / NaN), never poison.
+        // IEEE-754 浮点——除以零得到可检查的非有限结果（Infinity/-Infinity/NaN），而非毒水。
+        -(std::Number one)  << 1;
+        -(std::Number zero) << 0;
+        -(std::Number neg)  << one.-(2);              // -1 (1 - 2)
+        out << " 1 / 0 = "; out << one./(zero);     out << "\n";
+        out << "-1 / 0 = "; out << neg./(zero);     out << "\n";
+        out << " 0 / 0 = "; out << zero./(zero);    out << "\n";
+
+        // assert standard library — interpret / inspect runtime state.
+        // assert 标准库——解读 / 检查运行期状态。
+        -(assert::Checker chk);
+        -(Counter c);
+        out << "has_method(inc)="; out << chk.has_method(c, "inc"); out << "\n";
+        out << "has_changed=";     out << chk.has_changed(c);       out << "\n";
+        c.inc.=([()->() { value << value.+(100); }]);   // runtime rebind
+        out << "has_method(inc)="; out << chk.has_method(c, "inc"); out << "\n";
+        out << "has_changed=";     out << chk.has_changed(c);       out << "\n";
+
+        // boolean literal / 布尔字面量
+        -(std::Boolean ok) << true;
+    }];
+}
+
+// A small class used by the assert::Checker showcase above.
+// assert::Checker 演示所用的最小类。
+$Counter {
+    -(std::Number value);
+    @get << [() ~> (result) {
+        result << value;
+    }];
+    @inc << [() -> () {
+        value << value.+(1);
+    }];
+}
+
+// A small class used by the zero-side-effect behavior showcase above.
+// 零副作用行为演示所用的最小类。
+$Calc {
+    @add3 << [(x) => (sum) { sum << x.+(3); }];   // => : zero-side-effect pattern
+}

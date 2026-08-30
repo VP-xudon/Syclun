@@ -1,0 +1,38 @@
+// lib/file.synl
+//
+// Standard library: file (Synth-OOP interface).
+// 标准库：file（Synth-OOP 接口）。
+//
+// This is the human-readable face of the `file` library. The methods are
+// given as signatures only; their behavior is supplied by the C++ backend
+// in lib/file.hpp. When a program writes `&file;`, the interpreter brings
+// the native class online (lib/file.hpp) and then interprets this file; the
+// class is already registered, so its definition here is treated purely as
+// documentation of the public shape. The `$Program` class, should one
+// appear, is ignored in a library.
+// 这是 `file` 库面向人类的形态。方法仅以签名给出，其行
+// 为由 lib/file.hpp 的 C++ 底层提供。程序写 `&file;` 时，解释器先上线
+// 原生类（lib/file.hpp），再解释本文件；由于该类已登记，此处的类定义
+// 仅作为公开形态的文档。库中出现 `$Program` 类时会被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary (a wrong-typed argument yields a
+// "Argument type mismatch" poison). The authoritative enforced signature
+// lives in lib/cpp/file.hpp's make_sign; this file mirrors it.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查（类型不符的实参会
+// 产生 "Argument type mismatch" 毒水）。强制检查的权威签名位于
+// lib/cpp/file.hpp 的 make_sign；本文件是其可读镜像。
+
+$File {
+    -(std::String path);
+    -(std::String mode);
+
+    @open   << [(path[std::String], mode[std::String]) ~> () { }];
+    @read   << [() ~> (content[std::String]) { }];
+    @readlines << [() ~> (lines[std::Array]) { }];
+    @write  << [(text[std::String]) ~> () { }];
+    @append << [(text[std::String]) ~> () { }];
+    @exists << [() ~> (ok[std::Boolean]) { }];
+    @remove << [() ~> (ok[std::Boolean]) { }];
+    @size   << [() ~> (sz[std::Number]) { }];
+}

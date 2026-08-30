@@ -1,0 +1,24 @@
+# Pin line endings so the project behaves identically on every platform.
+# 固定行尾，使项目在各平台行为一致。
+#
+# Shell scripts run under bash on Windows (Git Bash / MSYS2) as well as on the
+# macOS and Linux CI runners, so they MUST stay LF. With CRLF, bash sees a
+# trailing ^M on every line and fails ("\r: command not found"). This matters
+# most for the windows-latest CI job, where checkout would otherwise convert
+# them to CRLF.
+# Shell 脚本要在 Windows 的 Git Bash / MSYS2 以及 macOS、Linux CI 上以 bash 运行，
+# 因此必须保持 LF。若为 CRLF，bash 会把每行末尾的 ^M 当作命令的一部分而报错
+# （"\r: command not found"）。这一点对 windows-latest 的 CI 任务尤为关键——
+# 否则检出时会把脚本转成 CRLF。
+*.sh text eol=lf
+
+# Synth-OOP sources, examples and standard-library interfaces are read by the
+# lexer at runtime. Keeping them LF makes the examples shipped inside a release
+# package byte-identical no matter which platform produced the package
+# (otherwise a Windows-built package would ship CRLF examples and a
+# Linux-built one LF).
+# Synth-OOP 源码、示例与标准库接口由词法器在运行期读取。统一为 LF 可让发布包中
+# 的示例无论由哪个平台打出都逐字节一致（否则 Windows 打出的包带 CRLF、Linux
+# 打出的是 LF）。
+*.syn  text eol=lf
+*.synl text eol=lf

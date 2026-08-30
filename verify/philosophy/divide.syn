@@ -1,0 +1,17 @@
+&io;
+$Program {
+    @:: << [() -> () {
+        -(Math m);
+        -(std::Number q, std::Number r) << m.divide(10, 3);
+        -(io::OStream out);
+        out << q;
+        out << r;
+    }];
+}
+
+$Math {
+    @divide << [(a, b) -> (q, r) {
+        q << a./(b);
+        r << a.%(b);
+    }];
+}

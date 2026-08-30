@@ -1,0 +1,36 @@
+&io;
+// Self method calls: an instance method MUST be invoked through `self.NAME(...)`.
+// A bare `NAME(...)` is now resolved as DATA (a local variable / member), never as
+// a hidden self-dispatch — so the data/behavior boundary stays clean.
+// 自调用：实例方法必须用 `self.NAME(...)` 显式调用。裸写 `NAME(...)` 现在被解析为
+// 数据（局部变量 / 成员），而非隐式自派发——数据 / 行为边界因此清晰。
+//   - explicit:  self.twice(21)     (`self` keyword = the current instance)
+//   - explicit:  self.greet()       (the `self` keyword also reads members)
+// Input/output parameters are usable variables you operate on directly:
+// `answer << x` publishes x as the output.
+// 输入 / 输出参数都是可直接操作的变量：`answer << x` 把 x 公布为输出。
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        out << "self.twice(21) = ";
+        out << self.twice(21);
+
+        out << " | self.greet() = ";
+        -(std::String g) << self.greet();
+        out << g;
+    }];
+
+    // Identity method: echoes its input. Demonstrates that the input param
+    // `x` and the output param `answer` are ordinary, directly-operable
+    // variables (no `=:`/`<<` ceremony needed just to read them).
+    // 恒等方法：回显输入。证明输入参数 x 与输出参数 answer 都是可直接操作的
+    // 普通变量。
+    @twice << [(x[std::Number]) -> (answer[std::Number]) {
+        answer << x;
+    }];
+
+    @greet << [() -> (msg[std::String]) {
+        msg << "hello from self";
+    }];
+}

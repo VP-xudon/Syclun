@@ -1,0 +1,35 @@
+&io;
+&sugar;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // ---- Basic literal arithmetic / 基础字面量算术 ----
+        // 直接对仅含字面量的表达式求值（支持 + - * / % 与括号）。
+        -(sugar::Infix("1+(2-3)*(3+5)") e);
+        -(std::Number r1) << e.parse();
+        out << "1+(2-3)*(3+5) = "; out << r1;            // -7
+
+        // ---- Replace the expression via @set / 用 @set 重设表达式 ----
+        // @set 可在构造后改换表达式文本，复用同一实例。
+        e.set("2*3 + 4*5");
+        -(std::Number r2) << e.parse();
+        out << "2*3 + 4*5 (after @set) = "; out << r2;   // 26
+
+        // ---- Bind variables from a std::Dict / 从 std::Dict 绑定变量 ----
+        // @env 把标识符解析到字典中同名的数值键。
+        -(std::Dict env);
+        env.set("a", 2);
+        env.set("b", 3);
+        -(sugar::Infix("a*a + b*b") e2);
+        e2.env(env);
+        -(std::Number r3) << e2.parse();
+        out << "a*a + b*b (a=2, b=3) = "; out << r3;      // 13
+
+        // ---- Parentheses + unary minus / 括号与一元负号 ----
+        // 支持括号分组与一元负号。
+        -(sugar::Infix("-(3+4) * 2") e3);
+        -(std::Number r4) << e3.parse();
+        out << "-(3+4) * 2 = "; out << r4;                // -14
+    }];
+}

@@ -1,0 +1,34 @@
+&io;
+// Demonstrates the retired `void` keyword and the empty-`()` convention.
+// `void` is no longer a keyword; use an empty return/output list `()` to
+// mean "no value". 演示已退役的 `void` 关键字与空括号 `()` 约定：
+// `void` 不再是关键字，用空返回/输出列表 `()` 表示「无值」。
+//  - compute(): returns a single published output (x).
+//  - nothing(): `() -> ()` — empty return list, so it runs purely for its
+//    side effect and publishes nothing.
+//  - compute()：返回单个公布输出 (x)。
+//  - nothing()：`() -> ()`——返回列表为空，仅为副作用运行，不公布任何值。
+$SideEffectDemo {
+    @compute << [() -> (x) {
+        x << 42;
+    }];
+
+    @nothing << [() -> () {
+        -(io::OStream out);
+        out << "void-only method ran for its side effect";
+    }];
+}
+
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        -(SideEffectDemo d);
+
+        -(std::Number n) << d.compute();
+        out << "x = ";
+        out << n;
+
+        d.nothing();
+        out << " after a void-only method";
+    }];
+}

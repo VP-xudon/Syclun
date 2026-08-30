@@ -1,0 +1,41 @@
+// assert::Checker standard-library demo.
+// assert::Checker 标准库演示。
+// `has_method(target, name)` reports whether `target` owns a method `name`.
+// `has_changed(target)` reports whether any of `target`'s method variables
+// were rebound at runtime (e.g. via `target.method.=(behavior)`).
+// `has_method(target, name)` 报告 target 是否拥有名为 name 的方法。
+// `has_changed(target)` 报告 target 的方法变量是否在运行期被重绑
+// （例如通过 `target.method.=(behavior)`）。
+
+&io;
+&assert;
+
+$Program {
+    @:: << [() -> () {
+        -(Counter c);
+        -(assert::Checker chk);
+        -(io::OStream out);
+
+        out << "has_method(inc)="; out << chk.has_method(c, "inc"); out << "\n";
+        out << "has_changed=";     out << chk.has_changed(c);       out << "\n";
+
+        // Rebind inc at runtime, then re-check.
+        // 运行期重绑 inc，再检查。
+        c.inc.=([()->() {
+            value << value.+(100);
+        }]);
+
+        out << "has_method(inc)="; out << chk.has_method(c, "inc"); out << "\n";
+        out << "has_changed=";     out << chk.has_changed(c);       out << "\n";
+    }];
+}
+
+$Counter {
+    -(std::Number value);
+    @get << [() ~> (result) {
+        result << value;
+    }];
+    @inc << [() -> () {
+        value << value.+(1);
+    }];
+}

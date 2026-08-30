@@ -1,0 +1,13 @@
+// NEGATIVE TEST (expects ConstraintException at line 6).
+// 负向用例：第 6 行 out.=(3) 须因违反 out 的类名约束 io::OStream 而报错。
+// 修复前 out.=(3) 静默调用 OStream 的 `=` 方法、约束被完全忽略；
+// 修复后 check_constraint 落实类名约束，out.=(3) 即时报错。
+&io;
+$Program {
+  @:: << [()->() {
+    -(io::OStream[io::OStream] out);
+    out.push_line("p\\q");
+    out.=(3);
+    out << 3;
+  }];
+};

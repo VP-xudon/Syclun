@@ -1,0 +1,78 @@
+// lib/structs.synl
+//
+// Standard library: structs (Synth-OOP interface).
+// 标准库：structs（Synth-OOP 接口）。
+//
+// The behavioral face of the `structs` library — the C++-backed successor to
+// the old pure-Synth-OOP `queue` library. It gathers several classic data
+// structures: Queue, Stack, Tree (BST), Map, Graph. The real work is done by
+// the C++ backend in lib/structs.hpp; the class definitions here document the
+// public shape. A `$Program` class in a library is ignored.
+// `structs` 库的行为形态——旧纯源码 `queue` 库的 C++ 底层继任者，汇集了若干
+// 经典数据结构：Queue、Stack、Tree（二叉搜索树）、Map、Graph。真实工作由
+// lib/structs.hpp 的 C++ 底层完成，此处类定义仅作公开形态的文档。库中的
+// `$Program` 类会被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary (a wrong-typed argument yields a
+// "Argument type mismatch" poison). The authoritative enforced signatures
+// live in lib/cpp/structs.hpp's make_sign; this file mirrors them.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查（类型不符的实参会
+// 产生 "Argument type mismatch" 毒水）。强制检查的权威签名位于
+// lib/cpp/structs.hpp 的 make_sign；本文件是其可读镜像。
+
+$Queue {
+    @push    << [(item[std::Object]) ~> () { }];
+    @pop     << [() ~> (item[std::Object]) { }];
+    @peek    << [() ~> (item[std::Object]) { }];
+    @size    << [() ~> (n[std::Number]) { }];
+    @empty   << [() ~> (ok[std::Boolean]) { }];
+    @clear   << [() ~> () { }];
+    @to_array << [() ~> (arr[std::Array]) { }];
+}
+
+$Stack {
+    @push    << [(item[std::Object]) ~> () { }];
+    @pop     << [() ~> (item[std::Object]) { }];
+    @top     << [() ~> (item[std::Object]) { }];
+    @size    << [() ~> (n[std::Number]) { }];
+    @empty   << [() ~> (ok[std::Boolean]) { }];
+    @clear   << [() ~> () { }];
+    @to_array << [() ~> (arr[std::Array]) { }];
+}
+
+$Tree {
+    @insert   << [(value[std::Number]) ~> () { }];
+    @contains << [(value[std::Number]) ~> (ok[std::Boolean]) { }];
+    @min      << [() ~> (value[std::Number]) { }];
+    @max      << [() ~> (value[std::Number]) { }];
+    @remove   << [(value[std::Number]) ~> (ok[std::Boolean]) { }];
+    @size     << [() ~> (n[std::Number]) { }];
+    @empty    << [() ~> (ok[std::Boolean]) { }];
+    @inorder  << [() ~> (arr[std::Array]) { }];
+    @preorder << [() ~> (arr[std::Array]) { }];
+    @postorder << [() ~> (arr[std::Array]) { }];
+}
+
+$Map {
+    @put      << [(key[std::Object], value[std::Object]) ~> () { }];
+    @get      << [(key[std::Object]) ~> (value[std::Object]) { }];
+    @has      << [(key[std::Object]) ~> (ok[std::Boolean]) { }];
+    @remove   << [(key[std::Object]) ~> (ok[std::Boolean]) { }];
+    @keys     << [() ~> (arr[std::Array]) { }];
+    @values   << [() ~> (arr[std::Array]) { }];
+    @size     << [() ~> (n[std::Number]) { }];
+    @empty    << [() ~> (ok[std::Boolean]) { }];
+    @clear    << [() ~> () { }];
+}
+
+$Graph {
+    @add_node      << [(id[std::Object]) ~> () { }];
+    @add_edge      << [(a[std::Object], b[std::Object], weight[std::Number]) ~> () { }];
+    @has_node      << [(id[std::Object]) ~> (ok[std::Boolean]) { }];
+    @neighbors     << [(id[std::Object]) ~> (arr[std::Array]) { }];
+    @node_count    << [() ~> (n[std::Number]) { }];
+    @edge_count    << [() ~> (n[std::Number]) { }];
+    @bfs           << [(start[std::Object]) ~> (arr[std::Array]) { }];
+    @shortest_path << [(start[std::Object], goal[std::Object]) ~> (arr[std::Array]) { }];
+}

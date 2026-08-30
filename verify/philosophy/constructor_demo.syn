@@ -1,0 +1,59 @@
+&io;
+// Constructor init syntax:  -(Type(args)! name)  builds the object from the
+// given arguments. A single constructor argument is duck-typed into the
+// instance through the normal flow negotiation (the same path as `x << v`),
+// so each existing class gets a working constructor for free:
+//   - std::Number(5)        -> the Number's value becomes 5
+//   - std::String("hello")  -> the String's value becomes "hello"
+//   - std::Array((1,2,3))   -> the Array is filled from the tuple
+// A class may also define its own `@::(args) -> ()` for custom construction.
+// 构造初始化语法：-(类型(实参)! 名) 用给定实参构造对象。单参构造经常规流
+// 协商鸭子式流入实例（与 `x << v` 同通路），因此每个现有类都自动拥有可用的
+// 构造器：std::Number(5) 令其值成 5、std::String("hello") 令其值成 "hello"、
+// std::Array((1,2,3)) 用元组填满数组。类也可自定 `@::(args) -> ()` 构造。
+// Own methods MUST be called via `self.NAME(...)`.
+// 自身方法必须用 `self.NAME(...)` 调用。
+// Member data is accessed by its bare name; `self.name` also works.
+// 成员数据用裸名访问；`self.name` 亦可。
+$Program {
+    -(std::Number! memberN);   // a member (zero value); assigned inside @::
+
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        -(std::Number(5)! n);   // const local, built from the constructor arg
+        out << "n = ";
+        out << n;
+        out << "\n";
+
+        -(std::String("hello")! s);
+        out << "s = ";
+        out << s;
+        out << "\n";
+
+        -(std::Array((1, 2, 3))! arr);
+        out << "arr = ";
+        out << arr;
+        out << " (size ";
+        out << (arr.size());
+        out << ")\n";
+
+        out << "self.squared(6) = ";
+        out << self.squared(6);
+        out << "\n";
+
+        // member data: bare name AND self. both reach the same attribute
+        // 成员数据：裸名与 self. 指向同一属性
+        memberN << 42;
+        out << "memberN (bare)  = ";
+        out << memberN;
+        out << "\n";
+        out << "memberN (self.) = ";
+        out << self.memberN;
+        out << "\n";
+    }];
+
+    @squared << [(x[std::Number]) -> (answer[std::Number]) {
+        answer << (x .*(x));
+    }];
+}

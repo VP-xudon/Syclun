@@ -1,0 +1,33 @@
+// lib/system.synl
+//
+// Standard library: system (Synth-OOP interface).
+// 标准库：system（Synth-OOP 接口）。
+//
+// The behavioral face of the `system` library; the real work is done by the
+// C++ backend in lib/system.hpp. Importing `&system;` registers the native
+// class, then interprets this file — the class is already registered, so the
+// definition here documents the public shape. Any `$Program` class in a
+// library is ignored.
+// `system` 库的行为形态；真实工作由 lib/system.hpp 的 C++ 底层完成。
+// `&system;` 导入时登记原生类，再解释本文件——该类已登记，故此定义
+// 仅作为公开形态的文档。库中的 `$Program` 类会被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary (a wrong-typed argument yields a
+// "Argument type mismatch" poison). The authoritative enforced signature
+// lives in lib/cpp/system.hpp's make_sign; this file mirrors it.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查（类型不符的实参会
+// 产生 "Argument type mismatch" 毒水）。强制检查的权威签名位于
+// lib/cpp/system.hpp 的 make_sign；本文件是其可读镜像。
+
+$System {
+    @run << [(command[std::String]) ~> (output[std::String]) { }];
+    @run_lines << [(command[std::String]) ~> (lines[std::Array]) { }];
+    @cwd << [() ~> (path[std::String]) { }];
+    @getenv << [(name[std::String]) ~> (value[std::String]) { }];
+    @wait << [(ms[std::Number]) ~> () { }];
+    @now << [() ~> (ms[std::Number]) { }];
+    @time << [() ~> (hhmmss[std::String]) { }];
+    @date << [() ~> (yyyymmdd[std::String]) { }];
+    @datetime << [() ~> (stamp[std::String]) { }];
+}

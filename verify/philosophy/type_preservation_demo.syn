@@ -1,0 +1,114 @@
+// verify/philosophy/type_preservation_demo.syn
+// Root-fix demonstration + obscure-syntax stress test.
+// 根源修复演示 + 生僻语法压力测试。
+&io;
+&maths;
+&structs;
+&assert;
+
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // ---- 1. Universal receiver delegates method dispatch ----
+        // 1. 通用接收方（万物之源）委托方法派发
+        -(std::Object x) << 10;
+        out << "1. x.+(1) = "; out << x.+(1); out << "\n";          // 11
+        out << "2. 1.+(x)  = "; out << 1.+(x); out << "\n";         // 11 (param-as-arg)
+
+        // String held in an untyped variable — concatenation by delegation.
+        // 无类型变量持有的字符串——经委托做拼接。
+        -(std::Object s) << "hi";
+        out << "3. s.+(\"!\") = "; out << s.+("!"); out << "\n";    // hi!
+
+        // Boolean held in an untyped variable — control method by delegation.
+        // 无类型变量持有的布尔——经委托走控制方法。
+        -(std::Object t) << true;
+        out << "4. t.if_     = "; out << t.if_([()~>(v){v<<"Y";}],[()~>(v){v<<"N";}]); out << "\n"; // Y
+
+        // ---- 2. Threaded loop state keeps its type (repeat_) ----
+        // 2. 穿线的循环状态保留类型（repeat_）
+        -(std::Number n) << 5.repeat_([(st) -> (next) { next << st.+(1); }]);
+        out << "5. repeat_  = "; out << n; out << "\n";             // 5
+
+        // ---- 3. Threaded loop state + param-as-arg (while_) ----
+        // 3. 穿线循环状态 + 作为实参（while_）
+        -(std::Number m) << true.while_(
+            [(st) -> (next) { next << st.+(1); }],
+            [(st) ~> (flag) { flag << st.<(4); }]
+        );
+        out << "6. while_   = "; out << m; out << "\n";             // 4
+
+        // ---- 4. Direct param-as-arg on a degraded threaded value ----
+        // 4. 对退化穿线值直接作实参
+        -(std::Number acc) << 0;
+        -(std::Number r) << 5.repeat_([(st) -> (next) { acc << acc.+(1); next << st; }]);
+        out << "7. 1.+(acc) = "; out << 1.+(acc); out << "\n";      // 6 (1 + 5)
+
+        // ---- 5. Nested behavior params / closure capture ----
+        // 5. 嵌套行为参数 / 闭包捕获
+        -(std::Number total) << 0;
+        -(std::Number k) << 3.repeat_([(i) -> (o) {
+            // inner repeat captures outer `total`
+            // 内层 repeat 捕获外层 `total`
+            -(std::Number t2) << i.repeat_([(j) -> (p) { total << total.+(1); p << j; }]);
+            o << i.+(1);
+        }]);
+        out << "8. nested  = "; out << total; out << "\n";          // 3 (0+1+2)
+
+        // ---- 6. IEEE-754 (never poison) ----
+        // 6. IEEE-754（永不毒水）
+        -(std::Number z) << 0;
+        out << "9. 1/0     = "; out << 1./(z); out << "\n";         // Infinity
+        out << "10. 0/0    = "; out << z./(z); out << "\n";         // NaN
+
+        // ---- 7. Tuple destructuring with placeholder `_` ----
+        // 7. 占位符 `_` 元组解构
+        -(std::Tuple pair) << (100, 200);
+        -(std::Number fst, _) << pair;
+        out << "11. fst    = "; out << fst; out << "\n";            // 100
+
+        // ---- 8. assert::Checker on a rebind ----
+        // 8. assert::Checker 检查重绑
+        -(assert::Checker chk);
+        -(Counter c);
+        out << "12. before  = "; out << chk.has_changed(c); out << "\n"; // false
+        c.inc.=([() -> () { value << value.+(50); }]);
+        out << "13. after   = "; out << chk.has_changed(c); out << "\n"; // true
+        c.inc();
+        out << "14. c.get() = "; out << c.get(); out << "\n";            // 50
+
+        // ---- 9. self keyword + empty method + qualified const ----
+        // 9. self 关键字 + 空方法 + 带常量标记限定
+        -(std::Number(7)! frozen);
+        -(Box box);
+        out << "15. box.twice() = "; out << box.twice(); out << "\n"; // 14
+        out << "16. box.peek()  = "; out << box.peek();   out << "\n"; // 7 (self access)
+
+        // ---- 10. Member access + instantiation expression as a value ----
+        // 10. 成员访问 + 实例化表达式作为值
+        -(Pair pr); pr.a << 3; pr.b << 7;
+        out << "17. pr.get_second() = "; out << pr.get_second(); out << "\n"; // 7
+    }];
+}
+
+$Counter {
+    -(std::Number value);
+    @get << [() ~> (result) { result << value; }];
+    @inc << [() -> () { value << value.+(1); }];
+}
+
+$Box {
+    -(std::Number(7) inner);
+    @twice << [() -> (result) { result << self.inner.+(self.inner); }];
+    @peek  << [() ~> (result) { result << self.inner; }];   // self access
+    @touch << [() -> () {}];                            // empty method body
+}
+
+// A tiny pair with a `get_second` accessor, used by test 17.
+// 带 get_second 访问器的小类，供测试 17 使用。
+$Pair {
+    -(std::Number a);
+    -(std::Number b);
+    @get_second << [() ~> (result) { result << b; }];
+}

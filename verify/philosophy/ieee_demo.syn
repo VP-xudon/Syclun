@@ -1,0 +1,50 @@
+&io;
+// IEEE 754 float semantics (no more poison for arithmetic):
+//   - a / 0      -> +Infinity  (a > 0)  or  -Infinity (a < 0)
+//   - 0 / 0      -> NaN
+//   - NaN / Infinity are keywords that parse to real std::Number instances.
+// IEEE 754 浮点语义（算术不再下毒）：
+//   - a / 0      -> +Infinity（a>0）或 -Infinity（a<0）
+//   - 0 / 0      -> NaN
+//   - NaN / Infinity 是关键字，解析为真实的 std::Number 实例。
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        out << "10/0  = ";
+        out << (10./(0));
+        out << "\n";
+
+        out << "-3/0  = ";
+        out << (-3./(0));
+        out << "\n";
+
+        out << "0/0   = ";
+        out << (0./(0));
+        out << "\n";
+
+        out << "Infinity keyword = ";
+        out << Infinity;
+        out << "\n";
+
+        out << "NaN keyword      = ";
+        out << NaN;
+        out << "\n";
+
+        out << "Infinity + 1     = ";
+        out << (Infinity .+(1));
+        out << "\n";
+
+        out << "NaN + 1         = ";
+        out << (NaN .+(1));
+        out << "\n";
+
+        out << "Infinity < 5 ?   = ";
+        out << (Infinity .<(5));
+        out << "\n";
+
+        out << "5 < Infinity ?   = ";
+        out << (5 .<(Infinity));
+        out << "\n";
+    }];
+}

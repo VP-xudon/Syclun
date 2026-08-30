@@ -1,0 +1,8 @@
+&io;
+$Program {
+    @:: << [() -> () {
+        -(std::Number num);
+        -(io::OStream out);
+        out << num;
+    }];
+}

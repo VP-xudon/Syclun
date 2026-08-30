@@ -1,0 +1,48 @@
+// lib/re.synl
+//
+// Standard library: re (Synth-OOP interface).
+// 标准库：re（Synth-OOP 接口）。
+//
+// The behavioral face of the `re` (regular-expression) library. The C++
+// backend in lib/re.hpp does the matching (std::regex, ECMAScript grammar).
+// `re` exposes static convenience methods that compile a pattern on the fly;
+// `Pattern` is a precompiled, reusable matcher; `Match` is a result object.
+// A `$Program` class in a library is ignored.
+// `re`（正则）库的行为形态，真实匹配由 lib/re.hpp 的 C++ 底层完成
+// （std::regex，ECMAScript 文法）。`re` 提供即时编译的静态便捷方法；
+// `Pattern` 为预编译可复用匹配器；`Match` 为结果对象。库中 `$Program` 被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary (a wrong-typed argument yields a
+// "Argument type mismatch" poison instead of failing deep inside the C++ body).
+// 下列方法签名均带类型约束；解释器在调用边界强制检查（类型不符的实参会
+// 产生 "Argument type mismatch" 毒水，而非在 C++ 方法体深处崩溃）。
+
+$Re {
+    // Compile a pattern source string into a reusable Pattern.
+    // 把模式源字符串编译为可复用的 Pattern。
+    @compile  << [(pattern[std::String]) ~> (pat[re::Pattern]) { }];
+    @match    << [(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
+    @search   << [(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
+    @findall  << [(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
+    @replace  << [(pattern[std::String], text[std::String], repl[std::String]) ~> (out[std::String]) { }];
+    @split    << [(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
+    @test     << [(pattern[std::String], text[std::String]) ~> (ok[std::Boolean]) { }];
+}
+
+$Pattern {
+    // Match against an already-compiled pattern.
+    // 用已编译的 Pattern 做匹配。
+    @match    << [(text[std::String]) ~> (result[re::Match]) { }];
+    @search   << [(text[std::String]) ~> (result[re::Match]) { }];
+    @findall  << [(text[std::String]) ~> (arr[std::Array]) { }];
+    @replace  << [(text[std::String], repl[std::String]) ~> (out[std::String]) { }];
+    @split    << [(text[std::String]) ~> (arr[std::Array]) { }];
+    @test     << [(text[std::String]) ~> (ok[std::Boolean]) { }];
+}
+
+$Match {
+    // matched: Boolean, text: String, groups: Array of String,
+    // start/end: Number (byte offsets).
+    // matched：Boolean，text：String，groups：String 数组，start/end：Number（偏移）。
+}

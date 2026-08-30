@@ -1,0 +1,14 @@
+&io;
+&system;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        -(system::System s);
+
+        // wait(ms) blocks the current thread for `ms` integer milliseconds.
+        // wait(ms) 使当前线程休眠 ms 个整数毫秒。
+        out << "before wait";
+        s.wait(50);
+        out << " after wait(50ms)";
+    }];
+}

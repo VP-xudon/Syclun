@@ -1,0 +1,43 @@
+name: DCO
+
+# Verifies that every commit in a pull request carries a DCO `Signed-off-by`
+# trailer. Self-contained: no GitHub App to install. If you prefer the DCO
+# GitHub App instead, it reads .github/dco.yml — delete this workflow then.
+# 校验 PR 中的每个提交都带 DCO `Signed-off-by` 尾注。自包含，无需安装 GitHub 应用。
+# 若你改用 DCO GitHub 应用（读取 .github/dco.yml），删掉本工作流即可。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  dco:
+    name: DCO sign-off check / DCO 签名检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify every commit is signed off / 校验每个提交都已签名
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          failed=0
+          for c in $(git rev-list "$base..HEAD"); do
+            if ! git show -s --format=%B "$c" \
+                 | grep -qiE '^signed-off-by: .+ <.+@.+>$'; then
+              echo "::error::no Signed-off-by trailer / 缺少 Signed-off-by 尾注"
+              git show -s --format='  %h %an <%ae> :: %s' "$c"
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo ""
+            echo "Fix / 修复方法："
+            echo "  git rebase --signoff origin/${{ github.event.pull_request.base.ref }}"
+            echo "  git push --force-with-lease"
+            echo ""
+            echo "Or sign off as you go / 或每次提交时直接签名： git commit -s"
+            exit 1
+          fi
+          echo "All commits are signed off. / 全部提交均已签名。"

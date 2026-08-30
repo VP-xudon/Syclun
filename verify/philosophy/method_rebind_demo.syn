@@ -1,0 +1,31 @@
+// Counter method-rebinding demo (expect output: 4).
+// 计数器的“方法变量”重绑演示（期望输出：4）。
+// `inc` is just a member holding a behavior; rebinding it swaps the callable
+// in place. A const method (@!inc) would refuse to be rebound.
+// `inc` 只是持有行为的成员；对其重绑即就地替换 callable。
+// 常数方法（@!inc）会拒绝被重绑。
+
+&io;
+
+$Program {
+    @:: << [() -> () {
+        -(Counter c);
+        c.inc(); c.inc();
+        c.inc.=([()->() {
+            value << value.+(2);
+        }]);
+        c.inc();
+        -(io::OStream out);
+        out << c.get();
+    }];
+}
+
+$Counter {
+    -(std::Number value);
+    @get << [() ~> (result) {
+        result << value;
+    }];
+    @inc << [() -> () {
+        value << value.+(1);
+    }];
+}

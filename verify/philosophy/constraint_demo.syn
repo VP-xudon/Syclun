@@ -1,0 +1,59 @@
+&io;
+// Regression demo for variable / parameter constraints (spec 9.8).
+// 变量 / 参数约束的回归演示（文档 9.8）。
+//
+// A real #Contract `Addable` is defined; a class that implements its method
+// satisfies it (positive), a class that does not fails at runtime
+// (negative, see build/_tNeg.syn). Objects travel through the language as
+// direct pointers (method arguments / `self`), so the constrained value is
+// bound to a concrete type here — that is the form the constraint machinery
+// enforces end to end. Signatures use the idiomatic `Name[Constraint]` form.
+// 定义一个真实的 #Contract `Addable`；实现了其方法的类满足之（正向），
+// 未实现者运行期报错（负向，见 build/_tNeg.syn）。对象在语言中作为直接指针
+// 传递（方法实参 / `self`），故此处把约束值绑定到具体类型——这正是约束机制
+// 能端到端落实的形式。签名采用惯用 `名[约束]` 形式。
+#Addable {
+    @add << [(x[std::Number], y[std::Number]) -> (z[std::Number])];
+};
+
+$Adder {
+    @add << [(x[std::Number], y[std::Number]) -> (z[std::Number]) {
+        -(std::Number r) << x.+(y);
+        z << r;
+    }];
+};
+
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // A constrained variable bound, at declaration, to a value that
+        // satisfies the contract (the zero Adder already implements `add`).
+        // 约束变量在声明时绑定到满足契约的值（零值 Adder 已实现 `add`）。
+        -(Adder[Addable] a);
+        out << "constrained Adder declared (contract satisfied)\n";
+
+        // The variable holds a real object, so its methods work.
+        // 变量持有真实对象，故其方法可用。
+        out << "a.add(2,3) = "; out << a.add(2, 3); out << "\n";
+
+        // A constrained parameter: the actual (passed by pointer) must
+        // satisfy the contract. 带约束的参数：作为指针传入的实参须满足约束。
+        self.use(a);
+    }];
+
+    @use << [(tool[Addable]) -> () {
+        -(io::OStream out);
+        -(std::Number r) << tool.add(2, 3);
+        out << "tool.add(2,3) = "; out << r; out << "\n";
+    }];
+}
+
+// Negative counterpart (exits with ConstraintException):
+// 负向对应（以 ConstraintException 退出）：
+//   #Addable { @add << [(x[std::Number], y[std::Number]) -> (z[std::Number])]; };
+//   $Program { @:: << [() -> () {
+//       -(std::Object[Addable] a) << -(std::Number n);   // Number has no `add`
+//   }]; }
+// The check fires on the bound value (std::Number) at the `<<` site.
+// 校验在 `<<` 处针对被绑定的真实值（std::Number）触发。

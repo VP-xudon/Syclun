@@ -1,0 +1,56 @@
+&io;
+&async;
+&system;
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+        -(async::Reactor r);
+        
+        // 1) Batch run with concurrency limit + per-task timeout.
+        //    带并发上限与逐任务超时的批量执行。
+        r.set_limit(-(std::Number n) << 2);   // at most 2 in flight (backpressure)
+        r.set_timeout(-(std::Number n) << 5000);
+
+        -(std::Array jobs);
+        jobs.push_back([() ~> (x) { x << 10; }]);
+        jobs.push_back([() ~> (x) { x << 20; }]);
+        jobs.push_back([() ~> (x) { x << 30; }]);
+        r.set(jobs);
+
+        -(std::Tuple results) << r.start();
+        out << "batch task count: "; out << results.size();                // 3
+        out << "task1 status: "; out << results.get(0).get(0);            // "ok"
+        out << "task1 value: "; out << results.get(0).get(1).get(0);      // 10
+
+        // 2) Error isolation: a throwing closure becomes an Error, not a crash.
+        //    异常隔离：抛错的闭包变为 Error，不会令反应堆崩溃。
+        -(std::Array risky);
+        risky.push_back([() ~> (x) { x << 1; }]);
+        risky.push_back([() ~> (x) { -(std::Number z) << 1; -(std::Number o) << 0; x << z./(o); }]);
+        r.set(risky);
+        -(std::Tuple r2) << r.start();
+        out << "risky task2 status: "; out << r2.get(1).get(0);           // "error"
+        out << "risky task2 kind: "; out << r2.get(1).get(1).kind();     // "exception"
+
+        // 3) Dynamic spawn + await (a Task handle).
+        //    动态派发 + await（Task 句柄）。
+        -(async::Task t) << r.spawn([() ~> (x) { x << 99; }]);
+        out << "spawned done? "; out << t.is_done();                     // false (likely)
+        -(std::Tuple ta) << t.await();
+        out << "spawned value: "; out << ta.get(1).get(0);               // 99
+
+        // 4) Non-blocking timer (async_sleep returns a Task).
+        //    非阻塞定时器（async_sleep 返回 Task）。
+        out << "before sleep";
+        -(async::Task timer) << r.async_sleep(-(std::Number n) << 40);
+        -(std::Tuple ta2) << timer.await();
+        out << " after sleep";
+
+        // 5) with_timeout: a slow closure times out.
+        //    with_timeout：慢闭包超时。
+        -(std::Tuple to) << r.with_timeout(
+            [() ~> (x) { -(system::System s); s.wait(200); x << 1; }],
+            -(std::Number n) << 30);
+        out << "slow status: "; out << to.get(0);                        // "timeout"
+    }];
+}

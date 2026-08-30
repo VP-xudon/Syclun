@@ -1,0 +1,52 @@
+// lib/io.synl
+//
+// Standard library: io (Synth-OOP interface).
+// 标准库：io（Synth-OOP 接口）。
+//
+// The behavioral face of the `io` library; the real work is done by the
+// C++ backend in lib/io.hpp. Importing `&io;` registers the native
+// classes, then interprets this file — the classes are already registered,
+// so the definitions here document the public shape. Any `$Program` class
+// in a library is ignored.
+// `io` 库的行为形态；真实工作由 lib/io.hpp 的 C++ 底层完成。`&io;` 导入时
+// 登记原生类，再解释本文件——类已登记，故此定义仅作为公开形态的文档。
+// 库中的 `$Program` 类会被忽略。
+//
+// Signatures below carry type constraints, enforced at the call boundary.
+// 下列签名均带类型约束，在调用边界强制检查。
+//
+// Two calling styles are supported for each direction:
+// 每个方向都支持两种调用风格：
+//   output:  out << value;   (flow  ->  `:=` receive)   OR  out.push(value);
+//            out.push_line(value);   // appends a newline / 自带换行
+//   input:   x << in;  i.e.  x =: in;   (flow  ->  `=:` publish)   OR  x << in.get();
+//            in.get();          // one whitespace-delimited word / 一个词
+//            in.get_line();     // one whole line / 一整行
+
+$OStream {
+    // Receive (publish) a value of any type and write it to standard output
+    // with no trailing newline. Triggered by the flow `out << value`.
+    // 接收（公布）任意类型的值并写入标准输出（无尾随换行）。
+    // 由流 `out << value` 触发。
+    @:= << [(value[std::Object]) ~> () { }];
+
+    // Method-form output, no trailing newline. 方法式输出，不换行。
+    @push << [(value[std::Object]) ~> () { }];
+
+    // Method-form output that appends a newline. 方法式输出并换行。
+    @push_line << [(value[std::Object]) ~> () { }];
+}
+
+$IStream {
+    // Publish (read) one whitespace-delimited word from standard input as a
+    // String. Triggered by the flow `x << in` (i.e. `x =: in`).
+    // 公布（读取）标准输入中一个以空白分隔的词，作为 String。
+    // 由流 `x << in`（即 `x =: in`）触发。
+    @=: << [() ~> (result[std::String]) { }];
+
+    // Method-form input: read one word. 方法式输入：读取一个词。
+    @get << [() ~> (result[std::String]) { }];
+
+    // Method-form input: read a whole line. 方法式输入：读取一整行。
+    @get_line << [() ~> (result[std::String]) { }];
+}

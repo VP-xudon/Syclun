@@ -1,0 +1,115 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Synth-OOP",
+  "scopeName": "source.synth-oop",
+  "patterns": [
+    { "include": "#comment-block" },
+    { "include": "#comment-line" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#module-import" },
+    { "include": "#type-qualified" },
+    { "include": "#namespace-prefix" },
+    { "include": "#method-call" },
+    { "include": "#class-decl" },
+    { "include": "#method-decl" },
+    { "include": "#control-keyword" },
+    { "include": "#operator" },
+    { "include": "#constant-marker" },
+    { "include": "#keyword-marker" },
+    { "include": "#boolean" },
+    { "include": "#placeholder" },
+    { "include": "#variable" }
+  ],
+  "repository": {
+    "comment-block": {
+      "name": "comment.block",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    "comment-line": {
+      "name": "comment.line.double-slash",
+      "match": "//.*$"
+    },
+    "string": {
+      "name": "string.quoted.double",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+    "module-import": {
+      "name": "keyword",
+      "match": "&[A-Za-z_][A-Za-z0-9_]*;"
+    },
+    "type-qualified": {
+      "name": "support.type",
+      "match": "[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)+"
+    },
+    "namespace-prefix": {
+      "name": "support.type",
+      "match": "[A-Za-z_][A-Za-z0-9_]*::"
+    },
+    "method-call": {
+      "name": "meta.method-call",
+      "match": "(\\.)([A-Za-z_][A-Za-z0-9_]*|[+\\-*/%<>=!~&|]+)",
+      "captures": {
+        "1": { "name": "punctuation.accessor" },
+        "2": { "name": "entity.name.function" }
+      }
+    },
+    "class-decl": {
+      "name": "meta.class",
+      "match": "(\\$|#)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\[[^\\[\\]]*\\])?",
+      "captures": {
+        "1": { "name": "keyword" },
+        "2": { "name": "entity.name.type" },
+        "3": { "name": "entity.other.inherited-class" }
+      }
+    },
+    "method-decl": {
+      "name": "meta.method.declaration",
+      "match": "(@!#|@!|@#|@)([A-Za-z_~=:\\-+*/%<>!][A-Za-z_~=:\\-+*/%<>=!]*)?",
+      "captures": {
+        "1": { "name": "keyword" },
+        "2": { "name": "entity.name.function" }
+      }
+    },
+    "control-keyword": {
+      "name": "keyword.control",
+      "match": "\\b(if_|while_|repeat_)\\b"
+    },
+    "operator": {
+      "name": "keyword.operator",
+      "match": "=>|~>|->|<<|>>|<=|>=|==|!=|:=|=:|::|[=+\\-*/%<>]"
+    },
+    "constant-marker": {
+      "name": "keyword",
+      "match": "(?<=[A-Za-z0-9_])(!)(?=[\\s),])"
+    },
+    "keyword-marker": {
+      "name": "keyword",
+      "match": "@!#|@!|@#|@|#|\\$|!"
+    },
+    "boolean": {
+      "name": "constant.language.boolean",
+      "match": "\\b(true|false|inf|NaN|Infinity)\\b"
+    },
+    "placeholder": {
+      "name": "variable",
+      "match": "(?<!\\w)_(?![\\w])"
+    },
+    "variable": {
+      "name": "variable",
+      "match": "[A-Za-z_][A-Za-z0-9_]*"
+    }
+  }
+}

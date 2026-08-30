@@ -1,0 +1,28 @@
+// lib/hash.synl
+//
+// Standard library: hash (Synth-OOP interface).
+// 标准库：hash（Synth-OOP 接口）。
+//
+// Human-readable face of the hash library. Methods are given as signatures
+// only; their behavior is supplied by the C++ backend in lib/cpp/hash.hpp.
+// On `&hash;` the interpreter brings the native class online first, then
+// interprets this file; the class is already registered, so its definition
+// here is treated purely as documentation of the public shape. The `$Program`
+// class, should one appear, is ignored in a library.
+// hash 库面向人类的形态。方法仅以签名给出，真实行为由 lib/cpp/hash.hpp
+// 的 C++ 底层提供。程序写 `&hash;` 时，解释器先上线原生类，再解释本文件；
+// 该类已登记，此处定义仅作公开形态文档。库中出现 `$Program` 时忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary (a wrong-typed argument yields a
+// "Argument type mismatch" poison). The authoritative enforced signature
+// lives in lib/cpp/hash.hpp's make_sign; this file mirrors it.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查（类型不符的实参会
+// 产生 "Argument type mismatch" 毒水）。强制检查的权威签名位于
+// lib/cpp/hash.hpp 的 make_sign；本文件是其可读镜像。
+
+$Hash {
+    @sha256 << [(text[std::String]) ~> (digest[std::String]) { }];
+    @crc32  << [(text[std::String]) ~> (checksum[std::Number]) { }];
+    @fnv1a  << [(text[std::String]) ~> (digest[std::String]) { }];
+}

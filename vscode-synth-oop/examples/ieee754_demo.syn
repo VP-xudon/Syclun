@@ -1,0 +1,33 @@
+// IEEE-754 floating-point demo.
+// IEEE-754 浮点演示。
+// The retired "poison-water" model no longer exists: a division by zero now
+// yields a real, inspectable non-finite value (Infinity / -Infinity / NaN)
+// instead of a silently-propagating poison. Arithmetic keeps following the
+// IEEE 754 standard.
+// 已退役的"毒水模型"不复存在：除以零现在得到真实、可检查的非有限值
+// （Infinity / -Infinity / NaN），而非静默传播的毒水。运算仍遵循 IEEE 754。
+
+&io;
+
+$Program {
+    @:: << [() -> () {
+        -(io::OStream out);
+
+        // Build a few operands without negative literals (a.-(b) == a - b).
+        // 用减法构造操作数，避开负数字面量（a.-(b) 即 a - b）。
+        -(std::Number one)  << 1;
+        -(std::Number zero) << 0;
+        -(std::Number neg)  << one.-(2);            // -1 (1 - 2)
+
+        // Division by zero -> inspectable non-finite results.
+        // 除以零 -> 可检查的非有限结果。
+        out << " 1 / 0    = "; out << one./(zero);          out << "\n";  //  Infinity
+        out << "-1 / 0    = "; out << neg./(zero);          out << "\n";  // -Infinity
+        out << " 0 / 0    = "; out << zero./(zero);         out << "\n";  //  NaN
+
+        // Non-finite values still participate in arithmetic per IEEE 754.
+        // 非有限值仍按 IEEE 754 参与运算。
+        out << " Inf + 1  = "; out << one./(zero).+(1);                 out << "\n";  //  Infinity
+        out << " Inf - Inf= "; out << one./(zero).-(one./(zero));       out << "\n";  //  NaN
+    }];
+}

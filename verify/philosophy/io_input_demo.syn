@@ -1,0 +1,16 @@
+&io;
+// Input demo: reads one whole line from standard input and echoes it.
+// Run with piped input, e.g.:
+//   printf "Alice\n" | build/synth.exe verify/philosophy/io_input_demo.syn
+// 输入示例：从标准输入读取一整行并回显。以管道输入运行，如：
+//   printf "Alice\n" | build/synth.exe verify/philosophy/io_input_demo.syn
+$Program {
+    @:: << [() -> () {
+        -(io::IStream in);
+        -(std::String name) << in.get_line();
+
+        -(io::OStream out);
+        out.push("You typed: ");
+        out.push_line(name);
+    }];
+}

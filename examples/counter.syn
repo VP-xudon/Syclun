@@ -1,0 +1,42 @@
+&io;
+// Classes hold state; an instance method MUST be called through `self.NAME(...)`.
+// A bare `NAME(...)` is resolved as DATA, never as a hidden self-dispatch.
+// 类持有状态；实例方法必须用 `self.NAME(...)` 调用。裸写 `NAME(...)` 被解析为
+// 数据，而非隐式自派发。
+$Program {
+    @:: << [() -> () {
+        -(Counter c);
+        c.inc();
+        c.inc();
+        c.inc();
+
+        -(io::OStream out);
+        out.push_line(c.get());              // → 3
+        out.push_line(c.describe());         // → Counter(value=3)
+    }];
+}
+
+$Counter {
+    -(std::Number value);
+
+    @get << [() ~> (result) {
+        result << value;
+    }];
+
+    @inc << [() -> () {
+        // Instance methods call each other through `self.`.
+        // 实例方法之间经 `self.` 互相调用。
+        value << self.next_value();
+    }];
+
+    @next_value << [() ~> (result[std::Number]) {
+        result << value.+(1);
+    }];
+
+    // `<<` REBINDS a variable, it does not append — string building is done
+    // with `+` (and `to_string` to stringify a Number).
+    // `<<` 是重新绑定变量而非追加——拼字符串要用 `+`（数字先 `to_string`）。
+    @describe << [() ~> (text[std::String]) {
+        text << "Counter(value=".+(value.to_string()).+(")");
+    }];
+}

@@ -1,0 +1,48 @@
+// Checker standard-library demo.
+// assert 标准库 Checker 演示。
+// has_method verifies a method exists; has_changed verifies a method variable
+// was rebound at runtime.
+// has_method 验证方法存在；has_changed 验证方法变量在运行期被重绑。
+
+&io;
+&assert;
+
+$Program {
+    @:: << [() -> () {
+        -(Counter c);
+        -(assert::Checker chk);
+        -(io::OStream out);
+
+        out << "has_method(inc)=";
+        out << chk.has_method(c, "inc");
+        out << "\n";
+
+        out << "has_changed=";
+        out << chk.has_changed(c);
+        out << "\n";
+
+        // Rebind inc at runtime, then re-check.
+        // 运行期重绑 inc，再检查。
+        c.inc.=([()->() {
+            value << value.+(100);
+        }]);
+
+        out << "has_method(inc)=";
+        out << chk.has_method(c, "inc");
+        out << "\n";
+
+        out << "has_changed=";
+        out << chk.has_changed(c);
+        out << "\n";
+    }];
+}
+
+$Counter {
+    -(std::Number value);
+    @get << [() ~> (result) {
+        result << value;
+    }];
+    @inc << [() -> () {
+        value << value.+(1);
+    }];
+}
