@@ -42,3 +42,15 @@ $Maths {
     @e     << [() ~> (r[std::Number]) { }];
     @random << [() ~> (r[std::Number]) { }];
 }
+
+// ------------------------------------------------------------
+// v1.30 preset object / v1.30 预置对象
+//
+// One ready-made object comes with the import, named inside the library's
+// own namespace (`maths::math`) — instantiating `$Maths` yourself is
+// unnecessary ceremony when the class is stateless. It is a const binding:
+// the name always refers to the same object.
+// 导入即附带一个成品对象，以库自己的命名空间为名（`maths::math`）——
+// 无状态的类再自行实例化纯属仪式。它是常数绑定：名字永远指向同一对象。
+// ------------------------------------------------------------
+-(maths::Maths! maths::math);

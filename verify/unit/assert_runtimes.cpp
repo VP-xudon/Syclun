@@ -1462,6 +1462,97 @@ namespace {
             "(exempt from type checking, keeps zero, not poisoned)");
     }
 
+    // --------------------------------------------------------
+    // 19. Standard-library industrialization fixes D1-D5 (L3)
+    // 19. 标准库工业化缺陷 D1-D5 修复（L3 准工业级）
+    //     Full-stack regression gate: each snippet exercises the public
+    //     Synth-OOP surface and the captured output is asserted.
+    //     全栈回归闸门：每段脚本走公开 Synth-OOP 接口，并断言捕获输出。
+    // --------------------------------------------------------
+    void test_stdlib_d1_d5() {
+        section("Standard-library industrialization fixes D1-D5 (L3)");
+
+        // D4 needs a temp file; keep it beside the test binary and clean up.
+        // D4 需要一个临时文件；放在测试二进制旁并清理。
+        fs::path tmp = test_binary_dir() / "assert_d4_tmp.txt";
+        std::string tmp_str = tmp.string();
+        std::replace(tmp_str.begin(), tmp_str.end(), '\\', '/'); // Windows APIs accept '/'
+
+        std::string src =
+            "&io; &structs; &file;\n"
+            "$Program {\n"
+            "  @:: << [() -> () {\n"
+            "    -(io::OStream out);\n"
+            // ---- D1: Map key collision (type-tagged serialization) ----
+            "    -(structs::Map m);\n"
+            "    m.put(-(std::Number n) << 1, -(std::String s) << \"num\");\n"
+            "    m.put(-(std::String k) << \"1\", -(std::String s) << \"str\");\n"
+            "    m.put(-(std::Number n) << 2, -(std::String s) << \"two\");\n"
+            "    m.put(-(std::String k) << \"2\", -(std::String s) << \"twoS\");\n"
+            "    out << \"D1SIZE=\"; out << m.size();\n"
+            "    out << \" D1G1=\"; out << m.get(-(std::Number n) << 1);\n"
+            "    out << \" D1G2=\"; out << m.get(-(std::String k) << \"1\");\n"
+            // ---- D2: Graph shortest path respects weights (Dijkstra) ----
+            "    -(structs::Graph g);\n"
+            "    g.add_node(-(std::Number n) << 1); g.add_node(-(std::Number n) << 2);\n"
+            "    g.add_node(-(std::Number n) << 3); g.add_node(-(std::Number n) << 4);\n"
+            "    g.add_edge(-(std::Number n) << 1, -(std::Number n) << 2, -(std::Number n) << 1);\n"
+            "    g.add_edge(-(std::Number n) << 2, -(std::Number n) << 3, -(std::Number n) << 1);\n"
+            "    g.add_edge(-(std::Number n) << 3, -(std::Number n) << 4, -(std::Number n) << 1);\n"
+            "    g.add_edge(-(std::Number n) << 1, -(std::Number n) << 4, -(std::Number n) << 10);\n"
+            "    out << \" D2PATH=\"; out << g.shortest_path(-(std::Number n) << 1, -(std::Number n) << 4);\n"
+            "    out << \" D2DIST=\"; out << g.shortest_distance(-(std::Number n) << 1, -(std::Number n) << 4);\n"
+            // ---- D3: String codepoint-level API (UTF-8 aware) ----
+            "    -(std::String w) << -(std::String u) << \"hello\xe4\xbd\xa0\xe5\xa5\xbd\";\n"
+            "    out << \" D3COUNT=\"; out << w.char_count();\n"
+            "    out << \" D3CHAR5=\"; out << w.char_at(-(std::Number n) << 5);\n"
+            "    out << \" D3SUB=\"; out << w.substr_chars(-(std::Number n) << 5, -(std::Number n) << 7);\n"
+            // ---- D4: file.write/append in binary mode (no CRLF) ----
+            "    -(file::File ff);\n"
+            "    ff.open(\"" + tmp_str + "\");\n"
+            "    ff.write(-(std::String cc) << \"a\\nb\\nc\");\n"
+            "    out << \" D4SIZE=\"; out << ff.size();\n"
+            "    out << \" D4LINES=\"; out << ff.readlines();\n"
+            // ---- D5: native state is reclaimable (dispose + on_release) ----
+            "    -(structs::Map mx);\n"
+            "    mx.put(-(std::Number n) << 1, -(std::String vv) << \"x\");\n"
+            "    mx.put(-(std::Number n) << 2, -(std::String vv) << \"y\");\n"
+            "    out << \" D5BEFORE=\"; out << mx.size();\n"
+            "    mx.dispose();\n"
+            "    out << \" D5AFTER=\"; out << mx.size();\n"
+            "  }];\n"
+            "};\n";
+
+        std::string out = run_synth(src, "d1d5");
+
+        check(out.find("D1SIZE=4") != std::string::npos,
+              "D1: Map keeps Number 1 / String '1' as distinct keys (size 4, not collapsed)");
+        check(out.find("D1G1=num") != std::string::npos
+              && out.find("D1G2=str") != std::string::npos,
+              "D1: Map.get resolves each key type correctly");
+        check(out.find("D2PATH=[1, 2, 3, 4]") != std::string::npos,
+              "D2: shortest_path respects weights (Dijkstra, not BFS)");
+        check(out.find("D2DIST=3") != std::string::npos,
+              "D2: shortest_distance returns the weighted total (3, not 10)");
+        check(out.find("D3COUNT=7") != std::string::npos,
+              "D3: String.char_count returns codepoint count (7), not byte count");
+        check(out.find("D3CHAR5=\xe4\xbd\xa0") != std::string::npos,
+              "D3: String.char_at(5) returns the CJK codepoint");
+        check(out.find("D3SUB=\xe4\xbd\xa0\xe5\xa5\xbd") != std::string::npos,
+              "D3: String.substr_chars returns a codepoint slice");
+        check(out.find("D4SIZE=5") != std::string::npos,
+              "D4: file.write is binary (a\\nb\\nc -> 5 bytes, no CRLF on Windows)");
+        check(out.find("D4LINES=[a, b, c]") != std::string::npos,
+              "D4: file.readlines returns the 3 lines");
+        check(out.find("D5BEFORE=2") != std::string::npos,
+              "D5: Map populated before dispose (size 2)");
+        check(out.find("D5AFTER=0") != std::string::npos,
+              "D5: dispose() reclaims the native state (size 0)");
+
+        std::error_code ec;
+        fs::remove(tmp, ec);
+    }
+
 } // namespace
 
 
@@ -1656,6 +1747,53 @@ namespace {
             "parse() with a missing key raises a runtime error");
     }
 
+    // ------------------------------------------------------------
+    // v1.31 library preset objects are reached through their library
+    // namespace (`io::out`), not through bare names.
+    // v1.31 库预置对象经由其库命名空间（`io::out`）触达，而非裸名。
+    // ------------------------------------------------------------
+    void test_library_presets() {
+    section("Library preset objects — qualified names (v1.31)");
+    {
+        // The qualified name resolves through ordinary name resolution.
+        // 全限定名经普通的名字解析即可命中。
+        check(expect_program_output(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @:: << [{ io::out.push_line(\"qualified ok\"); }];\n"
+                  "};\n",
+                  "qualified ok"),
+              "io::out resolves through the ordinary name path");
+        check(expect_program_output(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @:: << [{ io::out << \"flow ok\"; }];\n"
+                  "};\n",
+                  "flow ok"),
+              "io::out works as a flow receiver");
+        // The bare name is NOT a global: a library object belongs to its
+        // library's runtime space.
+        // 裸名不是全局对象：库对象属于其库的运行空间。
+        check(expect_runtime_error(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @:: << [{ out.push_line(\"bare\"); }];\n"
+                  "};\n",
+                  "undefined variable 'out'"),
+              "bare 'out' is undefined (objects carry their library name)");
+        // The binding is const: a plain-name assignment to the qualified
+        // name is rejected.
+        // 绑定为常数：对全限定名的裸名赋值被拒绝。
+        check(expect_runtime_error(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @:: << [{ -(io::OStream o); io::out .= (o); }];\n"
+                  "};\n",
+                  "ConstException"),
+              "io::out is a const binding (assignment rejected)");
+    }
+    }
+
 int main(int argc, char** argv) {
     bool live_input = false;
     for (int i = 1; i < argc; ++i) {
@@ -1697,6 +1835,8 @@ int main(int argc, char** argv) {
     test_assign_method();
     test_method_forms();
     test_sugar_infix();
+    test_stdlib_d1_d5();
+    test_library_presets();
 
     std::cout << "\n------------------------------------------------------------\n";
     std::cout << std::format(" {} passed, {} failed\n", passed, failed);

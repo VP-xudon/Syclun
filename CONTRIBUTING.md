@@ -81,7 +81,7 @@ Only if the answer to all four points at "new module" should you open one.
 ```bash
 bash build.sh                      # must succeed / 必须成功
 ./build/assert_lexer.exe           # 83 / 83
-./build/assert_parser.exe          # 64 / 64
+./build/assert_parser.exe          # 71 / 71
 ./build/assert_runtimes.exe        # 143 / 143
 for f in examples/*.syn; do ./build/synth.exe "$f"; done
 ```
@@ -94,7 +94,7 @@ Then read, in this order / 然后按此顺序阅读：
 
 1. [`README.md`](./README.md) — what Syclun is, and the 30-second tour.
 2. [`doc/Synth-OOP语言文档-修正版.md`](./doc/Synth-OOP语言文档-修正版.md) — the
-   specification (v1.29). **The spec is the contract**; the interpreter is one
+   specification (v1.31). **The spec is the contract**; the interpreter is one
    implementation of it.
 3. [`doc/Syclun标准库参考.md`](./doc/Syclun标准库参考.md) — signatures and the
    "how to add a library" checklist.
@@ -192,7 +192,7 @@ For a bug: how do I reproduce it on a clean checkout?
 | Suite              | Before | After |
 |--------------------|--------|-------|
 | assert_lexer       | 83/83  |       |
-| assert_parser      | 64/64  |       |
+| assert_parser      | 71/71  |       |
 | assert_runtimes    | 143/143|       |
 | examples + philosophy | all pass |     |
 

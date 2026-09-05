@@ -17,11 +17,12 @@
 //
 // Two calling styles are supported for each direction:
 // 每个方向都支持两种调用风格：
-//   output:  out << value;   (flow  ->  `:=` receive)   OR  out.push(value);
-//            out.push_line(value);   // appends a newline / 自带换行
-//   input:   x << in;  i.e.  x =: in;   (flow  ->  `=:` publish)   OR  x << in.get();
-//            in.get();          // one whitespace-delimited word / 一个词
-//            in.get_line();     // one whole line / 一整行
+//   output:  io::out << value;  (flow -> `:=` receive)  OR  io::out.push(value);
+//            io::out.push_line(value);  // appends a newline / 自带换行
+//   input:   x << io::in;  i.e.  x =: io::in;  (flow -> `=:` publish)
+//            OR  x << io::in.get();
+//            io::in.get();      // one whitespace-delimited word / 一个词
+//            io::in.get_line(); // one whole line / 一整行
 
 $OStream {
     // Receive (publish) a value of any type and write it to standard output
@@ -50,3 +51,21 @@ $IStream {
     // Method-form input: read a whole line. 方法式输入：读取一整行。
     @get_line << [() ~> (result[std::String]) { }];
 }
+
+// ------------------------------------------------------------
+// v1.30 preset objects / v1.30 预置对象
+//
+// Importing `&io;` brings two ready-made const objects with it — no
+// declaration, no factory: the streams simply exist. They are named inside
+// the library's own namespace (`io::out`, `io::in`) — the leading `io` is
+// how a program finds this library's runtime space, and the objects live in
+// it exactly like the classes do. Both are const bindings (the name always
+// refers to the same object); their `:=` / `=:` behaviors do not mutate the
+// objects themselves.
+// 导入 `&io;` 即带来两个成品常数对象——无需声明、无需工厂：流本就存在。
+// 它们以库自己的命名空间为名（`io::out`、`io::in`）——前导的 `io` 正是
+// 程序找到本库运行空间的路径，对象与类一样居于其中。两者均为常数绑定
+//（名字永远指向同一对象）；其 `:=` / `=:` 行为不修改对象自身。
+// ------------------------------------------------------------
+-(io::OStream! io::out);
+-(io::IStream! io::in);

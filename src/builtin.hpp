@@ -220,6 +220,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -532,6 +533,42 @@ namespace rt_builtin {
         auto found = env.find(VALUE_KEY);
         return found == env.end() ? nullptr : found->second;
     }
+
+    // ========================================================
+    // Global Interpreter Lock (GIL) — industrialization audit D6.
+    // ========================================================
+    //
+    // Synth-OOP is a tree-walking interpreter with shared core state (the
+    // prototype table, object attribute tables, and closure environments). The
+    // `async` library evaluates closures on worker threads, so two threads can
+    // touch that shared state at once. A GIL serializes all evaluation: every
+    // top-level program run and every worker closure acquires the lock, so at
+    // most one thread is ever inside interpreter code. (This matches the model
+    // used by CPython / Ruby MRI — a tree-walking interpreter has no real
+    // parallelism to lose.) Worker threads release the GIL while blocked in a
+    // wait (await / reactor collection) so other tasks can run.
+    // Synth-OOP 是树遍历解释器，核心状态（原型表、对象属性表、闭包环境）
+    // 是共享的。async 库在工作线程上求值闭包，故两线程可能同时触碰共享状态。
+    // GIL 把全部求值串行化：每次程序运行与每个工作线程闭包都取锁，故解释器
+    // 代码内至多一个线程（与 CPython / Ruby MRI 同构——树遍历解释器本无真
+    // 并行可言）。工作线程在阻塞等待（await / 反应堆回收）时释放 GIL，
+    // 使其他任务得以运行。
+    inline std::mutex& gil_mutex() {
+        static std::mutex m;
+        return m;
+    }
+
+    // Acquire the GIL for the duration of a scope. Depth is always exactly one
+    // per thread by construction (see async.hpp release/reacquire helpers), so a
+    // plain mutex (not recursive) avoids re-entrancy surprises.
+    // 在一个作用域内持有 GIL。按构造每线程深度恒为 1（见 async.hpp 的
+    // 释放/重取辅助），故用普通 mutex（非递归）以避免重入歧义。
+    struct GILScope {
+        GILScope() { gil_mutex().lock(); }
+        ~GILScope() { gil_mutex().unlock(); }
+        GILScope(const GILScope&) = delete;
+        GILScope& operator=(const GILScope&) = delete;
+    };
 
     // Call a behavior object; gracefully degrade to poison if not a behavior.
     // 调用一个行为对象；不是行为则优雅降级为毒水。
@@ -1878,6 +1915,127 @@ namespace rt_builtin {
         );
     }
 
+    // ---- UTF-8 codepoint helpers (industrial-audit D3: codepoint-level API) ----
+    // UTF-8 码点助手（工业化审计 D3：按码点的 API）
+    inline std::size_t utf8_cp_len(unsigned char c) {
+        if (c < 0x80) return 1;
+        if ((c & 0xE0) == 0xC0) return 2;
+        if ((c & 0xF0) == 0xE0) return 3;
+        if ((c & 0xF8) == 0xF0) return 4;
+        return 1;   // invalid lead byte: treat as a single byte / 非法首字节按单字节处理
+    }
+    inline std::size_t utf8_cp_count(const std::string& s) {
+        std::size_t n = 0, i = 0;
+        while (i < s.size()) { n++; i += utf8_cp_len(static_cast<unsigned char>(s[i])); }
+        return n;
+    }
+    // Byte offset of the i-th codepoint (clamped to s.size()).
+    // 第 i 个码点的字节偏移（夹紧到 s.size()）。
+    inline std::size_t utf8_cp_offset(const std::string& s, std::size_t i) {
+        std::size_t cur = 0, off = 0;
+        while (off < s.size() && cur < i) {
+            off += utf8_cp_len(static_cast<unsigned char>(s[off]));
+            ++cur;
+        }
+        return off;
+    }
+    // The i-th codepoint as a (possibly multi-byte) string; "" when out of range.
+    // 第 i 个码点（可能多字节）；越界返回 ""。
+    inline std::string utf8_cp_at(const std::string& s, std::size_t i) {
+        std::size_t off = utf8_cp_offset(s, i);
+        if (off >= s.size()) return "";
+        return s.substr(off, utf8_cp_len(static_cast<unsigned char>(s[off])));
+    }
+
+    // String.char_count() => (result) —— number of UTF-8 codepoints.
+    // String.char_count() => (result) —— UTF-8 码点个数。
+    inline rt_basic::Callable method_String_char_count() {
+        return native_method(
+            [](
+                rt_basic::InstanceMap& env,
+                rt_basic::InstanceListPtr /*paras*/
+            ) {
+                auto text = string_of(self_value_of(env));
+                if (!text) {
+                    return list_of({native_error(
+                        make_int(0), "receiver must be std::String"
+                    )});
+                }
+                return list_of({make_int(
+                    static_cast<std::int64_t>(utf8_cp_count(*text))
+                )});
+            },
+            make_sign("char_count", {}, {{"result", "std::Number"}})
+        );
+    }
+
+    // String.char_at(index) => (result) —— the index-th codepoint (from 0).
+    // String.char_at(index) => (result) —— 第 index 个码点（从 0 开始）。
+    inline rt_basic::Callable method_String_char_at() {
+        return native_method(
+            [](
+                rt_basic::InstanceMap& env,
+                rt_basic::InstanceListPtr paras
+            ) {
+                auto text = string_of(self_value_of(env));
+                auto index = number_of(para_at(paras, 0));
+                if (!text || !index) {
+                    return list_of({native_error(
+                        make_string(""),
+                        "char_at requires a std::String receiver and a std::Number index"
+                    )});
+                }
+                if (*index < 0
+                    || static_cast<std::size_t>(*index) >= utf8_cp_count(*text)) {
+                    return list_of({native_error(
+                        make_string(""), "string index out of bounds"
+                    )});
+                }
+                return list_of({make_string(
+                    utf8_cp_at(*text, static_cast<std::size_t>(*index))
+                )});
+            },
+            make_sign(
+                "char_at", {{"index", "std::Number"}}, {{"result", "std::String"}}
+            )
+        );
+    }
+
+    // String.substr_chars(start, end) => (result) —— codepoint slice [start, end).
+    // String.substr_chars(start, end) => (result) —— 按码点的子串 [start, end)。
+    inline rt_basic::Callable method_String_substr_chars() {
+        return native_method(
+            [](
+                rt_basic::InstanceMap& env,
+                rt_basic::InstanceListPtr paras
+            ) {
+                auto text = string_of(self_value_of(env));
+                auto start = number_of(para_at(paras, 0));
+                auto end = number_of(para_at(paras, 1));
+                if (!text || !start || !end) {
+                    return list_of({native_error(
+                        make_string(""),
+                        "substr_chars requires a std::String receiver and two std::Number bounds"
+                    )});
+                }
+                std::size_t total = utf8_cp_count(*text);
+                std::size_t from = static_cast<std::size_t>(std::max(0.0, *start));
+                std::size_t to = static_cast<std::size_t>(std::max(0.0, *end));
+                if (from > total) from = total;
+                if (to > total) to = total;
+                if (to < from) to = from;
+                std::size_t boff = utf8_cp_offset(*text, from);
+                std::size_t eoff = utf8_cp_offset(*text, to);
+                return list_of({make_string(text->substr(boff, eoff - boff))});
+            },
+            make_sign(
+                "substr_chars",
+                {{"start", "std::Number"}, {"end", "std::Number"}},
+                {{"result", "std::String"}}
+            )
+        );
+    }
+
     // String.=:() ~> (std::String) —— publish value capsule (precise sign).
     // String.=:() ~> (std::String) —— 公布值胶囊（精确签名）。
     inline rt_basic::Callable method_String_publish() {
@@ -2647,6 +2805,9 @@ namespace rt_builtin {
         PT_stdString->set_method("get", method_String_get());
         PT_stdString->set_method("contains", method_String_contains());
         PT_stdString->set_method("slice", method_String_slice());
+        PT_stdString->set_method("char_count", method_String_char_count());
+        PT_stdString->set_method("char_at", method_String_char_at());
+        PT_stdString->set_method("substr_chars", method_String_substr_chars());
         PT_stdString->set_method("=:", method_String_publish());
         PT_stdString->set_method(":=", method_String_receive());
         PT_stdString->set_method("=", method_String_assign());

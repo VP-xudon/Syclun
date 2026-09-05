@@ -36,4 +36,7 @@ $Infix {
     // 求值并返回 std::Number。环境缺失或标识符未解析时，抛出归属 `parse`
     // 的运行时错误。
     @parse << [() ~> (value[std::Number]) { }];
+    // Reclaim the expression-state registry entry immediately.
+    // 立即回收表达式状态注册表条目。
+    @dispose << [() ~> () { }];
 }

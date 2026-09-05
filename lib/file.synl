@@ -30,8 +30,14 @@ $File {
     @open   << [(path[std::String], mode[std::String]) ~> () { }];
     @read   << [() ~> (content[std::String]) { }];
     @readlines << [() ~> (lines[std::Array]) { }];
+    // `write`/`append` open in BINARY mode so '\n' is preserved verbatim on
+    // every platform (no CRLF translation on Windows). / `write`/`append` 以
+    // 二进制模式打开，故各平台 '\n' 原样保留（Windows 下不转 CRLF）。
     @write  << [(text[std::String]) ~> () { }];
     @append << [(text[std::String]) ~> () { }];
+    // Write many lines: elements joined by '\n' and written in one shot.
+    // 写入多行：元素以 '\n' 连接后一次性写入。
+    @write_lines << [(lines[std::Array]) ~> () { }];
     @exists << [() ~> (ok[std::Boolean]) { }];
     @remove << [() ~> (ok[std::Boolean]) { }];
     @size   << [() ~> (sz[std::Number]) { }];

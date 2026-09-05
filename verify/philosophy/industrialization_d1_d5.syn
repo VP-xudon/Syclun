@@ -1,0 +1,58 @@
+&io; &structs; &file;
+// Industrialization fixes D1-D5 (L3) — behavioral demonstration.
+// 工业化缺陷 D1-D5（L3）行为演示。
+// Each block exercises one fixed defect; the regression suite
+// (verify/unit/assert_runtimes.cpp :: test_stdlib_d1_d5) asserts these.
+// 每块演示一项已修复缺陷；回归套件对下列行为做了断言。
+$Program {
+  @:: << [() -> () {
+    -(io::OStream out);
+
+    // D1: Map keys keep type identity (Number 1 != String "1").
+    // D1：Map 键保留类型身份（Number 1 不等于 String "1"）。
+    -(structs::Map m);
+    m.put(-(std::Number n) << 1, -(std::String s) << "num");
+    m.put(-(std::String k) << "1", -(std::String s) << "str");
+    m.put(-(std::Number n) << 2, -(std::String s) << "two");
+    m.put(-(std::String k) << "2", -(std::String s) << "twoS");
+    out << "D1 keys distinct: "; out << m.size();      // 4
+    out << " D1 get(1)="; out << m.get(-(std::Number n) << 1);   // num
+    out << " D1 get(\"1\")="; out << m.get(-(std::String k) << "1"); // str
+
+    // D2: Graph.shortest_path / shortest_distance respect edge weights (Dijkstra).
+    // D2：最短路径尊重边权（Dijkstra 而非 BFS）。
+    -(structs::Graph g);
+    g.add_node(-(std::Number n) << 1); g.add_node(-(std::Number n) << 2);
+    g.add_node(-(std::Number n) << 3); g.add_node(-(std::Number n) << 4);
+    g.add_edge(-(std::Number n) << 1, -(std::Number n) << 2, -(std::Number n) << 1);
+    g.add_edge(-(std::Number n) << 2, -(std::Number n) << 3, -(std::Number n) << 1);
+    g.add_edge(-(std::Number n) << 3, -(std::Number n) << 4, -(std::Number n) << 1);
+    g.add_edge(-(std::Number n) << 1, -(std::Number n) << 4, -(std::Number n) << 10);
+    out << " D2 path="; out << g.shortest_path(-(std::Number n) << 1, -(std::Number n) << 4); // [1,2,3,4]
+    out << " D2 dist="; out << g.shortest_distance(-(std::Number n) << 1, -(std::Number n) << 4); // 3
+
+    // D3: String codepoint-level API (UTF-8 aware).
+    // D3：String 码点级 API（感知 UTF-8）。
+    -(std::String w) << -(std::String u) << "hello你";
+    out << " D3 chars="; out << w.char_count();          // 6 (5 ASCII + 1 CJK)
+    out << " D3 at(5)="; out << w.char_at(-(std::Number n) << 5);   // 你
+    out << " D3 slice(5,6)="; out << w.substr_chars(-(std::Number n) << 5, -(std::Number n) << 6); // 你
+
+    // D4: file.write is binary — '\n' stays one byte on every platform.
+    // D4：file.write 为二进制模式，各平台 '\n' 均为单字节。
+    -(file::File ff);
+    ff.open("industrialization_d4_tmp.txt");
+    ff.write(-(std::String c) << "a\nb\nc");
+    out << " D4 bytes="; out << ff.size();               // 5 (no CRLF)
+    out << " D4 lines="; out << ff.readlines();          // [a, b, c]
+
+    // D5: native state is reclaimable via dispose() (and on_release at GC).
+    // D5：原生状态可经 dispose()（及回收时的 on_release）回收。
+    -(structs::Map mx);
+    mx.put(-(std::Number n) << 1, -(std::String vv) << "x");
+    mx.put(-(std::Number n) << 2, -(std::String vv) << "y");
+    out << " D5 before="; out << mx.size();              // 2
+    mx.dispose();
+    out << " D5 after="; out << mx.size();               // 0
+  }];
+};

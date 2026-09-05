@@ -131,6 +131,12 @@ static void check_rejected(const std::string& src, const std::string& what) {
                && r.out.find("PARSE_OK") == std::string::npos;
     check(is_err, what + " (should be rejected with a SyntaxError)");
 }
+static void check_accepts(const std::string& src, const std::string& what) {
+    CliResult r = run_cli(src, "_pos_tmp.sy");
+    bool ok = r.out.find("PARSE_OK") != std::string::npos
+           && r.out.find("SyntaxError") == std::string::npos;
+    check(ok, what + " (should parse)");
+}
 
 int main(int argc, char** argv) {
     // Resolve the sibling parser_cli.exe path so the negative tests can spawn
@@ -415,7 +421,15 @@ int main(int argc, char** argv) {
     // ----------------------------------------------------------
     section("Error paths (child process: must be rejected)");
     {
-        check_rejected("-(std::Number x);", "top-level variable definition rejected");
+        // v1.31: a top-level variable definition now PARSES — library faces
+        // (.synl) may create preset object instances (e.g. io's `io::out`). The
+        // "programs may not declare globals" rule is a RUNTIME check in
+        // run_program, not a syntax rule, so the parser accepts it.
+        // v1.31：顶层变量定义现可解析——库形态（.synl）可创建预置对象实例
+        //（如 io 的 io::out）。「程序不得声明全局对象」是 run_program 的运行期
+        // 规则而非句法规则，故解析器放行。
+        check_accepts("-(std::Number x);",
+                      "top-level variable definition accepted (v1.31 library presets)");
         check_rejected("$A { foo; }", "illegal class-body statement (bare expr) rejected");
         check_rejected("#C { @m << [()->()] { }; }", "contract sign with {} rejected");
         check_rejected("$A { -(std::Number x) }", "missing semicolon rejected");
@@ -434,6 +448,39 @@ int main(int argc, char** argv) {
         check(bad.code != 0,
               "rejected program exits non-zero (got " + std::to_string(bad.code)
               + ") / 被拒绝的程序以非 0 退出码结束");
+    }
+
+    // ----------------------------------------------------------
+    section("v1.31 sugar + injection syntax (child process)");
+    {
+        // Block sugar: `[{ body }]` == `[() -> () { body }]`.
+        // 代码块语法糖：`[{ 体 }]` == `[() -> () { 体 }]`。
+        check_accepts("$A { @m << [{ }]; }", "[{...}] block sugar accepted");
+        // Runtime method injection, both binding forms.
+        // 运行期方法注入的两种绑定形式。
+        check_accepts("$A { @m << [() -> () { -(std::Object o); o:@n << [{ }]; }]; }",
+                      "method injection via << accepted");
+        check_accepts("$A { @m << [() -> () { -(std::Object o); o:@n .= [{ }]; }]; }",
+                      "method injection via .= accepted");
+        // Private-attribute injection with an initializer.
+        // 带初始化器的私有属性注入。
+        check_accepts("$A { @m << [() -> () { -(std::Object o); o:-(std::Number v) << 0; }]; }",
+                      "private attribute injection accepted");
+        // Const-state call.
+        // 常数状态调用。
+        check_accepts("$A { @m << [() -> () { -(std::Object o); o.#(); }]; }",
+                      "const-state call accepted");
+        // A library face may declare preset object instances at the top level.
+        // 库形态可在顶层声明预置对象实例。
+        // The preset's name carries its library prefix (full qualified name).
+        // 预置对象的名字带库前缀（全限定名）。
+        check_accepts("&io;\n-(io::OStream! io::out);\n$A { }",
+                      "library-level preset object accepted (qualified name)");
+        // Injecting an EXISTING method is still a parse-level OK (duplicate
+        // declaration is a runtime error).
+        // 注入已有方法在解析层仍合法（重复声明是运行期错误）。
+        check_accepts("$A { @m << [() -> () { -(std::Object o); o:@n << [{ }]; o:@n .= [{ }]; }]; }",
+                      "duplicate injection parses (runtime rejects)");
     }
 
     // ----------------------------------------------------------

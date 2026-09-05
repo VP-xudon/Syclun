@@ -82,6 +82,14 @@ namespace rt_lib_async {
     ) {
         try {
             rt_basic::InstanceMap localEnv;
+            // D6: hold the GIL while evaluating Synth-OOP code on a worker
+            // thread, so it can never race the main thread's evaluation. Depth
+            // is exactly one here (this is the worker's single entry), matching
+            // the main thread's single GIL hold from run_program.
+            // D6：在工作线程求值 Synth-OOP 代码时持有 GIL，使之绝不
+            // 与主线程的求值发生竞争。此处深度恰为 1（工作线程唯一入口），
+            // 与主线程 run_program 的单一持锁一致。
+            rt_builtin::GILScope gil;
             auto out = rb::call_behavior(clos, localEnv, rb::empty_result());
             return out ? out : rb::empty_result();
         } catch (const rt_builtin::NativeError& e) {
@@ -92,6 +100,20 @@ namespace rt_lib_async {
         } catch (...) {
             return rb::list_of({make_error("exception", "task threw an unknown exception")});
         }
+    }
+
+    // D6: a blocking wait must release the GIL so other (worker) tasks can
+    // acquire it and make progress. Returns the previous single-depth hold so it
+    // can be restored afterwards. These are only ever called from a thread that
+    // currently holds the GIL exactly once.
+    // D6：阻塞等待时必须释放 GIL，使其他（工作线程）任务能取锁推进。返回
+    // 先前的单一持锁深度以便事后恢复；仅当调用线程恰持锁 1 次时调用。
+    inline int gil_release_for_wait() {
+        rt_builtin::gil_mutex().unlock();
+        return 1;
+    }
+    inline void gil_reacquire_after_wait() {
+        rt_builtin::gil_mutex().lock();
     }
 
     // Build a result tuple (status, payload) — the discriminated union used
@@ -189,13 +211,24 @@ namespace rt_lib_async {
         if (cancelled && cancelled->load()) {
             return make_result("cancelled", make_error("cancelled", "task was cancelled"));
         }
+        bool timedOut = false;
+        rt_basic::InstanceListPtr out;
+        // D6: release the GIL during the blocking wait so a worker task (which
+        // needs the GIL to evaluate) can run and finish. Reacquire afterwards.
+        // D6：阻塞等待期间释放 GIL，使需要 GIL 来求值的工作线程能运行并结束；
+        // 之后重新取回。
+        gil_release_for_wait();
         if (timeoutMs > 0) {
             auto status = fut.wait_for(std::chrono::milliseconds(timeoutMs));
-            if (status == std::future_status::timeout) {
-                return make_result("timeout", make_error("timeout", "await timed out"));
-            }
+            if (status == std::future_status::timeout) timedOut = true;
+            else out = fut.get();
+        } else {
+            out = fut.get();
         }
-        auto out = fut.get();
+        gil_reacquire_after_wait();
+        if (timedOut) {
+            return make_result("timeout", make_error("timeout", "await timed out"));
+        }
         // A poison result from the closure becomes an "error" payload.
         // 闭包返回的毒水转为 "error" 负载。
         if (out && !out->empty()) {
@@ -363,7 +396,10 @@ namespace rt_lib_async {
                     launch_one(idx);
                 }
                 // Collect in order.
-                // 按顺序回收。
+                // 按顺序回收。D6: release the GIL while joining the worker
+                // futures so they can run; reacquire once all are done.
+                // D6：回收工作线程 future 期间释放 GIL 使其得以运行；全部完成后重取。
+                gil_release_for_wait();
                 for (std::size_t idx = 0; idx < n; ++idx) {
                     if (!running[idx].valid()) continue;
                     auto out = running[idx].get();
@@ -384,6 +420,7 @@ namespace rt_lib_async {
                     results[idx] = make_result("ok",
                         rb::make_tuple(out ? *out : std::vector<RuntimeObjectPtr>{}));
                 }
+                gil_reacquire_after_wait();
                 // Remaining (not launched due to cancellation) become cancelled.
                 // 因取消而未启动的任务记为 cancelled。
                 for (std::size_t idx = next; idx < n; ++idx) {
@@ -414,7 +451,11 @@ namespace rt_lib_async {
                     std::future_status::timeout) {
                     return rb::list_of({make_result("timeout", make_error("timeout", "timed out"))});
                 }
+                // D6: release the GIL while joining the worker future.
+                // D6：回收工作线程 future 期间释放 GIL。
+                gil_release_for_wait();
                 auto out = inner.get();
+                gil_reacquire_after_wait();
                 if (out && !out->empty()) {
                     auto cap = rb::unwrap((*out)[0]);
                     if (cap) {
@@ -525,6 +566,28 @@ namespace rt_lib_async {
             rb::make_sign("is_done", {}, {{"ok", "std::Boolean"}})
         );
     }
+    inline rt_basic::Callable method_task_dispose() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                auto id = task_id(env);
+                if (id) {
+                    std::lock_guard<std::recursive_mutex> lk(g_task_mux);
+                    auto it = g_tasks.find(static_cast<long long>(*id));
+                    if (it != g_tasks.end()) {
+                        // Mark cancelled so a still-running async thread exits
+                        // early, then drop the handle (its future destructor
+                        // joins the thread, guaranteeing reclamation).
+                        // 先置取消标志让仍在跑的异步线程尽早退出，再丢弃句柄
+                        // （future 析构会 join 线程，确保资源回收；工业化审计 D5）。
+                        it->second.cancelled->store(true);
+                        g_tasks.erase(it);
+                    }
+                }
+                return rb::empty_result();
+            },
+            rb::make_sign("dispose", {}, {})
+        );
+    }
 
     // ========================================================
     // $Error — failure carrier / 失败载体
@@ -577,6 +640,21 @@ namespace rt_lib_async {
             proto->set_method("result",  method_task_result());
             proto->set_method("cancel",  method_task_cancel());
             proto->set_method("is_done", method_task_is_done());
+            proto->set_method("dispose", method_task_dispose());
+            // D5: reclaim the g_tasks registry entry when the Task object is
+            // collected. The destructor of the dropped future joins the thread.
+            // D5：Task 对象被回收时取回 g_tasks 注册表条目（future 析构 join 线程）。
+            proto->on_release = [](rt_basic::InstanceMap& env) {
+                auto id = task_id(env);
+                if (id) {
+                    std::lock_guard<std::recursive_mutex> lk(g_task_mux);
+                    auto it = g_tasks.find(static_cast<long long>(*id));
+                    if (it != g_tasks.end()) {
+                        it->second.cancelled->store(true);
+                        g_tasks.erase(it);
+                    }
+                }
+            };
             runtime::Prototypes p; p.regcls("Task", proto); ::stdRT.add_protos(p);
         }
         // Error / 错误

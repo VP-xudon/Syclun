@@ -553,15 +553,21 @@ namespace parser {
             return d;
         }
 
-        // Build a behavior node with an empty signature and empty body.
-        // 构造一个签名与函数体均为空的行为节点（用于空方法声明）。
-        AstNodePtr make_empty_behavior(long long ln) {
-            auto beh = mknode("behavior", ln);
+        // Build a `sign` node for `() -> ()`: no inputs, no outputs, "->" mode.
+        // 构造 `() -> ()` 的 sign 节点：无输入、无输出、模式为 "->"。
+        AstNodePtr make_empty_sign(long long ln) {
             auto sign = mknode("sign", ln);
             sign->value = "->";
             sign->kids.push_back(mknode("params", ln));   // empty input list
             sign->kids.push_back(mknode("params", ln));   // empty output list
-            beh->kids.push_back(sign);
+            return sign;
+        }
+
+        // Build a behavior node with an empty signature and empty body.
+        // 构造一个签名与函数体均为空的行为节点（用于空方法声明）。
+        AstNodePtr make_empty_behavior(long long ln) {
+            auto beh = mknode("behavior", ln);
+            beh->kids.push_back(make_empty_sign(ln));
             beh->kids.push_back(mknode("block", ln));
             return beh;
         }
@@ -657,6 +663,7 @@ namespace parser {
         // （如 (-(T x)).m();、-(T x).m();，文档 4.6 / D.14）。
         AstNodePtr parse_dash_stmt() {
             long long ln = peek().line;
+            long long startcol = peek().col;   // for diagnostics on this stmt
             expect_name("instantiation prefix '-'");
             expect_symbol("(", "instantiation opening paren '('");
 
@@ -685,7 +692,7 @@ namespace parser {
                 return expr;
             }
 
-            auto node = mknode("vardef", ln);
+            auto node = mknode("vardef", ln, startcol);
             for (auto& d : decls) {
                 node->kids.push_back(d);
             }
@@ -716,21 +723,116 @@ namespace parser {
             return parse_postfix_tail(cur, allow_flow);
         }
 
+        // Parse a parenthesized argument list; the parens themselves are
+        // consumed by the caller. Shared by method calls, the v1.30 `.#()`
+        // const call, and bare `name(...)` self-calls.
+        // 解析圆括号实参列表（括号本身由调用方消费）。方法调用、v1.30 的
+        // `.#()` 常数调用与裸 `名(...)` 自调用共用。
+        AstNodePtr parse_args(long long ln) {
+            auto args = mknode("args", ln);
+            if (!at("<symbol>", ")")) {
+                args->kids.push_back(parse_postfix());
+                while (at("<symbol>", ",")) {
+                    advance();
+                    args->kids.push_back(parse_postfix());
+                }
+            }
+            return args;
+        }
+
+        // v1.30 runtime injection: `receiver:@method << behavior;` (or `.=`).
+        // The receiver is an ordinary expression, so this is parsed in postfix
+        // position. The method must be NEW: re-declaring an existing one is a
+        // duplicate declaration (change it with `obj.method.=(beh)` instead).
+        // v1.30 运行期注入：`接收者:@方法 << 行为;`（或 `.=`）。接收者是普通
+        // 表达式，故在后缀位置解析。该方法必须是**新的**：重新声明已有方法
+        // 属重复声明（修改请改用 `对象.方法.=(行为)`）。
+        AstNodePtr parse_objmethod(AstNodePtr receiver, long long ln) {
+            bool is_const = false;
+            bool is_private = false;
+            auto mname = parse_method_head(is_const, is_private);
+            auto node = mknode("objmethod", ln);
+            node->value = mname;
+            node->isConst = is_const;
+            node->isPrivate = is_private;
+            node->kids.push_back(receiver);                  // the object
+            if (at("<symbol>", "<<")) {
+                advance();
+                node->kids.push_back(parse_postfix());       // behavior
+                return node;
+            }
+            if (at("<symbol>", ".")) {
+                advance();
+                auto eq = expect_name("'=' in method injection");
+                if (eq.value != "=") {
+                    fail("Expected '=' after '.' when injecting method '"
+                         + mname + "'.");
+                }
+                node->kids.push_back(parse_postfix());       // behavior
+                return node;
+            }
+            fail("Expected flow '<<' or assignment '.=' to inject method '"
+                 + mname + "' (an object injection always binds a behavior, "
+                 "e.g. obj:@" + mname + " << [{ }];).");
+            return nullptr;                                  // unreachable
+        }
+
+        // v1.30 runtime injection: `receiver:-(Type v) << init;` adds a PRIVATE
+        // attribute. It may only be initialized here; later changes must go
+        // through a method injected with `receiver:@method << [...];`.
+        // v1.30 运行期注入：`接收者:-(类型 变量) << 初值;` 新增**私有**属性。
+        // 只能在此处初始化；此后的修改必须经 `接收者:@方法 << [...];` 注入的
+        // 方法进行。
+        AstNodePtr parse_objattr(AstNodePtr receiver, long long ln) {
+            expect_name("instantiation prefix '-'");
+            expect_symbol("(", "attribute injection opening paren '('");
+            auto node = mknode("objattr", ln);
+            node->kids.push_back(receiver);                  // the object
+            node->kids.push_back(parse_decl());
+            while (at("<symbol>", ",")) {
+                advance();
+                node->kids.push_back(parse_decl());
+            }
+            expect_symbol(")", "attribute injection closing paren ')'");
+            if (at("<symbol>", "<<")) {
+                advance();
+                node->kids.push_back(parse_postfix());       // initializer
+            }
+            return node;
+        }
+
         AstNodePtr parse_postfix_tail(AstNodePtr cur, bool allow_flow = true) {
             while (true) {
                 if (at("<symbol>", ".")) {
+                    long long ln = peek().line;
                     advance();
+                    // v1.30 const-state call: `obj.#()` freezes the object
+                    // forever. `#` is a <symbol>, not a name, so it cannot go
+                    // through expect_name and needs its own branch.
+                    // v1.30 常数状态调用：`对象.#()` 永久冻结该对象。`#` 是
+                    // <symbol> 而非名称，走不了 expect_name，故单列分支。
+                    if (at("<symbol>", "#")) {
+                        advance();
+                        expect_symbol("(", "argument list opening paren '(' "
+                                           "after '.#'");
+                        auto args = parse_args(ln);
+                        expect_symbol(")", "argument list closing paren ')'");
+                        if (!args->kids.empty()) {
+                            fail("'.#()' takes no arguments: it only sets the "
+                                 "object's const state, and that state can "
+                                 "never be cleared.");
+                        }
+                        auto call = mknode("call", ln);
+                        call->value = "#";
+                        call->kids.push_back(cur);
+                        call->kids.push_back(args);
+                        cur = call;
+                        continue;
+                    }
                     auto mname = expect_name("method name");
                     if (at("<symbol>", "(")) {
                         advance();
-                        auto args = mknode("args", mname.line);
-                        if (!at("<symbol>", ")")) {
-                            args->kids.push_back(parse_postfix());
-                            while (at("<symbol>", ",")) {
-                                advance();
-                                args->kids.push_back(parse_postfix());
-                            }
-                        }
+                        auto args = parse_args(mname.line);
                         expect_symbol(")", "argument list closing paren ')'");
                         auto call = mknode("call", mname.line);
                         call->value = mname.value;
@@ -747,6 +849,22 @@ namespace parser {
                         access->value = mname.value;
                         access->kids.push_back(cur);
                         cur = access;
+                    }
+                } else if (at("<symbol>", ":")) {
+                    // v1.30 object injection: `obj:@method << behavior;` or
+                    // `obj:-(Type v) << init;`. The lexer only ever emits a
+                    // bare ':' when '@' or '-' follows, so the colon principle
+                    // (only '::', '=:', ':=' are legal names) stays intact.
+                    // v1.30 对象注入：`对象:@方法 << 行为;` 或
+                    // `对象:-(类型 变量) << 初值;`。词法仅在后跟 '@' 或 '-'
+                    // 时吐出裸 ':'，故冒号原则（仅 '::'、'=:'、':=' 为合法
+                    // 名称）不受影响。
+                    long long ln = peek().line;
+                    advance();
+                    if (at("<symbol>", "@")) {
+                        cur = parse_objmethod(cur, ln);
+                    } else {
+                        cur = parse_objattr(cur, ln);
                     }
                 } else if (allow_flow && at("<symbol>", "<<")) {
                     advance();
@@ -874,14 +992,7 @@ namespace parser {
             }
             if (at("<symbol>", "(")) {
                 advance();
-                ctorArgs = mknode("args", peek().line);
-                if (!at("<symbol>", ")")) {
-                    ctorArgs->kids.push_back(parse_postfix());
-                    while (at("<symbol>", ",")) {
-                        advance();
-                        ctorArgs->kids.push_back(parse_postfix());
-                    }
-                }
+                ctorArgs = parse_args(peek().line);
                 expect_symbol(")", "constructor argument list closing paren ')'");
             }
             std::string type_name;
@@ -930,11 +1041,21 @@ namespace parser {
 
         // Behavior literal: [(params) mode (outputs) { body }]
         // 行为字面量：[(参数) 模式 (输出) { 体 }]
+        //
+        // v1.30 sugar: when the body is the only thing written, `[{ body }]`
+        // means `[() -> () { body }]`. This is the block form used for
+        // condition branches and other callback-shaped code.
+        // v1.30 语法糖：只写函数体时，`[{ 体 }]` 等价 `[() -> () { 体 }]`。
+        // 这是条件分支等回调式代码所用的代码块形态。
         AstNodePtr parse_behavior() {
             long long ln = peek().line;
             expect_symbol("[", "behavior opening bracket '['");
             auto node = mknode("behavior", ln);
-            node->kids.push_back(parse_sign_core());
+            if (at("<symbol>", "{")) {
+                node->kids.push_back(make_empty_sign(ln));   // `[{...}]` sugar
+            } else {
+                node->kids.push_back(parse_sign_core());
+            }
 
             expect_symbol("{", "behavior body opening brace '{'");
             auto body = mknode("block", peek().line);
@@ -1120,15 +1241,28 @@ namespace parser {
                     root->kids.push_back(parse_classdef());
                 } else if (at("<symbol>", "#")) {
                     root->kids.push_back(parse_contractdef());
+                } else if (at_type("<name>") && peek().value == "-") {
+                    // v1.30: a library face (.synl) may create ready-made
+                    // object instances at the top level, e.g.
+                    // `-(io::OStream! out);` — they arrive with the import.
+                    // Whether this is allowed depends on the FILE KIND: a
+                    // user program (.syn) must NOT declare global objects
+                    // (only $Program exists there), so the parser accepts
+                    // the syntax and run_program rejects it for programs.
+                    // v1.30：库形态（.synl）可在顶层创建成品对象实例，如
+                    // `-(io::OStream! out);`——它们随导入一同到来。是否合法
+                    // 取决于文件形态：用户程序（.syn）不得直接声明全局对象
+                    //（其中只有 $Program 存在），故解析器先放行该语法，
+                    // 由 run_program 对程序拒绝之。
+                    root->kids.push_back(parse_dash_stmt());
                 } else {
                     // Per the language designer: only import / class /
                     // contract at the top level.
                     // 语言设计者钦定：顶层只放导入 / 类 / 约束。
                     fail("Top level only allows module import (&name;), class "
-                         "definition ($name {...}), and contract definition "
-                         "(#name {...}); other statements such as variable "
-                         "definitions must live inside a closure "
-                         "(behavior body).");
+                         "definition ($name {...}), contract definition "
+                         "(#name {...}), and — in library (.synl) files only "
+                         "— object instances (-(Type name);).");
                 }
                 // A top-level definition is a statement and may be terminated
                 // by a semicolon. Tolerate an optional (possibly repeated) `;`

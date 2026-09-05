@@ -335,6 +335,17 @@ namespace rt_lib_sugar {
             rb::make_sign("parse", {}, {{"value", "std::Number"}})
         );
     }
+    inline rt_basic::Callable method_infix_dispose() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                long long id = instance_id(env);
+                std::lock_guard<std::recursive_mutex> lk(g_mux);
+                g_infix.erase(id);
+                return rb::empty_result();
+            },
+            rb::make_sign("dispose", {}, {})
+        );
+    }
 
     // ---- registration / 登记 ----
     inline void init_sugar_stdlib() {
@@ -344,6 +355,15 @@ namespace rt_lib_sugar {
         proto->set_method("set",  method_infix_set());
         proto->set_method("env",  method_infix_env());
         proto->set_method("parse", method_infix_parse());
+        proto->set_method("dispose", method_infix_dispose());
+        // D5: reclaim the g_infix registry entry when the Infix object is
+        // collected (avoids the unbounded state-table leak from the audit).
+        // D5：Infix 对象被回收时取回 g_infix 注册表条目（堵塞表泄漏）。
+        proto->on_release = [](rt_basic::InstanceMap& env) {
+            long long id = instance_id(env);
+            std::lock_guard<std::recursive_mutex> lk(g_mux);
+            g_infix.erase(id);
+        };
         runtime::Prototypes p; p.regcls("Infix", proto); ::stdRT.add_protos(p);
     }
 

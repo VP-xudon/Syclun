@@ -14,9 +14,35 @@
 ## Contents / 目录
 
 - [Runtime signature enforcement / 运行期签名强制](#runtime-signature-enforcement--运行期签名强制)
+- [Preset objects / 预置对象](#preset-objects--预置对象)
 - [Method reference / 方法参考](#method-reference--方法参考)
   - `file` · `system` · `structs` · `re` · `maths` · `async` · `hash` · `io` · `assert`
 - [Adding a standard library / 如何新增标准库](#adding-a-standard-library--如何新增标准库)
+
+---
+
+## Preset objects / 预置对象
+
+Since v1.31 a library face (`.synl`) may create ready-made object instances at
+the top level (e.g. `-(io::OStream! io::out);`). The object's name is its full
+qualified name — the leading module is how a program finds the library's
+runtime space, and the object lives in it exactly like the library's classes
+do. Presets arrive with the import, live for the whole run, and are **const
+bindings** — the name always refers to the same object (assignment via `.=` is
+rejected with a `ConstException`). A user program (`.syn`) must NOT declare
+global objects directly; presets belong to libraries.
+自 v1.31 起，库形态（`.synl`）可在顶层创建成品对象实例（如
+`-(io::OStream! io::out);`）。对象的名字就是它的全限定名——前导的模块名正是
+程序找到该库运行空间的路径，对象与库的类一样居于其中。预置对象随导入到来、
+贯穿整个运行期，且是**常数绑定**——名字永远指向同一对象（经 `.=` 赋值会以
+`ConstException` 被拒）。用户程序（`.syn`）不得直接声明全局对象；预置对象
+属于库。
+
+| Module / 库 | Preset / 预置对象 | Type / 类型 | Replaces / 取代 |
+|---|---|---|---|
+| `io` | `io::out` | `io::OStream` | `-(io::OStream o);` in every program / 每个程序里的手写声明 |
+| `io` | `io::in` | `io::IStream` | `-(io::IStream i);` ditto / 同上 |
+| `maths` | `maths::math` | `maths::Maths` | instantiating the stateless `$Maths` class / 实例化无状态的 Maths 类 |
 
 ---
 
@@ -288,9 +314,20 @@ existing ones (`File`/`System`/`Maths`/`Reactor`/`Hash`/`Structs`/`Re`):
    shapes; the class type is `$<CapitalizedName>` (the `$`-suffix is used
    **verbatim and capitalized**, e.g. `$Maths`, `$System`, `$Reactor`,
    `$Hash`, `$File`, `$Structs`, `$Re`). A `$Program` here would be ignored.
+   Since v1.31 this face may also create top-level **preset object instances**
+   (`-(<module>::<Type>! <module>::<name>);`) — const globals that arrive with
+   the import (io's `io::out`/`io::in`, maths' `maths::math`). The name MUST
+   carry the module prefix: the object belongs to the library's namespace,
+   not to the program's bare scope. Add presets here when a stateless class
+   would otherwise force every user to instantiate it.
    / 接口 `lib/<name>.synl`：仅签名，与 .hpp 形态对应；类名为 `$<首字母大写名>`
    （`$` 后后缀**原样且首字母大写**，如 `$Maths`/`$System`/`$Reactor`/`$Hash`
-   /`$File`/`$Structs`/`$Re`）。
+   /`$File`/`$Structs`/`$Re`）。库内的 `$Program` 会被忽略。
+   自 v1.31 起，此文件还可创建顶层**预置对象实例**
+   （`-(<模块>::<类型>! <模块>::<名字>);`）——随导入到来的常数全局对象
+   （io 的 io::out/io::in、maths 的 maths::math）。名字**必须**带模块前缀：
+   对象属于库的命名空间，而非程序的裸作用域。若一个无状态类只会迫使用户
+   人手实例化，就应在这里加预置对象。
 3. **Aggregate** — add `#include "<name>.hpp"` to `lib/cpp/std_libs.hpp`.
    / 聚合：在 `lib/cpp/std_libs.hpp` 加 `#include "<name>.hpp"`。
 4. **Demo** `verify/philosophy/<name>_demo.syn` — a runnable program that

@@ -8,6 +8,7 @@
 #include <variant>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <format>
 
 #include "exception_throw.hpp"
@@ -207,6 +208,14 @@ namespace rt_basic {
         // 供签名约束使用。
         std::string name = "";
 
+        // Optional release hook: invoked with the instance's attribute map
+        // when the instance is destroyed. Native libraries use this to reclaim
+        // their process-wide state (keyed by the instance id) so that long-running
+        // programs do not accumulate unreclaimed entries (industrial-audit D5).
+        // 可选释放钩子：实例销毁时以其属性表为参数调用。原生库借此回收其
+        // 进程级状态（按实例 id 索引），使长时程序不累积未回收项（工业化审计 D5）。
+        std::function<void(InstanceMap&)> on_release;
+
         ClsProto() = default;
         ClsProto(const ClsProtoPtr &_prototype) {
             if (_prototype) {
@@ -313,6 +322,24 @@ namespace runtime {
 
         public:
 
+        // v1.30 const state: `obj.#()` freezes the object. Setting it is the
+        // only operation `#` offers and it can never be undone — there is no
+        // way out of the const state once an object is frozen.
+        // v1.30 常数状态：`对象.#()` 冻结该对象。`#` 只提供「设置」这一操作，
+        // 且永不可撤销——对象一旦冻结便无法退出常数状态。
+        bool const_state = false;
+
+        // v1.30 private attributes, added at runtime by
+        // `obj:-(Type v) << init;`. A private attribute is visible only to the
+        // object itself: reading or writing it is allowed only while one of the
+        // object's own methods runs (self == this). Everything else must go
+        // through a method injected with `obj:@method << [behavior];`.
+        // v1.30 私有属性，由 `对象:-(类型 变量) << 初值;` 在运行期添加。
+        // 私有属性仅对对象自身可见：只有在该对象自身的方法运行时
+        //（self == this）才允许读写。其余场合必须经
+        // `对象:@方法 << [行为];` 注入的方法进行。
+        std::unordered_set<std::string> private_attrs;
+
         // Set when any method of this instance is (re)bound at runtime
         // (e.g. via `obj.method.=(beh)` / `obj.method << beh`). Exposed to
         // the `Checker` standard library as `has_changed()`.
@@ -321,12 +348,38 @@ namespace runtime {
         // 读取。
         bool methods_dirty = false;
 
+        bool is_const_state() const { return const_state; }
+        // Freeze the object. Idempotent by design: there is no clearing API.
+        // 冻结对象。设计为幂等：不提供任何解除接口。
+        void set_const_state() { const_state = true; }
+
+        void set_private_attr(const std::string& name) {
+            private_attrs.insert(name);
+        }
+        bool is_private_attr(const std::string& name) const {
+            return private_attrs.find(name) != private_attrs.end();
+        }
+
         RuntimeClass(rt_basic::ClsProtoPtr _prototype) : prototype(_prototype) {
             if (_prototype) {
                 attributes = prototype->get_attributes();
                 methods = prototype->get_methods();
             } else {
                 Thrower.throwE("InterException", "Nullptr when build RuntimeClass.");
+            }
+        }
+
+        // Instance teardown: fire the prototype's release hook (if any) so native
+        // libraries can free their process-wide state keyed by this instance.
+        // Runs only the instance's own attribute map, which is still alive during
+        // the destructor body. Built-in types leave `on_release` unset, so this
+        // is a cheap null-check for them (industrial-audit D5).
+        // 实例析构：触发原型的释放钩子（若有），供原生库回收按本实例索引的
+        // 进程级状态。仅使用实例自身仍存活的属性表。内置类型不设置
+        // `on_release`，故对它们只是一个廉价的空指针检查（工业化审计 D5）。
+        ~RuntimeClass() {
+            if (prototype && prototype->on_release) {
+                prototype->on_release(attributes);
             }
         }
 

@@ -1,28 +1,27 @@
 &io;
 &maths;
 // Values travel through FLOWS (`<<`), not assignment. There are no infix
-// operators: `a.+(b)` is an ordinary method call.
+// operators: `a.+(b)` is an ordinary method call. The `out` and `math`
+// preset objects arrive with the imports — no declarations needed.
 // 值通过「流」（`<<`）传递而非赋值。没有中缀运算符：`a.+(b)` 是普通方法调用。
+// 预置对象 `out` 与 `math` 随导入而来——无需声明。
 $Program {
-    @:: << [() -> () {
-        -(io::OStream out);
-
+    @:: << [{
         // `<<` binds a value into the variable through the receive method `:=`.
         // `<<` 经接收方法 `:=` 把值绑定进变量。
         -(std::Number radius) << 3;
 
-        -(maths::Maths m);
-        -(std::Number area) << m.pi().*(radius).*(radius);
-        out.push_line(area);                 // → 28.274333882308138
+        -(std::Number area) << maths::math.pi().*(radius).*(radius);
+        io::out.push_line(area);                 // → 28.274333882308138
 
         // Every freshly created instance carries a zero value (zero-value law).
         // 新建实例自带零值（零值法则）。
         -(std::Number zero);
-        out.push_line(zero);                 // → 0
+        io::out.push_line(zero);                 // → 0
 
         // IEEE 754: dividing by zero is a value, not a crash.
         // IEEE 754：除以零是一个值，不是崩溃。
         -(std::Number one) << 1;
-        out.push_line(one./(zero));          // → Infinity
+        io::out.push_line(one./(zero));          // → Infinity
     }];
 }

@@ -21,8 +21,15 @@
 // lib/cpp/system.hpp 的 make_sign；本文件是其可读镜像。
 
 $System {
-    @run << [(command[std::String]) ~> (output[std::String]) { }];
+    // D7: `run` is the shell form (UNSAFE for untrusted input) and now returns
+    // a (status, stdout, stderr) Tuple. `exec` is the safe, no-shell default
+    // that takes an argv Array so metacharacters are never interpreted.
+    // D7：run 为 shell 形式（对未信任输入不安全），现返回
+    // (status, stdout, stderr) 元组；exec 是安全、无 shell 的默认入口，
+    // 接收 argv 数组，元字符绝不被当作命令解释。
+    @run << [(command[std::String], timeout_ms[std::Number]) ~> (result[std::Tuple]) { }];
     @run_lines << [(command[std::String]) ~> (lines[std::Array]) { }];
+    @exec << [(argv[std::Array], timeout_ms[std::Number], cwd[std::String], env[std::Array]) ~> (result[std::Tuple]) { }];
     @cwd << [() ~> (path[std::String]) { }];
     @getenv << [(name[std::String]) ~> (value[std::String]) { }];
     @wait << [(ms[std::Number]) ~> () { }];

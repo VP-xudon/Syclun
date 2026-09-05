@@ -61,6 +61,23 @@
 #include "builtin.hpp"
 #include "../lib/cpp/std_libs.hpp"   // C++-backed standard libraries (self-registering)
 
+// system.hpp pulls in <windows.h>, whose headers #define STRICT (as 1) and
+// CONST (as `const`). Everything below therefore lives "after windows.h", and
+// those two macros would corrupt the BehavStateOBJ enumerator names used in
+// this file (STRICT / CONST). windows.h has finished declaring everything it
+// needs by now, so undefining the two macros here is safe for our code — this
+// is the standard post-include hygiene, not a behavior change.
+// system.hpp 引入的 <windows.h> 定义了 STRICT（=1）与 CONST（=const）宏。
+// 下文全部代码都「位于 windows.h 之后」，这两个宏会破坏本文件用到的
+// BehavStateOBJ 枚举名（STRICT / CONST）。此刻 windows.h 已完成全部声明，
+// 在此撤销这两个宏对本代码是安全的——这是标准的 include 后清理，非行为变更。
+#if defined(STRICT)
+#undef STRICT
+#endif
+#if defined(CONST)
+#undef CONST
+#endif
+
 namespace interp {
 
     // Pull in the namespaces we lean on so the code below stays readable.
@@ -561,6 +578,262 @@ namespace interp {
         invoke(receiver, ":=", published);
     }
 
+    // ========================================================
+    // v1.30 library-level object instances / 库级对象实例
+    // ========================================================
+    // Names of objects created by library faces (.synl), keyed by the full
+    // qualified name they were declared with (`io::out`, `maths::math`).
+    // They are const bindings: the NAME always refers to the same object
+    // (in philosophy a variable is only an access interface onto an object,
+    // and a library's preset objects are part of the library's contract).
+    // 库形态（.synl）所创建对象的名字，以其声明时的全限定名为键
+    //（`io::out`、`maths::math`）。它们是常数绑定：名字永远指向同一个
+    // 对象（哲学上变量本就只是对象的访问接口，而库的预置对象是库契约的
+    // 一部分）。
+    inline std::unordered_set<std::string>& const_globals() {
+        static std::unordered_set<std::string> s;
+        return s;
+    }
+
+    // Create the top-level object instances written in a library face
+    // (.synl), e.g. `-(io::OStream! io::out);` in lib/io.synl. The object's
+    // name is its full qualified name `io::out`, exactly as written: the
+    // leading `io` says which library's runtime space the object lives in,
+    // and the registry (`stdRT.defobj`) is keyed by that whole name — so a
+    // program reaches the object through the ordinary name resolution
+    // (`io::out`), the same single path every name takes. Nothing is split
+    // or special-cased at access time.
+    // 创建库形态（.synl）顶层的对象实例，如 lib/io.synl 中的
+    // `-(io::OStream! io::out);`。对象的名字就是书写出的全限定名
+    // `io::out`：前导的 `io` 表明该对象居于哪个库的运行空间，而注册表
+    //（`stdRT.defobj`）以整个名字为键——程序经由普通的名字解析
+    //（`io::out`）触达对象，与一切名字走的是同一条路径。访问期不做任何
+    // 拆分，也没有任何特判。
+    inline void define_global_vardef(AstNodePtr node) {
+        // Same shape as exec_vardef: decl kids + an optional initializer.
+        // 与 exec_vardef 同构：decl 子节点 + 可选初始化器。
+        std::vector<AstNodePtr> decls;
+        AstNodePtr init = nullptr;
+        for (auto& kid : node->kids) {
+            if (kid->kind == "decl") decls.push_back(kid);
+            else init = kid;
+        }
+        Frame gf;                       // a bare frame: no locals involved
+        for (auto& d : decls) {
+            if (d->isPlaceholder || d->name.empty()) {
+                interp_error(
+                    "InterException",
+                    "a library-level object instance must be named"
+                );
+            }
+            // A library object must be named inside its library's namespace:
+            // the name carries the library prefix (`io::out`), because an
+            // object — like a class — belongs to its library's runtime
+            // space, not to the program's bare scope.
+            // 库对象必须以其库的命名空间为名：名字带库前缀（`io::out`），
+            // 因为对象与类一样居于库的运行空间，而非程序的裸作用域。
+            if (d->name.find("::") == std::string::npos) {
+                interp_error(
+                    "InterException",
+                    "a library-level object must be named inside its "
+                        "library namespace, e.g. '-(io::OStream! io::out);' "
+                        "(got '" + d->name + "')"
+                );
+            }
+            if (::stdRT.getobj(d->name)) {
+                interp_error(
+                    "InterException",
+                    "global object '" + d->name + "' is already defined"
+                );
+            }
+            auto obj = ::stdRT.make(d->value);
+            if (!obj) {
+                interp_error(
+                    "RuntimeException",
+                    "Cannot instantiate unknown type '" + d->value + "'."
+                );
+            }
+            obj->give_name(d->name);
+            if (!d->kids.empty()) call_constructor(gf, obj, d->kids[0]);
+            if (init) {
+                auto v = eval_expr(gf, init);
+                if (!d->constraint.empty()) check_constraint(d->constraint, v);
+                flow_into(gf, obj, v);
+            }
+            // A library preset is const by principle (the '!' marker makes it
+            // explicit); the const-globals set enforces it at runtime.
+            // 库预置依原则即为常数（'!' 标记使其显式）；const-globals 集合
+            // 在运行期落实这一点。
+            ::stdRT.defobj(d->name, obj);
+            const_globals().insert(d->name);
+        }
+    }
+
+    // ========================================================
+    // v1.30 runtime injection / 运行期注入
+    // ========================================================
+    // The language's whole premise is "extreme OOP": an object is not a
+    // closed record, it is a live thing you keep shaping at runtime. So
+    // members can be ADDED after creation:
+    // 本语言的立足点是「极致的面向对象」：对象不是封闭的记录，而是可以在
+    // 运行期持续塑形的活物。故成员可在创建之后**新增**：
+    //     obj:@method << [behavior];   inject a method / 注入方法
+    //     obj:-(Type v) << init;       inject a private attribute / 注入私有属性
+    //     obj.#();                     freeze the object forever / 永久冻结对象
+    // Nothing can ever be REMOVED, and a frozen object can never thaw.
+    // 任何东西都无法被**移除**，冻结的对象也永不可解冻。
+
+    // Resolve the object an injection targets and enforce the two injection
+    // guards: the target must be a real object instance, and it must not be
+    // frozen. 解析注入的目标对象并执行两道守卫：目标必须是真实对象实例，
+    // 且必须未被冻结。
+    inline RuntimeClassPtr injection_target(Frame& f, AstNodePtr node) {
+        auto obj = eval_expr(f, node);
+        auto cls = std::dynamic_pointer_cast<RuntimeClass>(obj);
+        if (!cls) {
+            interp_error(
+                "InterException",
+                "runtime injection requires an object (the target of ':' "
+                "is not an object instance)"
+            );
+        }
+        if (cls->is_const_state()) {
+            interp_error(
+                "ConstException",
+                "cannot inject into a const object ('.#()' froze it "
+                "permanently; a frozen object can never be changed again)"
+            );
+        }
+        return cls;
+    }
+
+    // `obj:@method << [behavior];` — bind a NEW method onto a live object.
+    // Re-declaring an existing method is a duplicate declaration: changing a
+    // method is what `obj.method.=(behavior)` is for, and that path is where
+    // the const-method guard lives (`@!m` refuses to be rebound).
+    // `对象:@方法 << [行为];` —— 把**新**方法绑定到活对象上。重新声明已有的
+    // 方法属重复声明：修改方法请用 `对象.方法.=(行为)`，常数方法守卫也在
+    // 那条路径上（`@!m` 拒绝被重绑）。
+    inline void exec_objmethod(Frame& f, AstNodePtr node) {
+        auto cls = injection_target(f, node->kids[0]);
+        const std::string& mname = node->value;
+        if (cls->get_methods().count(mname)) {
+            interp_error(
+                "InterException",
+                "method '" + mname + "' is already declared on this object "
+                "(duplicate declaration; change it with 'obj." + mname
+                    + ".=(behavior)' instead)"
+            );
+        }
+        // The RHS AST must be taken from the NODE when it is a literal
+        // behavior: a RuntimeBehavior produced by make_closure carries a
+        // native lambda, not the AST (rebind_method does the same). If the
+        // RHS is instead a value that already carries an AST (a behavior
+        // variable / method reference), use that AST.
+        // 右值是字面量行为时，其 AST 必须直接从节点读取：make_closure 产出的
+        // RuntimeBehavior 保存的是原生 lambda 而非 AST（rebind_method 同理）。
+        // 若右值本就携带 AST（行为变量 / 方法引用），则用其所载 AST。
+        AstNodePtr behAST = nullptr;
+        AstNodePtr rhsNode = node->kids[1];
+        if (rhsNode->kind == "behavior") {
+            behAST = rhsNode;
+        } else {
+            auto val = eval_expr(f, rhsNode);
+            auto beh = std::dynamic_pointer_cast<RuntimeBehavior>(val);
+            if (beh) behAST = beh->get_astn();
+        }
+        if (!behAST) {
+            interp_error(
+                "InterException",
+                "cannot inject method '" + mname + "': the value carries no "
+                "behavior AST to bind (native closures cannot be injected)"
+            );
+        }
+        CallableSign sign = build_sign(behAST, mname);
+        // {isConst, isPrivate}: `@!m` marks the injected method constant, so a
+        // later `obj.m.=(...)` is rejected as a const change.
+        // {isConst, isPrivate}：`@!m` 把注入的方法标记为常数，此后
+        // `对象.m.=(...)` 会以「更改常量」被拒。
+        Callable c(behAST, sign, state_from_mode(behAST->value),
+                   {node->isConst, node->isPrivate});
+        cls->set_method(mname, c);
+        cls->methods_dirty = true;
+    }
+
+    // `obj:-(Type v) << init;` — add a PRIVATE attribute to a live object.
+    // It may only be initialized here. Afterwards the only way to change it is
+    // through a method injected onto the same object (`obj:@set << [...]`),
+    // because a private attribute is unreachable from outside the object.
+    // `对象:-(类型 变量) << 初值;` —— 给活对象新增**私有**属性。只能在此处
+    // 初始化；此后唯一能改它的途径是注入到同一对象上的方法
+    // （`对象:@set << [...]`），因为私有属性从对象外部不可达。
+    inline void exec_objattr(Frame& f, AstNodePtr node) {
+        auto cls = injection_target(f, node->kids[0]);
+        // kids[0] is the receiver; the following `decl` nodes are the new
+        // attributes and an optional trailing non-decl node is the shared
+        // initializer. kids[0] 是接收者；其后的 decl 节点是新增属性，
+        // 末尾可选的非 decl 节点是共用的初始化器。
+        std::vector<AstNodePtr> decls;
+        AstNodePtr init = nullptr;
+        for (size_t i = 1; i < node->kids.size(); ++i) {
+            if (node->kids[i]->kind == "decl") decls.push_back(node->kids[i]);
+            else init = node->kids[i];
+        }
+        if (init && decls.size() > 1) {
+            interp_error(
+                "InterException",
+                "a private-attribute injection with an initializer supports "
+                "only a single declaration"
+            );
+        }
+        for (auto& d : decls) {
+            if (cls->get_attributes().count(d->name)) {
+                interp_error(
+                    "InterException",
+                    "attribute '" + d->name + "' is already declared on this "
+                    "object (a private attribute can only be initialized "
+                    "once, at injection)"
+                );
+            }
+            auto obj = ::stdRT.make(d->value);
+            if (!obj) {
+                interp_error(
+                    "RuntimeException",
+                    "Cannot instantiate unknown type '" + d->value + "'."
+                );
+            }
+            obj->give_name(d->name);
+            if (!d->kids.empty()) call_constructor(f, obj, d->kids[0]);
+            if (init) {
+                auto v = eval_expr(f, init);
+                if (!d->constraint.empty()) {
+                    check_constraint(d->constraint, v);
+                }
+                flow_into(f, obj, v);
+            }
+            cls->set_attribute(d->name, obj);
+            cls->set_private_attr(d->name);
+        }
+    }
+
+    // Guard private attributes: an attribute injected with `obj:-(T v)` is
+    // reachable only from methods running with that object as `self`. This is
+    // what makes the attribute private rather than merely conventional.
+    // 私有属性守卫：经 `对象:-(类型 变量)` 注入的属性，只能从以该对象为
+    // `self` 的方法中访问。这正是「私有」名副其实而非约定俗成的原因。
+    inline void guard_private_access(
+        const RuntimeClass& cls, const std::string& field, Frame& f
+    ) {
+        if (!cls.is_private_attr(field)) return;
+        if (f.self && f.self.get() == &cls) return;
+        interp_error(
+            "InterException",
+            "attribute '" + field + "' is private: it can only be reached "
+            "from a method of the object that owns it (add a method with "
+            "'obj:@name << [behavior];' to change it)"
+        );
+    }
+
     // Rebind a user method on a runtime object *in place*. This is the single
     // shared implementation behind both `obj.method.=(beh)` and
     // `obj.method << beh`. A method is just a member variable holding a
@@ -645,7 +918,17 @@ namespace interp {
                 receiverObj = (*f.outer)[name];
                 isOuter = true;
             } else {
-                interp_error("InterException", "undefined variable '" + name + "'");
+                // Everything else resolves exactly like any expression: the
+                // scope chain first, then the global object registry — where
+                // a library face registers its preset objects under the full
+                // qualified name they were declared with (e.g. `io::out`).
+                // There is no separate path for library objects: `io::out`
+                // IS their name, and this is the one lookup every name takes.
+                // 其余情形与任何表达式完全同一解析：先作用域链，随后是全局
+                // 对象注册表——库形态把预置对象按声明时的全限定名（如
+                // `io::out`）登记于此。库对象没有任何专用通路：`io::out`
+                // 就是它的名字，而这是一切名字唯一的查找路径。
+                receiverObj = resolve(f, name);
             }
         } else if (recvNode->kind == "inst") {
             // Inline declaration used as a flow receiver: a const inline
@@ -931,7 +1214,32 @@ namespace interp {
             }
             return obj;
         }
+        if (k == "objmethod") {
+            exec_objmethod(f, node);
+            return rb::first_of(rb::empty_result());
+        }
+        if (k == "objattr") {
+            exec_objattr(f, node);
+            return rb::first_of(rb::empty_result());
+        }
         if (k == "call") {
+            // v1.30 const-state call: `obj.#()` flips the object into its
+            // permanent const state. It is set-only: there is no inverse, and
+            // calling it again changes nothing (the state was already set).
+            // v1.30 常数状态调用：`对象.#()` 把对象切到永久常数状态。
+            // 它只可设置：没有逆操作，重复调用亦无变化（状态早已置位）。
+            if (node->value == "#") {
+                auto target = eval_expr(f, node->kids[0]);
+                auto tcls = std::dynamic_pointer_cast<RuntimeClass>(target);
+                if (!tcls) {
+                    interp_error(
+                        "InterException",
+                        "'.#()' can only be called on an object instance"
+                    );
+                }
+                tcls->set_const_state();
+                return rb::first_of(rb::empty_result());
+            }
             auto receiverObj = eval_expr(f, node->kids[0]);
             std::vector<RuntimeObjectPtr> args;
             for (auto& a : node->kids[1]->kids) {
@@ -1000,6 +1308,20 @@ namespace interp {
             // / 对象接收），故此处仅追加约束守卫，保持 `.=(...)` 既有语义不变。
             if (node->value == "=" && node->kids[0]->kind == "name") {
                 const std::string& vname = node->kids[0]->value;
+                // v1.30: library preset objects are const bindings — a plain
+                // name assignment would rebind the interface, not change the
+                // object, and a preset's interface belongs to its library.
+                // v1.30：库预置对象是常数绑定——裸名赋值重绑的是接口而非
+                // 对象本身，而预置对象的接口属于它的库。
+                if (const_globals().count(vname) && !f.locals.count(vname)
+                        && !(f.outer && f.outer->count(vname))) {
+                    interp_error(
+                        "ConstException",
+                        "cannot assign to const global object '" + vname
+                            + "' (library presets are const; change the "
+                              "object's state through its methods)"
+                    );
+                }
                 if (f.constraints.count(vname) && !f.constraints[vname].empty()
                         && !args.empty()
                         && !std::dynamic_pointer_cast<RuntimeBehavior>(
@@ -1058,6 +1380,11 @@ namespace interp {
             if (cls) {
                 const auto& attrs = cls->get_attributes();
                 if (attrs.count(node->value)) {
+                    // v1.30: a private attribute (`obj:-(T v)`) is reachable
+                    // only from a method of the owning object.
+                    // v1.30：私有属性（`对象:-(类型 变量)`）只能从宿主对象
+                    // 自己的方法中访问。
+                    guard_private_access(*cls, node->value, f);
                     return attrs.at(node->value);
                 }
                 const auto& methods = cls->get_methods();
@@ -1730,6 +2057,13 @@ namespace interp {
                 define_class(item);
             } else if (item->kind == "contractdef") {
                 define_contract(item);
+            } else if (item->kind == "vardef") {
+                // v1.30: library-level object instances. A .synl may create
+                // ready-made objects that arrive with the import and live for
+                // the whole run — io's `out` / `in`, for example.
+                // v1.30：库级对象实例。.synl 可创建随导入而来的成品对象，
+                // 并贯穿整个运行期——例如 io 的 out / in。
+                define_global_vardef(item);
             }
             // Nested import nodes inside a library are ignored (flat layout).
             // 库内嵌套的 import 节点忽略（库为扁平布局）。
@@ -1787,6 +2121,23 @@ namespace interp {
                 // standard-library directory.
                 // `&module;` 语句从标准库目录解析该库。
                 import_library(item->value);
+            } else if (item->kind == "vardef") {
+                // v1.30 rule: a user PROGRAM (.syn) must not declare global
+                // objects directly. Library faces (.synl) are where presets
+                // like io's `out` / `in` are created; in a program, objects
+                // live inside $Program's constructor and its behaviors. This
+                // keeps every program's entry state explicit and auditable.
+                // v1.30 规则：用户**程序**（.syn）不得直接声明全局对象。
+                // 库形态（.synl）才是 io 的 out / in 这类预置对象的诞生地；
+                // 程序中的对象应活在 $Program 的构造器与各行为之内。如此
+                // 每个程序的入口状态都显式且可审计。
+                diag::set_locus(diag::source_file(), item->line, item->col);
+                interp_error(
+                    "InterException",
+                    "a program (.syn) cannot declare global objects directly "
+                    "(object instances belong inside '$Program' or inside a "
+                    "library face, e.g. lib/<name>.synl)"
+                );
             }
         }
 
@@ -1812,7 +2163,19 @@ namespace interp {
         // Anchor the entry-point frame's locus to the $Program definition.
         // 将入口帧的位置锚定到 $Program 定义处。
         diag::set_locus(diag::source_file(), programClass->line, 1);
-        return instantiate("Program");
+        {
+            // D6: serialize all interpreter evaluation under the GIL. Worker
+            // threads spawned by `async` contend for the same lock; they
+            // release it while blocked in a wait (await / reactor collection)
+            // so this thread's tasks can run.
+            // D6：在 GIL 下串行化全部解释器求值。async 派生的工线程争用同一把锁；
+            // 它们在阻塞等待（await / 反应堆回收）时释放 GIL，使本线程的任务得以推进。
+            // Qualify the namespace: `interp` deliberately has no
+            // using-directive for rt_builtin. / 显式限定命名空间（interp
+            // 刻意未 using rt_builtin）。
+            rt_builtin::GILScope gil;
+            return instantiate("Program");
+        }
         } catch (const rt_builtin::NativeError& e) {
             // A native method raised a runtime error. Report it with a
             // g++-style diagnostic using the interpreter-set locus and exit.

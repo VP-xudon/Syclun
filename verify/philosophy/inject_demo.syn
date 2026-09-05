@@ -1,0 +1,38 @@
+&io;
+// Philosophy case: runtime object injection (v1.31).
+// 哲学用例：运行期对象注入（v1.31）。
+//
+// Claim: an object is a live thing you keep shaping at runtime. Members can be
+// ADDED after construction — a method, a private attribute — but never removed,
+// and a frozen object can never thaw.
+// 主张：对象是运行期持续塑形的活物。成员可在构造之后新增——方法、私有属性——
+// 但永不移除，冻结的对象永不可解冻。
+$Program {
+    @:: << [{
+        -(io::OStream out);
+
+        // A bare object. Just an object. 只是对象。
+        -(std::Object box);
+
+        // Inject a method. 注入方法。
+        box:@describe << [{
+            -(io::OStream o);
+            o.push_line("I am a box with ");
+            o.push(self.items);
+            o.push_line(" items.");
+        }];
+        box:-(std::Number items) << 2;
+        box.describe();
+
+        // Private attributes are invisible from outside...
+        // 私有属性从外部不可见……
+        box:@add << [{
+            self.items.=( self.items.+(1) );
+        }];
+        box.add();
+        box.describe();
+
+        // Freeze: one-way. 冻结：单向。
+        box.#();
+    }];
+}

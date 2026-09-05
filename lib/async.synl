@@ -33,6 +33,9 @@ $Task {
     @result  << [() ~> (result[std::Tuple]) { }];
     @cancel  << [() -> () { }];
     @is_done << [() ~> (ok[std::Boolean]) { }];
+    // Reclaim the task registry entry immediately (cancels a running thread).
+    // 立即回收任务注册表条目（会取消仍在运行的线程）。
+    @dispose << [() ~> () { }];
 }
 
 $Error {

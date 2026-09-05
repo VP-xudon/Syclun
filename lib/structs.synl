@@ -29,6 +29,9 @@ $Queue {
     @empty   << [() ~> (ok[std::Boolean]) { }];
     @clear   << [() ~> () { }];
     @to_array << [() ~> (arr[std::Array]) { }];
+    // Reclaim the native queue state immediately (otherwise it lingers until
+    // the object is collected). / 立即回收原生队列状态（否则滞留至对象被回收）。
+    @dispose << [() ~> () { }];
 }
 
 $Stack {
@@ -39,6 +42,8 @@ $Stack {
     @empty   << [() ~> (ok[std::Boolean]) { }];
     @clear   << [() ~> () { }];
     @to_array << [() ~> (arr[std::Array]) { }];
+    // Reclaim the native stack state immediately. / 立即回收原生栈状态。
+    @dispose << [() ~> () { }];
 }
 
 $Tree {
@@ -52,6 +57,15 @@ $Tree {
     @inorder  << [() ~> (arr[std::Array]) { }];
     @preorder << [() ~> (arr[std::Array]) { }];
     @postorder << [() ~> (arr[std::Array]) { }];
+    // D9: AVL self-balancing — these expose balance + ordered queries.
+    // D9：AVL 自平衡——以下暴露平衡性与有序查询。
+    @height      << [() ~> (h[std::Number]) { }];
+    @lower_bound << [(value[std::Number]) ~> (val[std::Object]) { }];
+    @upper_bound << [(value[std::Number]) ~> (val[std::Object]) { }];
+    @range       << [(lo[std::Number], hi[std::Number]) ~> (arr[std::Array]) { }];
+    @clear       << [() ~> () { }];
+    // Reclaim the native tree state immediately. / 立即回收原生树状态。
+    @dispose << [() ~> () { }];
 }
 
 $Map {
@@ -59,11 +73,18 @@ $Map {
     @get      << [(key[std::Object]) ~> (value[std::Object]) { }];
     @has      << [(key[std::Object]) ~> (ok[std::Boolean]) { }];
     @remove   << [(key[std::Object]) ~> (ok[std::Boolean]) { }];
+    // Keys are serialized with a type tag, so distinct types (Number 1 vs
+    // String "1"), floats, and distinct object instances never collide.
+    // `keys` returns the ORIGINAL key objects (type-preserving).
+    // 键带类型标签序列化，故不同类型（Number 1 与 String "1"）、浮点与不同
+    // 对象实例均不碰撞；`keys` 返回【原始】键对象（保持类型）。
     @keys     << [() ~> (arr[std::Array]) { }];
     @values   << [() ~> (arr[std::Array]) { }];
     @size     << [() ~> (n[std::Number]) { }];
     @empty    << [() ~> (ok[std::Boolean]) { }];
     @clear    << [() ~> () { }];
+    // Reclaim the native map state immediately. / 立即回收原生映射状态。
+    @dispose << [() ~> () { }];
 }
 
 $Graph {
@@ -74,5 +95,11 @@ $Graph {
     @node_count    << [() ~> (n[std::Number]) { }];
     @edge_count    << [() ~> (n[std::Number]) { }];
     @bfs           << [(start[std::Object]) ~> (arr[std::Array]) { }];
+    // Dijkstra shortest path (edge weights are respected).
+    // Dijkstra 最短路径（尊重边权）。
     @shortest_path << [(start[std::Object], goal[std::Object]) ~> (arr[std::Array]) { }];
+    // Total weight along the shortest path. / 最短路径的总权重。
+    @shortest_distance << [(start[std::Object], goal[std::Object]) ~> (w[std::Number]) { }];
+    // Reclaim the native graph state immediately. / 立即回收原生图状态。
+    @dispose << [() ~> () { }];
 }

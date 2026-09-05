@@ -3,10 +3,13 @@
 //
 // A program IS the construction of its `$Program` class: the entry point is
 // the `@::` (construct) behavior, and instantiation is the whole lifecycle.
-// 程序就是 `$Program` 类的构造过程：入口是 `@::`（构造行为），实例化即整个生命周期。
+// `&io;` ships the ready-made const object `out` — no declaration needed.
+// `[{ ... }]` is the block sugar for `[() -> () { ... }]`.
+// 程序就是 `$Program` 类的构造过程：入口是 `@::`（构造行为），实例化即整个
+// 生命周期。`&io;` 自带成品常数对象 `out`——无需声明。`[{ ... }]` 是
+// `[() -> () { ... }]` 的代码块语法糖。
 $Program {
-    @:: << [() -> () {
-        -(io::OStream out);
-        out.push_line("Hello, Synth-OOP!");
+    @:: << [{
+        io::out.push_line("Hello, Synth-OOP!");
     }];
 }

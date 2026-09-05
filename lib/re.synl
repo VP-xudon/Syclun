@@ -39,6 +39,8 @@ $Pattern {
     @replace  << [(text[std::String], repl[std::String]) ~> (out[std::String]) { }];
     @split    << [(text[std::String]) ~> (arr[std::Array]) { }];
     @test     << [(text[std::String]) ~> (ok[std::Boolean]) { }];
+    // Reclaim the compiled pattern state immediately. / 立即回收已编译模式状态。
+    @dispose  << [() ~> () { }];
 }
 
 $Match {

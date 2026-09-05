@@ -119,6 +119,10 @@ namespace rt_lib_file {
                 std::size_t i = 0;
                 std::string line;
                 while (std::getline(fin, line)) {
+                    // Strip a trailing CR left by files written with CRLF line
+                    // endings, so readlines is consistent across platforms.
+                    // 去掉 CRLF 换行留下的尾随 CR，使 readlines 跨平台一致。
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
                     aenv[rb::elem_key(i)] = rb::make_string(line);
                     ++i;
                 }
@@ -144,7 +148,10 @@ namespace rt_lib_file {
                     return rb::list_of({rb::native_error(
                         "file.write requires a string argument")});
                 }
-                std::ofstream fout(*path, std::ios::trunc);
+                // Binary mode: never translate newlines, so a write on Windows
+                // produces byte-identical content to a write on Linux (D4 fix).
+                // 二进制模式：绝不翻译换行，使 Windows 与 Linux 写入逐字节一致（D4 修复）。
+                std::ofstream fout(*path, std::ios::trunc | std::ios::binary);
                 if (!fout) {
                     return rb::list_of({rb::native_error(
                         "file.write: cannot open '" + *path + "'")});
@@ -171,7 +178,7 @@ namespace rt_lib_file {
                     return rb::list_of({rb::native_error(
                         "file.append requires a string argument")});
                 }
-                std::ofstream fout(*path, std::ios::app);
+                std::ofstream fout(*path, std::ios::app | std::ios::binary);
                 if (!fout) {
                     return rb::list_of({rb::native_error(
                         "file.append: cannot open '" + *path + "'")});
@@ -180,6 +187,47 @@ namespace rt_lib_file {
                 return rb::empty_result();
             },
             rb::make_sign("append", {{"text", "std::String"}}, {})
+        );
+    }
+
+    // file.write_lines(lines) -> (void) — join an Array of Strings with "\n"
+    // and write atomically (binary mode). Convenience counterpart to readlines.
+    // file.write_lines(lines) -> (void) —— 用 "\n" 连接 String 数组并写入
+    // （二进制模式）。readlines 的便捷对应物。
+    inline rt_basic::Callable method_file_write_lines() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto path = rb::string_of(env["path"]);
+                if (!path || path->empty()) {
+                    return rb::list_of({rb::native_error(
+                        "file.write_lines: no path set")});
+                }
+                auto arrObj = rb::para_at(paras, 0);
+                auto* src = rb::attributes_of(arrObj);
+                if (!src) {
+                    return rb::list_of({rb::native_error(
+                        "file.write_lines requires an Array of Strings")});
+                }
+                std::string content;
+                std::size_t n = rb::container_size(*src);
+                for (std::size_t i = 0; i < n; ++i) {
+                    auto it = src->find(rb::elem_key(i));
+                    if (it == src->end()) continue;
+                    auto s = rb::string_of(it->second);
+                    if (s) {
+                        if (i > 0) content += "\n";
+                        content += *s;
+                    }
+                }
+                std::ofstream fout(*path, std::ios::trunc | std::ios::binary);
+                if (!fout) {
+                    return rb::list_of({rb::native_error(
+                        "file.write_lines: cannot open '" + *path + "'")});
+                }
+                fout << content;
+                return rb::empty_result();
+            },
+            rb::make_sign("write_lines", {{"lines", "std::Array"}}, {})
         );
     }
 
@@ -251,6 +299,7 @@ namespace rt_lib_file {
         proto->set_method("readlines", method_file_readlines());
         proto->set_method("write",    method_file_write());
         proto->set_method("append",   method_file_append());
+        proto->set_method("write_lines", method_file_write_lines());
         proto->set_method("exists",   method_file_exists());
         proto->set_method("remove",   method_file_remove());
         proto->set_method("size",     method_file_size());

@@ -263,11 +263,23 @@ namespace lexer {
         // A name may contain a colon ONLY as part of the `::` separator
         // (namespace / constructor) or as part of the publish `=:` / receive
         // `:=` method names. Any other colon is a lexical error — this is the
-        // language's "colon principle": except for the constructor `::`, no
-        // other colon form is allowed.
+        // language's "colon principle": except for the constructor `::` and
+        // the `=:` / `:=` method names, no other colon form is allowed.
+        //
+        // The one exception is the v1.30 object-injection operator: a `:`
+        // directly followed by `@` or `-` never reaches this function, because
+        // lex() emits it as a standalone <symbol> ':' first (see the branch
+        // above is_name_char). So reaching the `fail` below still means the
+        // source used an illegal colon form.
         // 名称中的冒号仅允许出现在 `::`（命名空间 / 构造）分隔符，或公布
         // `=:` / 接收 `:=` 方法名中；其它冒号均为词法错误——这是语言的
-        // “冒号原则”：除构造 `::` 外，不允许任何其他冒号形式。
+        // “冒号原则”：除构造 `::` 与 `=:` / `:=` 方法名外，不允许任何其他
+        // 冒号形式。
+        //
+        // 唯一例外是 v1.30 的对象注入操作符：紧跟 `@` 或 `-` 的 `:` 根本
+        // 到不了本函数——lex() 已在 is_name_char 分支之前把它作为独立的
+        // <symbol> ':' 吐出（见 lex() 中该分支）。故走到下面 fail 的，仍然
+        // 是源码使用了非法冒号形式。
         Token read_name() {
             Token res;
             res.typetag = "<name>";
@@ -284,12 +296,21 @@ namespace lexer {
                         res.value += ":=";
                         next(); next();
                         continue;
+                    } else if (nxt == '@' || nxt == '-') {
+                        // v1.30 object injection: `obj:@method` /
+                        // `obj:-(Type v)`. The colon is a standalone <symbol>
+                        // here, so end the name and let lex()'s injection
+                        // branch emit the ':'.
+                        // v1.30 对象注入：`对象:@方法` / `对象:-(类型 变量)`。
+                        // 此处的冒号是独立 <symbol>，故在此结束名称，由
+                        // lex() 的注入分支吐出 ':'。
+                        break;
                     } else if (!res.value.empty() && res.value.back() == '=') {
                         res.value += ':';             // =: (publish)
                         next();
                         continue;
                     } else {
-                        fail("Unexpected ':' (colons are only allowed in '::', '=:', or ':=').");
+                        fail("Unexpected ':' (colons are only allowed in '::', '=:', ':=', or object injection 'obj:...' preceded by '@' or '-').");
                     }
                 }
                 res.value += self[cur];
@@ -357,6 +378,19 @@ namespace lexer {
                         || c == '.' || c == '$' || c == '&' || c == '@'
                         || c == '#') {
                     res.value = std::string(1, c);
+                    next();
+                } else if (c == ':' && (peek(1) == '@' || peek(1) == '-')) {
+                    // v1.30 object-injection symbol. `Object:@method;` injects
+                    // a behavior as a method; `Object:-(Type v);` adds a
+                    // private attribute. A standalone ':' is a <symbol> here
+                    // because the grammar reads it as a statement operator,
+                    // not as part of a name. Every other colon still obeys the
+                    // colon principle: only '::', '=:', ':=' remain legal.
+                    // v1.30 对象注入符号。`Object:@方法;` 把行为注入为方法；
+                    // `Object:-(类型 变量);` 新增私有属性。此处的 ':' 是
+                    // <symbol>（语法把它当语句操作符读），而非名称的一部分。
+                    // 其余冒号仍遵循冒号原则：仅 '::'、'=:'、':=' 合法。
+                    res.value = ":";
                     next();
                 } else if (is_name_char(c)) {
                     res = read_name();

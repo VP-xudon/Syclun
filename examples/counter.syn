@@ -4,15 +4,14 @@
 // 类持有状态；实例方法必须用 `self.NAME(...)` 调用。裸写 `NAME(...)` 被解析为
 // 数据，而非隐式自派发。
 $Program {
-    @:: << [() -> () {
+    @:: << [{
         -(Counter c);
         c.inc();
         c.inc();
         c.inc();
 
-        -(io::OStream out);
-        out.push_line(c.get());              // → 3
-        out.push_line(c.describe());         // → Counter(value=3)
+        io::out.push_line(c.get());              // → 3
+        io::out.push_line(c.describe());         // → Counter(value=3)
     }];
 }
 
