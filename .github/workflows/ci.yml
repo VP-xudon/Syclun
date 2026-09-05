@@ -29,12 +29,11 @@ jobs:
           - os: ubuntu-24.04
           - os: macos-latest
           - os: windows-latest
-            shell: msys2
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up MSYS2 (MinGW-w64) / 配置 MSYS2
-        if: matrix.shell == 'msys2'
+        if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -51,8 +50,13 @@ jobs:
           sudo apt-get install -y cmake ninja-build
           g++ --version
 
-      - name: Build + run full assertion suite / 构建并跑全部断言
-        shell: ${{ matrix.shell == 'msys2' && 'msys2 {0}' || 'bash' }}
+      - name: Build + run full assertion suite (Windows / MSYS2)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: bash .github/scripts/run_asserts.sh
+
+      - name: Build + run full assertion suite (Linux / macOS)
+        if: runner.os != 'Windows'
         run: bash .github/scripts/run_asserts.sh
 
       - name: Gate — fail if any assertion failed / 门禁：任一断言失败则失败

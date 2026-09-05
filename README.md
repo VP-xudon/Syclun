@@ -2,6 +2,8 @@
 
 # Syclun —— 一个拒绝正常的语言的解释器
 
+[![CI / 持续集成](https://github.com/VP-xudon/Syclun/actions/workflows/ci.yml/badge.svg)](https://github.com/VP-xudon/Syclun/actions/workflows/ci.yml)
+
 > **🎴 这是一张名片，也是一张引流牌。** 看完你大概会想：这语言也太怪了——然后发现它
 > 怪得有道理。正式、严肃的那一份在文末「接下来 / 如何继续」。
 > **This is a business card and a traffic sign.** By the end you'll think "this
