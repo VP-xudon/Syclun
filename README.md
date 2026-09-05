@@ -3,6 +3,15 @@
 # Syclun —— 一个拒绝正常的语言的解释器
 
 [![CI / 持续集成](https://github.com/VP-xudon/Syclun/actions/workflows/ci.yml/badge.svg)](https://github.com/VP-xudon/Syclun/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/VP-xudon/Syclun/badge)](https://securityscorecards.dev/viewer/?uri=github.com/VP-xudon/Syclun)
+[![Codecov](https://codecov.io/gh/VP-xudon/Syclun/graph/badge.svg)](https://codecov.io/gh/VP-xudon/Syclun)
+
+[![License](https://img.shields.io/github/license/VP-xudon/Syclun)](https://github.com/VP-xudon/Syclun/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/VP-xudon/Syclun)](https://github.com/VP-xudon/Syclun/stargazers)
+[![Last Commit](https://img.shields.io/github/last-commit/VP-xudon/Syclun)](https://github.com/VP-xudon/Syclun/commits)
+[![Issues](https://img.shields.io/github/issues/VP-xudon/Syclun)](https://github.com/VP-xudon/Syclun/issues)
+[![Language](https://img.shields.io/badge/language-C%2B%2B-00599C)](https://isocpp.org/)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2ea44f)](https://github.com/VP-xudon/Syclun)
 
 > **🎴 这是一张名片，也是一张引流牌。** 看完你大概会想：这语言也太怪了——然后发现它
 > 怪得有道理。正式、严肃的那一份在文末「接下来 / 如何继续」。
