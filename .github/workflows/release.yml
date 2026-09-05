@@ -18,6 +18,15 @@
 #   macos-x64     -> macos-latest   (x86_64 slice)
 #   macos-arm64   -> macos-latest   (arm64 slice)
 #   linux-x64     -> ubuntu-latest  (native)
+#
+# Verification gate / 验证门禁：
+#   Before anything is published, the `verify` job builds the project and runs
+#   the FULL assertion suite (lexer + parser + runtimes). If not every assertion
+#   passes it RECORDS the defects and (by default) REJECTS the release. Set the
+#   `allow_defects` dispatch input to true to downgrade that to a warning.
+#   发布前，`verify` 作业会构建项目并运行「全部」断言套件（词法 + 语法 + 运行期）。
+#   若并非全部通过，则记录缺陷并（默认）拒绝发布；在 workflow_dispatch 中把
+#   allow_defects 设为 true 可降级为警告。
 # ============================================================
 name: Release Packages / 发布分发包
 
@@ -31,11 +40,57 @@ on:
         description: 'Limit to one target (e.g. windows-x64); leave empty for all.'
         required: false
         default: ''
+      version:
+        description: 'Release version/tag for manual dispatch (e.g. v1.31.0). Ignored on tag push.'
+        required: false
+        default: ''
+      allow_defects:
+        description: 'Publish even if not all assertions pass (defects recorded as warnings).'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write   # required to create a GitHub release / 创建 Release 所需
 
 jobs:
+  # ---- verification gate (runs BEFORE packaging is published) -------------
+  verify:
+    name: verify all assertions / 验证全部断言
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain / 安装工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+          g++ --version
+
+      - name: Build + run full assertion suite / 构建并跑全部断言
+        run: bash .github/scripts/run_asserts.sh
+
+      - name: Upload verification report / 上传验证报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-report
+          path: build/verify-artifacts
+          if-no-files-found: warn
+
+      - name: Gate — reject on defects unless allowed / 门禁：有缺陷则拒绝（除非允许）
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          if ! grep -q '"all_passed": 1' build/verify-artifacts/assert-report.json 2>/dev/null; then
+            if [ "${{ github.event.inputs.allow_defects || 'false' }}" = "true" ]; then
+              echo "::warning::defects recorded but allow_defects=true — publishing despite failures"
+            else
+              echo "::error::release REJECTED: not all assertions passed"
+              cat build/verify-artifacts/assert-report.md
+              exit 1
+            fi
+          fi
+          echo "Verification gate passed."
+
   package:
     name: package ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -81,10 +136,6 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-aarch64
 
       # --- Build & package / 构建并打包 -------------------------------------
-      # Run package.sh for this target. On the MSYS2 runner the `msys2` shell
-      # exposes MinGW-w64 g++/cmake; elsewhere the default bash shell is used.
-      # 构建本目标对应的 package。MSYS2 runner 上用 `msys2` 外壳以暴露 MinGW-w64
-      # 的 g++/cmake；其余 runner 用默认 bash 外壳。
       - name: Run package.sh / 执行 package.sh
         shell: ${{ matrix.setup == 'msys2-mingw64' && 'msys2 {0}' || 'bash' }}
         env:
@@ -132,12 +183,16 @@ jobs:
 
   release:
     name: publish release / 发布 Release
-    needs: [package, vsix]
+    needs: [verify, package, vsix]
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
       || github.event_name == 'workflow_dispatch'
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts / 下载全部产物
         uses: actions/download-artifact@v4
         with:
@@ -161,31 +216,31 @@ jobs:
             || echo "no .vsix artifact found"
           ls -la *.zip assets/
 
+      - name: Compute changelog / 计算变更日志
+        run: |
+          {
+            echo "CHANGELOG<<EOF"
+            git log --no-merges --oneline -30 | sed 's/^/- /'
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate release notes / 生成 Release 说明
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+          ART_DIR: artifacts/verify-report
+          ASSETS_DIR: .
+          OUT: release-notes.md
+        run: bash .github/scripts/gen_release_notes.sh
+
       - name: Create GitHub release / 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # For a tag push this resolves to the tag name automatically.
-          # 打 tag 推送时自动取对应 tag 名。
-          tag_name: ${{ github.ref_name }}
-          name: Synth-OOP ${{ github.ref_name }}
-          body: |
-            Prebuilt Syclun (Synth-OOP) interpreter distributions, plus the
-            VS Code syntax-highlighting extension.
-
-            预构建的 Syclun（Synth-OOP）解释器发行包，外加 VS Code 语法高亮插件：
-
-            - synth-windows-x64.zip
-            - synth-windows-arm64.zip (best-effort cross build / 尽力而为的交叉构建)
-            - synth-macos-x64.zip
-            - synth-macos-arm64.zip
-            - synth-linux-x64.zip
-            - `synth-oop-<version>.vsix` — VS Code syntax highlighting for
-              `.syn` / `.synl` / `.syni` / VS Code 语法高亮插件
-
-            Each zip unpacks to `synth-<target>/` containing `bin/synth(.exe)`,
-            `libs/*.synl`, `examples/`, and docs.
-            每个 zip 解压出 `synth-<target>/`，内含 `bin/synth(.exe)`、
-            `libs/*.synl`、`examples/` 与文档。
+          # For a tag push this resolves to the tag name automatically; for a
+          # manual dispatch it uses the `version` input.
+          # 打 tag 推送时自动取对应 tag 名；手动调度时取 `version` 输入。
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+          name: Synth-OOP ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+          body_path: release-notes.md
           files: |
             *.zip
             assets/*.vsix

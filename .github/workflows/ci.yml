@@ -1,0 +1,75 @@
+# ============================================================
+# ci.yml — push / PR gate that verifies the code COMPILES and ALL assertions PASS
+# ci.yml —— 在 push / PR 时验证代码「能编译」且「全部断言通过」
+#
+# This is the gate that was missing: dco.yml only checks sign-off, and
+# release.yml only packages on a tag. Here we build on every push/PR and run
+# the full assertion suite (lexer + parser + runtimes) plus a runtime smoke of
+# the shipped examples, on Linux, macOS and Windows.
+# 这正是原先缺失的门禁：dco.yml 只查签名，release.yml 只在打 tag 时打包。
+# 本工作流在每次 push/PR 构建，并跨 Linux / macOS / Windows 跑完整断言套件。
+# ============================================================
+name: CI / 持续集成
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: build + assert (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: macos-latest
+          - os: windows-latest
+            shell: msys2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (MinGW-w64) / 配置 MSYS2
+        if: matrix.shell == 'msys2'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+
+      - name: Install toolchain (Linux) / 安装工具链
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+          g++ --version
+
+      - name: Build + run full assertion suite / 构建并跑全部断言
+        shell: ${{ matrix.shell == 'msys2' && 'msys2 {0}' || 'bash' }}
+        run: bash .github/scripts/run_asserts.sh
+
+      - name: Gate — fail if any assertion failed / 门禁：任一断言失败则失败
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          if ! grep -q '"all_passed": 1' build/verify-artifacts/assert-report.json 2>/dev/null; then
+            echo "::error::not all assertions passed — see build/verify-artifacts/assert-report.md"
+            cat build/verify-artifacts/assert-report.md
+            exit 1
+          fi
+          echo "All assertions passed."
+
+      - name: Upload report / 上传报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-assert-${{ matrix.os }}
+          path: build/verify-artifacts
+          if-no-files-found: warn
