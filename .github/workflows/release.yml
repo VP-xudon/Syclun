@@ -133,7 +133,7 @@ jobs:
         if: matrix.cross == 'mingw-aarch64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64-aarch64
+          sudo apt-get install -y gcc-aarch64-w64-mingw32
 
       # --- Build & package / 构建并打包 -------------------------------------
       - name: Run package.sh / 执行 package.sh
