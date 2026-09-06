@@ -145,7 +145,10 @@ int main(int argc, char** argv) {
     if (argc > 0 && argv[0] && *argv[0]) {
         namespace fs = std::filesystem;
         fs::path self(argv[0]);
-        g_cli_path = (self.parent_path() / "parser_cli.exe").string();
+        g_cli_path = (self.parent_path() / "parser_cli").string();
+        #ifdef _WIN32
+            g_cli_path += ".exe";
+        #endif
     }
     // ----------------------------------------------------------
     section("Top-level whitelist: import / class / contract");
