@@ -72,7 +72,7 @@ namespace rt_lib_system {
         return {"sh", "-c", cmd};
 #endif
     }
-
+#ifdef _WIN32
     inline std::wstring utf8_to_wide(const std::string& s) {
         if (s.empty()) return {};
         int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
@@ -80,7 +80,9 @@ namespace rt_lib_system {
         MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), w.data(), n);
         return w;
     }
-
+#else
+    inline std::wstring utf8_to_wide(const std::string& s) { return {}; }
+#endif
     // Run argv WITHOUT a shell. Captures stdout/stderr, honours an optional
     // timeout (ms; 0 = wait forever), cwd and an explicit environment. This is
     // the safe default introduced by the industrialization audit (D7).
