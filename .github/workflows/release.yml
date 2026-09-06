@@ -63,7 +63,7 @@ jobs:
       - name: Install toolchain / 安装工具链
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build
+          sudo apt-get install -y cmake
           g++ --version
 
       - name: Build + run full assertion suite / 构建并跑全部断言
