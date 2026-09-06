@@ -178,14 +178,12 @@ namespace rt_lib_system {
             std::vector<char*> cargs;
             for (auto& a : argv) cargs.push_back(const_cast<char*>(a.c_str()));
             cargs.push_back(nullptr);
-            if (!env.empty()) {
-                std::vector<char*> cenv;
-                for (auto& e : env) cenv.push_back(const_cast<char*>(e.c_str()));
-                cenv.push_back(nullptr);
-                execvpe(argv[0].c_str(), cargs.data(), cenv.data());
-            } else {
-                execvp(argv[0].c_str(), cargs.data());
+            for (const auto& e : env) {
+                size_t eq = e.find('=');
+                if (eq != std::string::npos && eq > 0)
+                    setenv(e.substr(0, eq).c_str(), e.substr(eq + 1).c_str(), 1);
             }
+            execvp(argv[0].c_str(), cargs.data());
             _exit(127);
         }
         close(outPipe[1]); close(errPipe[1]);
