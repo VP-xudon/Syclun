@@ -132,19 +132,15 @@ jobs:
       - name: Install aarch64-w64-mingw32 cross toolchain / 安装 aarch64 交叉工具链
         if: matrix.cross == 'mingw-aarch64'
         run: |
-          API=https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest
-          URL="$(curl -fsSL "$API" \
-            | jq -r '[.assets[].browser_download_url]
-                      | map(select(test("ucrt-ubuntu-[0-9.]+-x86_64\\.tar\\.xz$")))
-                      | .[0]')"
-          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "::error::cannot resolve llvm-mingw toolchain URL"; exit 1
-          fi
-          echo "toolchain: $URL"
-          curl -fsSL ”$URL" -o /tmp/llvm-mingw.tar.xz
+          set -e
+          curl -fsSL -o meta.json https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest
+          URL=$(grep -o 'https:[^ ]*ucrt[^ ]*x86_64.tar.xz' meta.json | head -1)
+          echo "asset: $URL"
+          test -n "$URL"
+          curl -fsSL --retry 3 -o llvm-mingw.tar.xz "$URL"
           sudo mkdir -p /opt/llvm-mingw
-          sudo tar -xf /tmp/llvm-mingw.tar.xz -C /opt/llvm-mingw --strip-components=1
-          echo "/opt/llvm--mingw/bin" >> "$GITHUB_PATH"
+          sudo tar -xf llvm-mingw.tar.xz -C /opt/llvm-mingw --strip-components=1
+          echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
           /opt/llvm-mingw/bin/aarch64-w64-mingw32-g++ --version
 
       # --- Build & package / 构建并打包 -------------------------------------
