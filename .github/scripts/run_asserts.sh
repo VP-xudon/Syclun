@@ -19,6 +19,7 @@
 set -o pipefail
 
 cd "$(dirname "$0")/../.."            # repo root / 仓库根
+ulimit -s 32768 2>/dev/null || echo "::warning::cannot raise stack limit"
 ROOT="$(pwd)"
 
 # host detection + executable extension
