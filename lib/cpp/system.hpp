@@ -28,6 +28,7 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <tuple>
 
 #if defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
@@ -167,7 +168,7 @@ namespace rt_lib_system {
         pid_t pid = fork();
         if (pid < 0) { res.err = "exec: fork failed"; return res; }
         if (pid == 0) {
-            if (!cwd.empty()) (void)chdir(cwd.c_str());
+            if (!cwd.empty()) std::ignore = chdir(cwd.c_str());
             dup2(outPipe[1], STDOUT_FILENO);
             dup2(errPipe[1], STDERR_FILENO);
             close(outPipe[0]); close(outPipe[1]);
