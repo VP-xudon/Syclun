@@ -162,15 +162,25 @@ jobs:
           /opt/llvm-mingw/bin/aarch64-w64-mingw32-g++ --version
 
       # --- Build & package / 构建并打包 -------------------------------------
-      - name: Run package.sh / 执行 package.sh
+
+      # Windows x64 MUST run inside the MSYS2 MINGW64 shell.
+      - name: Run package.sh — Windows MinGW
+        if: matrix.setup == 'msys2-mingw64'
         shell: msys2 {0}
         env:
           PACKAGE_TARGETS: ${{ matrix.target }}
-          # Force-build even though the host OS differs (cross scenario).
-          # 跨平台场景下强制构建（宿主系统与目标不符时）。
           SYNTH_FORCE_BUILD: '1'
         run: bash package.sh
-
+      
+      # Linux / macOS / Windows ARM64 use the normal Git Bash shell.
+      - name: Run package.sh — native/cross
+        if: matrix.setup != 'msys2-mingw64'
+        shell: bash
+        env:
+          PACKAGE_TARGETS: ${{ matrix.target }}
+          SYNTH_FORCE_BUILD: '1'
+        run: bash package.sh
+      
       - name: Upload artifact / 上传产物
         uses: actions/upload-artifact@v4
         with:
