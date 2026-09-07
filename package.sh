@@ -1,215 +1,248 @@
 #!/usr/bin/env bash
 # ============================================================
 # package.sh — one-click release packager for Synth-OOP (Syclun)
-# package.sh —— Synth-OOP（Syclun）一键发布分发包脚本
-#
-# This is SEPARATE from build.sh (which is for day-to-day compile/test).
-# package.sh produces ready-to-ship interpreter distributions: it builds an
-# optimised Release `synth` for each target platform and assembles a
-# self-contained tree — binary in `bin/`, the runtime library interfaces in
-# `libs/`, plus examples and docs — under `build/dist/`.
-#
-# 本脚本与 build.sh（日常编译/测试用）相互独立。package.sh 产出「开箱即用」
-# 的解释器发行包：为每个目标平台构建优化版 Release `synth`，并组装出一棵
-# 自包含目录树——二进制在 `bin/`、运行时库接口在 `libs/`、外加示例与文档——
-# 全部位于 `build/dist/` 下。
-#
-# Five target packages are defined:
-#   1. synth-windows-x64   2. synth-windows-arm64
-#   3. synth-macos-x64     4. synth-macos-arm64
-#   5. synth-linux-x64
-#
-# A target is only built when the current host actually can build it:
-#   - windows-*        : on a Windows host (arm64 additionally needs the
-#                        aarch64-w64-mingw32 cross toolchain)
-#   - macos-*          : on a macOS host (both slices build there)
-#   - linux-x64        : on a Linux host (or with x86_64-linux-gnu cross)
-# Targets that cannot be built on this host are SKIPPED with a clear note,
-# so the script always succeeds and reports what it did and did not make.
-# For the full set of five packages from one command, run this in the CI
-# matrix (see .github/workflows/release.yml) on Windows / macOS / Linux
-# runners.  ___________________
-#   单次只能产出当前宿主能构建的目标；其余跳过并给出说明。要一次性拿到全部
-#   五个包，请在 CI 矩阵（.github/workflows/release.yml）的 Windows / macOS /
-#   Linux runner 上各跑一次本脚本。
-#
-# Usage / 用法：
-#   ./package.sh                 # build & package every buildable target
-#   ./package.sh --help          # this help / 本帮助
-#   PACKAGE_TARGETS=windows-x64 ./package.sh   # limit to one target
 # ============================================================
+
 set -uo pipefail
 
-cd "$(dirname "$0")"            # project root / 项目根
+cd "$(dirname "$0")"
 
-# ---- host OS detection -------------------------------------------------
+# ---- host detection -----------------------------------------------------
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) HOST_OS=windows ;;
-    Darwin)               HOST_OS=macos   ;;
-    Linux)                HOST_OS=linux   ;;
+    Darwin)               HOST_OS=macos ;;
+    Linux)                HOST_OS=linux ;;
     *)                    HOST_OS=unknown ;;
 esac
 
 case "$(uname -m)" in
-    x86_64|AMD64|amd64) HOST_ARCH=x64   ;;
+    x86_64|AMD64|amd64) HOST_ARCH=x64 ;;
     aarch64|arm64)      HOST_ARCH=arm64 ;;
     *)                  HOST_ARCH=unknown ;;
 esac
-
-# Run the packaged interpreter on an example after assembly.
-# Only attempted for a NATIVE target (same OS and arch as this host), since a
-# cross-built binary cannot be executed here.
-# 仅在「原生目标」（与宿主同 OS、同架构）时运行冒烟测试；交叉构建的二进制在
-# 本机无法执行。
-smoke_test() {
-    local pkg="$1" os="$2" arch="$3" exe="$4" out
-    if [ "$os" != "$HOST_OS" ] || [ "$arch" != "$HOST_ARCH" ]; then
-        echo "    smoke: skipped (cross-built binary, cannot run on this host)"
-        return 0
-    fi
-    # Run the binary from a scratch directory OUTSIDE the package, so the
-    # package tree is never polluted by the temporary copy even if cleanup
-    # fails. SYNTH_LIB_DIR points at the package's libs/, so library
-    # resolution is still exercised exactly as an end user would hit it.
-    # (Running from a temp dir also dodges the MSYS2/Git-Bash quirk where a
-    # .exe inside a directory literally named `bin` cannot be exec'd.)
-    #
-    # 把二进制放到包外的临时目录运行，这样即便清理失败也不会污染包目录；同时用
-    # SYNTH_LIB_DIR 指向包内 libs/，照旧验证库解析（与最终用户体验一致）。
-    # （放临时目录执行也顺带避开 MSYS2/Git-Bash 无法 exec `bin` 目录下 .exe 的怪癖。）
-    local tmpdir smoke
-    tmpdir="$(mktemp -d)"
-    smoke="$tmpdir/_smoke_synth"
-    [ "$os" = "windows" ] && smoke="$smoke.exe"
-    cp "$exe" "$smoke"
-    if out="$(SYNTH_LIB_DIR="$pkg/libs" "$smoke" "$pkg/examples/hello.syn" 2>&1)"; then
-        echo "    smoke: OK -> $out"
-    else
-        echo "    smoke: FAILED -> $out"
-    fi
-    rm -rf "$tmpdir"
-}
 
 DIST_DIR="build/dist"
 PKG_BUILD="build/.pkg"
 SUMMARY="$DIST_DIR/PACKAGES.md"
 
-have() { command -v "$1" >/dev/null 2>&1; }
+have() {
+    command -v "$1" >/dev/null 2>&1
+}
 
+# ---- help ----------------------------------------------------------------
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     sed -n '2,40p' "$0"
     exit 0
 fi
 
-# ---- target table ------------------------------------------------------
-# fields: name | os | arch | toolchain-file | osx-arch | note
-# `toolchain-file` and `osx-arch` use '-' for "none".
-# 字段：名称 | 系统 | 架构 | 工具链文件 | macOS 架构 | 说明。
-# 「工具链文件」「macOS 架构」用 '-' 表示无。
+# ---- target table --------------------------------------------------------
 TARGETS=(
-  "windows-x64|windows|x64|-|-|Native Windows build (MinGW-w64 or MSVC)."
-  "windows-arm64|windows|arm64|cmake/toolchain-windows-arm64.cmake|-|Cross to Windows/ARM64 via aarch64-w64-mingw32."
-  "macos-x64|macos|x64|-|x86_64|Native macOS build, x86_64 slice."
-  "macos-arm64|macos|arm64|-|arm64|Native macOS build, arm64 slice."
-  "linux-x64|linux|x64|cmake/toolchain-linux-x64.cmake|-|Native Linux build, or x86_64-linux-gnu cross."
+    "windows-x64|windows|x64|-|-|Native Windows x64 build with MinGW-w64."
+    "windows-arm64|windows|arm64|cmake/toolchain-windows-arm64.cmake|-|Cross to Windows/ARM64 via aarch64-w64-mingw32."
+    "macos-x64|macos|x64|-|x86_64|Native macOS build, x86_64 slice."
+    "macos-arm64|macos|arm64|-|arm64|Native macOS build, arm64 slice."
+    "linux-x64|linux|x64|cmake/toolchain-linux-x64.cmake|-|Native Linux build, or x86_64-linux-gnu cross."
 )
 
-# ---- is a target buildable on this host? -------------------------------
-# echoes "build" or "skip:<reason>"
-#
-# SYNTH_FORCE_BUILD (any value) overrides the host check and forces "build"
-# for every target. Intended for CI cross-builds where the matching toolchain
-# is installed explicitly (e.g. gcc-mingw-w64-aarch64 on Ubuntu).
-# SYNTH_FORCE_BUILD（任意取值）可强制对所有目标返回 build，用于 CI 中已显式
-# 安装对应交叉工具链的场景（例如在 Ubuntu 上装 gcc-mingw-w64-aarch64）。
+# ---- target availability -------------------------------------------------
 target_status() {
-    local os="$1" arch="$2"
-    if [ -n "${SYNTH_FORCE_BUILD:-}" ]; then echo "build"; return; fi
+    local os="$1"
+    local arch="$2"
+
+    if [ -n "${SYNTH_FORCE_BUILD:-}" ]; then
+        echo "build"
+        return
+    fi
+
     case "$os" in
         windows)
             if [ "$HOST_OS" != "windows" ]; then
                 echo "skip:Windows packages must be built on a Windows host (or with a MinGW-w64 cross toolchain)."
                 return
             fi
+
             if [ "$arch" = "arm64" ]; then
                 if have aarch64-w64-mingw32-g++ || have aarch64-w64-mingw32-gcc; then
                     echo "build"
                 else
-                    echo "skip:Windows/ARM64 needs the aarch64-w64-mingw32 cross toolchain (not on this host)."
+                    echo "skip:Windows/ARM64 needs the aarch64-w64-mingw32 cross toolchain."
                 fi
             else
                 echo "build"
             fi
             ;;
+
         macos)
-            if [ "$HOST_OS" = "macos" ]; then echo "build"; else
-                echo "skip:macOS packages must be built on a macOS host (no macOS SDK to cross-compile from here)."
-            fi
-            ;;
-        linux)
-            if [ "$HOST_OS" = "linux" ]; then echo "build"
-            elif have x86_64-linux-gnu-g++ || have x86_64-linux-gnu-gcc; then echo "build"
+            if [ "$HOST_OS" = "macos" ]; then
+                echo "build"
             else
-                echo "skip:Linux packages are built on a Linux host (or with an x86_64-linux-gnu cross toolchain)."
+                echo "skip:macOS packages must be built on a macOS host."
             fi
             ;;
-        *) echo "skip:Unknown target OS." ;;
+
+        linux)
+            if [ "$HOST_OS" = "linux" ]; then
+                echo "build"
+            elif have x86_64-linux-gnu-g++ || have x86_64-linux-gnu-gcc; then
+                echo "build"
+            else
+                echo "skip:Linux packages require a Linux host or x86_64-linux-gnu cross toolchain."
+            fi
+            ;;
+
+        *)
+            echo "skip:Unknown target OS."
+            ;;
     esac
 }
 
-# ---- assemble one distribution tree ------------------------------------
+# ---- Windows MinGW validation -------------------------------------------
+verify_windows_mingw() {
+    local exe="$1"
+
+    echo "=== Windows x64 MinGW validation ==="
+
+    if ! have gcc || ! have g++; then
+        echo "::error::MinGW gcc/g++ not found."
+        return 1
+    fi
+
+    echo "gcc: $(command -v gcc)"
+    echo "g++: $(command -v g++)"
+
+    gcc --version | head -1
+    g++ --version | head -1
+
+    if ! have objdump; then
+        echo "::error::objdump not found."
+        return 1
+    fi
+
+    echo "=== CMake compiler ==="
+
+    if ! grep -E \
+        'CMAKE_CXX_COMPILER:FILEPATH=.*/g\+\+(.exe)?$' \
+        "$CURRENT_BUILD_DIR/CMakeCache.txt" >/dev/null 2>&1; then
+
+        echo "::error::CMake did not select MinGW g++."
+        echo "Expected a MinGW g++ compiler."
+        grep -E 'CMAKE_(C|CXX)_COMPILER' \
+            "$CURRENT_BUILD_DIR/CMakeCache.txt" || true
+        return 1
+    fi
+
+    echo "CMake compiler: MinGW g++"
+
+    echo "=== Binary DLL dependencies ==="
+
+    local deps
+    deps="$(objdump -p "$exe" | grep 'DLL Name:' || true)"
+    echo "$deps"
+
+    if ! echo "$deps" | grep -qi 'libstdc++-6.dll'; then
+        echo "::error::synth.exe does not depend on libstdc++-6.dll."
+        echo "This binary does not appear to be a MinGW C++ binary."
+        return 1
+    fi
+
+    if ! echo "$deps" | grep -qi 'libgcc_s_seh-1.dll'; then
+        echo "::error::synth.exe does not depend on libgcc_s_seh-1.dll."
+        return 1
+    fi
+
+    if ! echo "$deps" | grep -qi 'libwinpthread-1.dll'; then
+        echo "::error::synth.exe does not depend on libwinpthread-1.dll."
+        return 1
+    fi
+
+    echo "MinGW runtime dependency check: PASS"
+    return 0
+}
+
+# ---- assemble package ----------------------------------------------------
 assemble() {
-    local name="$1" os="$2" arch="$3" exe="$4"
+    local name="$1"
+    local os="$2"
+    local arch="$3"
+    local exe="$4"
+
     local pkg="$DIST_DIR/synth-$name"
+
     echo "[*] assembling $pkg"
+
     rm -rf "$pkg"
     mkdir -p "$pkg/bin" "$pkg/libs" "$pkg/examples"
 
     cp "$exe" "$pkg/bin/"
 
-    # Windows: bundle the MinGW runtime DLLs next to the exe so the package
-    # runs on a vanilla Windows. MSVC builds rely on the target's
-    # Visual C++ Redistributable instead.
-    # Windows：把 MinGW 运行时 DLL 一并放入 bin/，使裸 Windows 也能运行；
-    # MSVC 构建则依赖目标机的 Visual C++ 可再发行包。
-    if [ "$os" = "windows" ] && have g++; then
-        # Copy the MinGW runtime DLLs from the compiler's OWN bin/ directory
-        # (i.e. the files the loader resolves through PATH at runtime).
-        #
-        # Do NOT use `g++ -print-file-name=$dll` here: it can return a
-        # mismatched copy from the GCC install tree. Windows searches the
-        # executable's directory FIRST, so a wrong DLL placed in bin/ shadows
-        # the correct one and the interpreter dies at startup with
-        # STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139).
-        #
-        # 从编译器自身的 bin/ 目录复制 MinGW 运行时 DLL（即运行期经 PATH 解析到的
-        # 那批文件）。切勿用 `g++ -print-file-name`：它可能取回 GCC 安装树中版本
-        # 不匹配的副本；Windows 优先搜索可执行文件所在目录，错误的 DLL 会遮蔽正确
-        # 版本，导致解释器启动时报 STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139)。
-        local runtime_dir
-        runtime_dir="$(dirname "$(command -v g++)")"
-        # libgcc_s_* has several flavours; copy whichever the toolchain ships.
-        # libgcc_s_* 有多种异常模型变体，工具链里有哪个就复制哪个。
-        for dll in libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll \
-                   libgcc_s_sjlj-1.dll libwinpthread-1.dll; do
-            if [ -f "$runtime_dir/$dll" ]; then
-                cp "$runtime_dir/$dll" "$pkg/bin/" && echo "    + $dll (from $runtime_dir)"
+    # ----------------------------------------------------------------------
+    # Windows runtime
+    # ----------------------------------------------------------------------
+    if [ "$os" = "windows" ]; then
+
+        if [ "$name" = "windows-x64" ]; then
+            if ! have g++; then
+                echo "::error::g++ not found for Windows x64 runtime packaging."
+                return 1
             fi
-        done
+
+            local runtime_dir
+            runtime_dir="$(dirname "$(command -v g++)")"
+
+            echo "=== Bundling MinGW runtime ==="
+            echo "runtime directory: $runtime_dir"
+
+            local required_dlls=(
+                libstdc++-6.dll
+                libgcc_s_seh-1.dll
+                libwinpthread-1.dll
+            )
+
+            local dll
+
+            for dll in "${required_dlls[@]}"; do
+                if [ ! -f "$runtime_dir/$dll" ]; then
+                    echo "::error::Missing required MinGW runtime DLL: $dll"
+                    return 1
+                fi
+
+                cp -f "$runtime_dir/$dll" "$pkg/bin/" || return 1
+                echo "    + $dll"
+            done
+
+            # Verify that every required DLL is actually inside the package.
+            for dll in "${required_dlls[@]}"; do
+                if [ ! -f "$pkg/bin/$dll" ]; then
+                    echo "::error::Package is missing $dll"
+                    return 1
+                fi
+            done
+
+            echo "Windows x64 runtime packaging: PASS"
+        fi
     fi
 
-    # Ship the .synl library interfaces (loaded at runtime by `&module;`).
-    # The C++ backends (lib/cpp/*.hpp) are already compiled into the binary.
-    # 随附 .synl 库接口（运行期由 `&module;` 载入）；C++ 底层（lib/cpp/*.hpp）
-    # 已编译进二进制，无需发布。
-    cp lib/*.synl "$pkg/libs/"
-    cp -r examples/. "$pkg/examples/"
-    [ -f LICENSE ] && cp LICENSE "$pkg/"
-    [ -f README.md ] && cp README.md "$pkg/"
+    # ----------------------------------------------------------------------
+    # Standard libraries
+    # ----------------------------------------------------------------------
+    shopt -s nullglob
 
-    # Tailored package README (the copied project README references paths
-    # that do not exist inside the package).
-    # 为分发包定制一份精简 README（直接复制的项目 README 引用了包内不存在的路径）。
+    local synl_files=(lib/*.synl)
+
+    if [ "${#synl_files[@]}" -eq 0 ]; then
+        echo "::error::No .synl libraries found."
+        return 1
+    fi
+
+    cp "${synl_files[@]}" "$pkg/libs/"
+
+    cp -r examples/. "$pkg/examples/"
+
+    [ -f LICENSE ] && cp LICENSE "$pkg/"
+
+    # ----------------------------------------------------------------------
+    # Package README
+    # ----------------------------------------------------------------------
     cat > "$pkg/README.md" <<EOF
 # Syclun — Synth-OOP Interpreter ($name)
 
@@ -217,40 +250,124 @@ A self-contained Syclun distribution for **$os $arch**.
 
 ## Run / 运行
 
+### Linux / macOS
+
 \`\`\`bash
-bin/synth your-program.syn     # Linux / macOS
-bin\\synth.exe your-program.syn  # Windows
+bin/synth your-program.syn
 \`\`\`
 
-The interpreter resolves its standard libraries relative to the executable,
-so it works from any current directory. If you move the \`libs/\` directory,
-set \`SYNTH_LIB_DIR\` to its path.
+### Windows
 
-解释器依可执行文件位置解析标准库，故可在任意工作目录下运行；若移动了
-\`libs/\` 目录，请把 \`SYNTH_LIB_DIR\` 指向它。
+\`\`\`text
+bin\\synth.exe your-program.syn
+\`\`\`
 
-## What is inside / 目录内容
+The interpreter resolves its standard libraries relative to the executable.
 
-- \`bin/synth\` (\`synth.exe\`) — the interpreter.
-- \`libs/\` — standard-library interfaces (\`*.synl\`), loaded at runtime.
-- \`examples/\` — runnable Synth-OOP programs.
-- \`LICENSE\` — GPL-3.0-or-later. Programs you write in Synth-OOP are *not*
-  covered by it.
+If you move the \`libs/\` directory, set \`SYNTH_LIB_DIR\` to its path.
 
-For the full language documentation, see the bundled project `README.md`.
-The source lives in the project repository.
-完整语言文档见包内的项目 `README.md`；源码见项目仓库。
+## Contents
+
+- \`bin/synth\` or \`bin/synth.exe\` — interpreter
+- \`libs/\` — standard-library interfaces
+- \`examples/\` — example programs
+- \`LICENSE\` — GPL-3.0-or-later
+
+For the full language documentation, see the project repository.
 EOF
 
-    # Prove the assembled package is directly usable.
-    # 证明组装出的包可直接运行。
-    if [ -f "$pkg/examples/hello.syn" ]; then
-        smoke_test "$pkg" "$os" "$arch" "$exe"
-    fi
+    echo "[+] assembled $pkg"
+
+    return 0
 }
 
-# ---- summary table header ----------------------------------------------
+# ---- smoke test ----------------------------------------------------------
+smoke_test() {
+    local pkg="$1"
+    local os="$2"
+    local arch="$3"
+
+    if [ "$os" != "$HOST_OS" ] || [ "$arch" != "$HOST_ARCH" ]; then
+        echo "    smoke: skipped (cross-built binary)"
+        return 0
+    fi
+
+    local exe
+    local test_output
+
+    if [ "$os" = "windows" ]; then
+        exe="$pkg/bin/synth.exe"
+    else
+        exe="$pkg/bin/synth"
+    fi
+
+    if [ ! -f "$exe" ]; then
+        echo "::error::Smoke test executable not found: $exe"
+        return 1
+    fi
+
+    if [ ! -f "$pkg/examples/hello.syn" ]; then
+        echo "::error::Smoke test example not found."
+        return 1
+    fi
+
+    echo "=== Smoke test ==="
+    echo "Executable: $exe"
+
+    # IMPORTANT:
+    # Run the executable from the actual package directory so Windows DLL
+    # lookup sees the DLLs next to synth.exe.
+    #
+    # Do NOT copy only synth.exe to /tmp: that would test the runner's
+    # installed runtime instead of the release package.
+
+    if [ "$os" = "windows" ]; then
+
+        local win_pkg
+        local win_lib
+        local win_example
+
+        if have cygpath; then
+            win_pkg="$(cygpath -w "$pkg")"
+            win_lib="$(cygpath -w "$pkg/libs")"
+            win_example="$(cygpath -w "$pkg/examples/hello.syn")"
+
+            if test_output="$(
+                SYNTH_LIB_DIR="$win_lib" \
+                cmd.exe /c "\"$win_pkg\\bin\\synth.exe\" \"$win_example\"" \
+                2>&1
+            )"; then
+                echo "    smoke: OK -> $test_output"
+            else
+                echo "    smoke: FAILED -> $test_output"
+                return 1
+            fi
+        else
+            echo "::error::cygpath not found; cannot perform Windows package smoke test."
+            return 1
+        fi
+
+    else
+
+        if test_output="$(
+            SYNTH_LIB_DIR="$pkg/libs" \
+            "$exe" "$pkg/examples/hello.syn" \
+            2>&1
+        )"; then
+            echo "    smoke: OK -> $test_output"
+        else
+            echo "    smoke: FAILED -> $test_output"
+            return 1
+        fi
+
+    fi
+
+    return 0
+}
+
+# ---- initialize summary -------------------------------------------------
 mkdir -p "$DIST_DIR"
+
 {
     echo "# Synth-OOP (Syclun) release packages"
     echo
@@ -263,58 +380,222 @@ mkdir -p "$DIST_DIR"
 PRODUCED=()
 SKIPPED=()
 
-# ---- optional target filter -------------------------------------------
 FILTER="${PACKAGE_TARGETS:-}"
 
+# ---- build targets -------------------------------------------------------
 for t in "${TARGETS[@]}"; do
+
     IFS='|' read -r name os arch toolchain osx_arch note <<< "$t"
+
     [ -n "$FILTER" ] && [ "$FILTER" != "$name" ] && continue
 
     status="$(target_status "$os" "$arch")"
+
     if [ "${status%%:*}" = "skip" ]; then
         reason="${status#skip:}"
+
         echo "[!] $name: SKIPPED - $reason"
+
         SKIPPED+=("$name")
-        printf '| synth-%s | skipped | %s |\n' "$name" "$reason" >> "$SUMMARY"
+
+        printf '| synth-%s | skipped | %s |\n' \
+            "$name" "$reason" >> "$SUMMARY"
+
         continue
     fi
 
-    echo "[*] $name: building Release binary ..."
+    echo
+    echo "============================================================"
+    echo "[*] $name: building Release binary"
+    echo "============================================================"
+
     bdir="$PKG_BUILD/$name"
+
     rm -rf "$bdir"
 
-    cfg=(cmake -S . -B "$bdir" -DCMAKE_BUILD_TYPE=Release)
-    [ "$toolchain" != "-" ] && cfg+=(-DCMAKE_TOOLCHAIN_FILE="$toolchain")
-    [ "$osx_arch"  != "-" ] && cfg+=(-DCMAKE_OSX_ARCHITECTURES="$osx_arch")
-    # Optional explicit compilers (CI cross-builds / unusual toolchains).
-    # 可选的显式编译器（CI 交叉构建 / 特殊工具链）。
-    [ -n "${CMAKE_C_COMPILER:-}" ]   && cfg+=(-DCMAKE_C_COMPILER="$CMAKE_C_COMPILER")
-    [ -n "${CMAKE_CXX_COMPILER:-}" ] && cfg+=(-DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER")
-    [ -n "${CMAKE_RC_COMPILER:-}" ]  && cfg+=(-DCMAKE_RC_COMPILER="$CMAKE_RC_COMPILER")
-    if "${cfg[@]}" && cmake --build "$bdir" --target synth -j; then
-        if [ "$os" = "windows" ]; then exe="$bdir/synth.exe"; else exe="$bdir/synth"; fi
-        if [ ! -f "$exe" ]; then
-            echo "[!] $name: build produced no binary, skipping package."
-            SKIPPED+=("$name")
-            printf '| synth-%s | failed | no binary produced |\n' "$name" >> "$SUMMARY"
-            continue
+    cfg=(
+        cmake
+        -S .
+        -B "$bdir"
+        -DCMAKE_BUILD_TYPE=Release
+    )
+
+    # ----------------------------------------------------------------------
+    # Windows x64 MUST use MinGW-w64.
+    # ----------------------------------------------------------------------
+    if [ "$name" = "windows-x64" ]; then
+
+        if [ "$HOST_OS" != "windows" ]; then
+            echo "::error::windows-x64 must be built on a Windows host."
+            exit 1
         fi
-        assemble "$name" "$os" "$arch" "$exe"
-        PRODUCED+=("$name")
-        printf '| synth-%s | produced | %s |\n' "$name" "$note" >> "$SUMMARY"
-    else
-        echo "[!] $name: build failed, skipping package."
-        SKIPPED+=("$name")
-        printf '| synth-%s | failed | build error |\n' "$name" >> "$SUMMARY"
+
+        if ! have gcc || ! have g++; then
+            echo "::error::MinGW gcc/g++ not found."
+            exit 1
+        fi
+
+        echo "=== Windows x64 compiler ==="
+        echo "gcc: $(command -v gcc)"
+        echo "g++: $(command -v g++)"
+
+        gcc --version | head -1
+        g++ --version | head -1
+
+        cfg+=(
+            -G "MinGW Makefiles"
+            -DCMAKE_C_COMPILER=gcc
+            -DCMAKE_CXX_COMPILER=g++
+        )
     fi
+
+    [ "$toolchain" != "-" ] && \
+        cfg+=(-DCMAKE_TOOLCHAIN_FILE="$toolchain")
+
+    [ "$osx_arch" != "-" ] && \
+        cfg+=(-DCMAKE_OSX_ARCHITECTURES="$osx_arch")
+
+    # Optional explicit compilers for cross-builds.
+    [ -n "${CMAKE_C_COMPILER:-}" ] && \
+        cfg+=(-DCMAKE_C_COMPILER="$CMAKE_C_COMPILER")
+
+    [ -n "${CMAKE_CXX_COMPILER:-}" ] && \
+        cfg+=(-DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER")
+
+    [ -n "${CMAKE_RC_COMPILER:-}" ] && \
+        cfg+=(-DCMAKE_RC_COMPILER="$CMAKE_RC_COMPILER")
+
+    # ----------------------------------------------------------------------
+    # Configure ONCE.
+    # ----------------------------------------------------------------------
+    echo "[*] CMake configure..."
+
+    if ! "${cfg[@]}"; then
+        echo "::error::$name: CMake configure failed."
+
+        SKIPPED+=("$name")
+
+        printf '| synth-%s | failed | CMake configure error |\n' \
+            "$name" >> "$SUMMARY"
+
+        exit 1
+    fi
+
+    CURRENT_BUILD_DIR="$bdir"
+
+    # ----------------------------------------------------------------------
+    # Verify Windows x64 actually selected MinGW.
+    # ----------------------------------------------------------------------
+    if [ "$name" = "windows-x64" ]; then
+
+        if ! grep -E \
+            'CMAKE_CXX_COMPILER:FILEPATH=.*/g\+\+(.exe)?$' \
+            "$bdir/CMakeCache.txt" >/dev/null 2>&1; then
+
+            echo "::error::windows-x64 is NOT using MinGW g++."
+            echo
+            echo "Actual compiler:"
+            grep -E 'CMAKE_(C|CXX)_COMPILER' \
+                "$bdir/CMakeCache.txt" || true
+
+            exit 1
+        fi
+
+        echo "CMake compiler check: PASS"
+    fi
+
+    # ----------------------------------------------------------------------
+    # Build.
+    # ----------------------------------------------------------------------
+    echo "[*] Building synth..."
+
+    if ! cmake --build "$bdir" --target synth -j; then
+
+        echo "::error::$name: build failed."
+
+        SKIPPED+=("$name")
+
+        printf '| synth-%s | failed | build error |\n' \
+            "$name" >> "$SUMMARY"
+
+        exit 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # Locate executable.
+    # ----------------------------------------------------------------------
+    if [ "$os" = "windows" ]; then
+        exe="$bdir/synth.exe"
+    else
+        exe="$bdir/synth"
+    fi
+
+    if [ ! -f "$exe" ]; then
+
+        echo "::error::$name: build produced no binary."
+
+        SKIPPED+=("$name")
+
+        printf '| synth-%s | failed | no binary produced |\n' \
+            "$name" >> "$SUMMARY"
+
+        exit 1
+    fi
+
+    echo "Binary: $exe"
+
+    # ----------------------------------------------------------------------
+    # Verify Windows x64 binary is actually MinGW.
+    # ----------------------------------------------------------------------
+    if [ "$name" = "windows-x64" ]; then
+
+        if ! verify_windows_mingw "$exe"; then
+            echo "::error::Windows x64 toolchain verification failed."
+            exit 1
+        fi
+    fi
+
+    # ----------------------------------------------------------------------
+    # Assemble package.
+    # ----------------------------------------------------------------------
+    if ! assemble "$name" "$os" "$arch" "$exe"; then
+
+        echo "::error::$name: package assembly failed."
+
+        SKIPPED+=("$name")
+
+        printf '| synth-%s | failed | package assembly error |\n' \
+            "$name" >> "$SUMMARY"
+
+        exit 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # Verify final package itself.
+    # ----------------------------------------------------------------------
+    if ! smoke_test "$DIST_DIR/synth-$name" "$os" "$arch"; then
+
+        echo "::error::$name: package smoke test failed."
+
+        SKIPPED+=("$name")
+
+        printf '| synth-%s | failed | package smoke test failed |\n' \
+            "$name" >> "$SUMMARY"
+
+        exit 1
+    fi
+
+    PRODUCED+=("$name")
+
+    printf '| synth-%s | produced | %s |\n' \
+        "$name" "$note" >> "$SUMMARY"
+
 done
 
-# ---- final report ------------------------------------------------------
-# Flatten the arrays first: keeps the echoes free of nested command
-# substitution, which some shells parse unreliably.
-# 先把数组展平为字符串，避免 echo 中出现嵌套命令替换（部分 shell 解析不稳）。
+# ---- final report --------------------------------------------------------
 prod_list="$(printf '%s ' "${PRODUCED[@]}")"
 skip_list="$(printf '%s ' "${SKIPPED[@]}")"
+
 {
     echo
     echo "## Summary / 汇总"
@@ -324,9 +605,18 @@ skip_list="$(printf '%s ' "${SKIPPED[@]}")"
 } >> "$SUMMARY"
 
 echo
-echo "=============================================="
+echo "============================================================"
 echo " Packaging complete / 打包完成"
 echo " Produced: ${prod_list:-none}"
 echo " Skipped : ${skip_list:-none}"
 echo " See: $SUMMARY"
-echo "=============================================="
+echo "============================================================"
+
+# A packaging run that was explicitly asked to build a target must never
+# silently succeed without producing it.
+if [ -n "$FILTER" ] && [ "${#PRODUCED[@]}" -eq 0 ]; then
+    echo "::error::Requested target '$FILTER' was not produced."
+    exit 1
+fi
+
+exit 0
