@@ -97,6 +97,7 @@ target_status() {
 }
 
 # ---- Windows MinGW validation -------------------------------------------
+# ---- Windows MinGW validation -------------------------------------------
 verify_windows_mingw() {
     local exe="$1"
     local cache_file="$CURRENT_BUILD_DIR/CMakeCache.txt"
@@ -217,6 +218,78 @@ verify_windows_mingw() {
         echo "::error::Unexpected C++ compiler ID: $cxx_compiler_id"
         return 1
     fi
+
+    # ----------------------------------------------------------------------
+    # Actual toolchain in PATH
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== Compiler executable check ==="
+
+    if ! have gcc; then
+        echo "::error::gcc is not available in PATH."
+        return 1
+    fi
+
+    if ! have g++; then
+        echo "::error::g++ is not available in PATH."
+        return 1
+    fi
+
+    echo "gcc: $(command -v gcc)"
+    echo "g++: $(command -v g++)"
+
+    echo
+    echo "=== Compiler version ==="
+
+    gcc --version | head -n 1
+    g++ --version | head -n 1
+
+    # ----------------------------------------------------------------------
+    # Executable
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== Executable check ==="
+
+    if [ ! -f "$exe" ]; then
+        echo "::error::Windows executable not found: $exe"
+        return 1
+    fi
+
+    echo "Executable: $exe"
+
+    if ! command -v objdump >/dev/null 2>&1; then
+        echo "::error::objdump is not available."
+        return 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # DLL dependency inspection
+    #
+    # IMPORTANT:
+    # Do NOT require libstdc++-6.dll to appear in the executable.
+    # MinGW may legitimately link some runtime components differently.
+    # We only report the actual dependencies here.
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== Executable DLL dependencies ==="
+
+    local dlls
+    dlls="$(
+        objdump -p "$exe" |
+        sed -n 's/^ *DLL Name: *//p'
+    )"
+
+    if [ -n "$dlls" ]; then
+        printf '%s\n' "$dlls"
+    else
+        echo "(no imported DLLs reported by objdump)"
+    fi
+
+    echo
+    echo "MinGW toolchain verification: PASS"
+
+    return 0
+}
 
     # ----------------------------------------------------------------------
     # Actual toolchain in PATH
