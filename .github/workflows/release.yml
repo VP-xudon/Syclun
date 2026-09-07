@@ -75,7 +75,7 @@ jobs:
         with:
           name: verify-report
           path: build/verify-artifacts
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Gate — reject on defects unless allowed / 门禁：有缺陷则拒绝（除非允许）
         run: |
@@ -211,7 +211,7 @@ jobs:
           cd artifacts
           shopt -s nullglob
           for d in synth-*; do
-            if [ -d "$d" ]; then
+            if [ -d "$d" ] && [ "$d" != "synth-oop-vsix" ]; then
               echo "archiving $d ..."
               zip -r "../$d.zip" "$d"
             fi
@@ -223,6 +223,24 @@ jobs:
           cp -f artifacts/synth-oop-vsix/*.vsix assets/ 2>/dev/null \
             || echo "no .vsix artifact found"
           ls -la *.zip assets/
+
+      - name: Verify required release assets
+        shell: bash
+        run: |
+          required=(
+            synth-windows-x64.zip
+            synth-windows-arm64.zip
+            synth-macos-x64.zip
+            synth-macos-arm64.zip
+            synth-linux-x64.zip
+          )
+      
+          for f in "${required[@]}"; do
+            test -f "$f" || {
+              echo "::error::Missing release asset: $f"
+              exit 1
+            }
+          done
 
       - name: Compute changelog / 计算变更日志
         run: |
