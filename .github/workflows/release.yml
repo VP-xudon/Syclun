@@ -172,12 +172,11 @@ jobs:
         run: bash package.sh
 
       - name: Upload artifact / 上传产物
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: synth-${{ matrix.target }}
           path: build/dist/synth-${{ matrix.target }}
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # The VS Code syntax-highlighting extension: built offline with the Python
   # standard library only, and attached to the release next to the five
