@@ -99,13 +99,20 @@ function(synthoop_add_executable target source)
     add_executable(${target} "${source}")
     target_include_directories(${target} PRIVATE ${SYNTHOOP_INCLUDE_DIRS})
 
+    # MSVC: main.cpp and the large header-only implementation can exceed
+    # the default COFF section limit.
+    # MSVC：main.cpp 及大量 header-only 实现可能超过默认的 COFF section 限制。
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /bigobj)
+    endif()
+
     # A large native stack keeps the interpreter's recursion guard
     # (RECURSION_LIMIT = 1000) reachable: each Synth self-recursion level
     # consumes several C++ frames, and the Windows default of 2 MB overflows
     # long before the guard can fire. Enlarge it where a link-time setting
     # exists; on Linux/BSD the stack is an rlimit (see the note printed below).
     # 更大的原生栈使解释器的递归护栏（上限 1000）可达：每层 Synth 自递归
-    # 消耗多个 C++ 帧，Windows 默认 2MB 远在护栏触发前就会溢出。凡有链接期
+    # 消耗多个 C++ 帧，Windows 默认 2MB 远在护栏触发前就溢出。凡有链接期
     # 设置的平台一律放大；Linux/BSD 的栈是 rlimit（见下方提示）。
     if(WIN32)
         if(MSVC)
@@ -118,6 +125,7 @@ function(synthoop_add_executable target source)
         target_link_options(${target} PRIVATE -Wl,-stack_size,0x2000000)
     endif()
 endfunction()
+
 
 # ---- Targets ------------------------------------------------------------
 # The interpreter itself.
