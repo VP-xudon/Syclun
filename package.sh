@@ -99,63 +99,200 @@ target_status() {
 # ---- Windows MinGW validation -------------------------------------------
 verify_windows_mingw() {
     local exe="$1"
+    local cache_file="$CURRENT_BUILD_DIR/CMakeCache.txt"
 
-    echo "=== Windows x64 MinGW validation ==="
+    echo
+    echo "============================================================"
+    echo " Verifying Windows x64 MinGW toolchain"
+    echo "============================================================"
 
-    if ! have gcc || ! have g++; then
-        echo "::error::MinGW gcc/g++ not found."
+    if [ ! -f "$cache_file" ]; then
+        echo "::error::CMakeCache.txt not found: $cache_file"
+        return 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # Generator
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== CMake generator ==="
+
+    local generator
+    generator="$(
+        sed -n 's/^CMAKE_GENERATOR:.*=//p' \
+            "$cache_file" |
+        head -n 1
+    )"
+
+    echo "CMAKE_GENERATOR=$generator"
+
+    if [ "$generator" != "MinGW Makefiles" ]; then
+        echo "::error::windows-x64 is not using MinGW Makefiles."
+        echo "::error::Actual generator: $generator"
+        return 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # Compiler
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== CMake compiler ==="
+
+    grep -E \
+        '^CMAKE_(GENERATOR|C_COMPILER|CXX_COMPILER|C_COMPILER_ID|CXX_COMPILER_ID):' \
+        "$cache_file" || true
+
+    local c_compiler
+    local cxx_compiler
+    local c_compiler_id
+    local cxx_compiler_id
+
+    c_compiler="$(
+        sed -n 's/^CMAKE_C_COMPILER:[^=]*=//p' \
+            "$cache_file" |
+        head -n 1
+    )"
+
+    cxx_compiler="$(
+        sed -n 's/^CMAKE_CXX_COMPILER:[^=]*=//p' \
+            "$cache_file" |
+        head -n 1
+    )"
+
+    c_compiler_id="$(
+        sed -n 's/^CMAKE_C_COMPILER_ID:[^=]*=//p' \
+            "$cache_file" |
+        head -n 1
+    )"
+
+    cxx_compiler_id="$(
+        sed -n 's/^CMAKE_CXX_COMPILER_ID:[^=]*=//p' \
+            "$cache_file" |
+        head -n 1
+    )"
+
+    echo "CMAKE_C_COMPILER=$c_compiler"
+    echo "CMAKE_CXX_COMPILER=$cxx_compiler"
+    echo "CMAKE_C_COMPILER_ID=$c_compiler_id"
+    echo "CMAKE_CXX_COMPILER_ID=$cxx_compiler_id"
+
+    if [ -z "$c_compiler" ]; then
+        echo "::error::CMAKE_C_COMPILER was not found."
+        return 1
+    fi
+
+    if [ -z "$cxx_compiler" ]; then
+        echo "::error::CMAKE_CXX_COMPILER was not found."
+        return 1
+    fi
+
+    case "$c_compiler" in
+        *gcc.exe|*gcc)
+            echo "C compiler check: PASS (MinGW gcc)"
+            ;;
+        *)
+            echo "::error::CMake did not select MinGW gcc."
+            echo "::error::Actual C compiler: $c_compiler"
+            return 1
+            ;;
+    esac
+
+    case "$cxx_compiler" in
+        *g++.exe|*g++)
+            echo "C++ compiler check: PASS (MinGW g++)"
+            ;;
+        *)
+            echo "::error::CMake did not select MinGW g++."
+            echo "::error::Actual C++ compiler: $cxx_compiler"
+            return 1
+            ;;
+    esac
+
+    if [ -n "$c_compiler_id" ] && [ "$c_compiler_id" != "GNU" ]; then
+        echo "::error::Unexpected C compiler ID: $c_compiler_id"
+        return 1
+    fi
+
+    if [ -n "$cxx_compiler_id" ] && [ "$cxx_compiler_id" != "GNU" ]; then
+        echo "::error::Unexpected C++ compiler ID: $cxx_compiler_id"
+        return 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # Actual toolchain in PATH
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== Compiler executable check ==="
+
+    if ! have gcc; then
+        echo "::error::gcc is not available in PATH."
+        return 1
+    fi
+
+    if ! have g++; then
+        echo "::error::g++ is not available in PATH."
         return 1
     fi
 
     echo "gcc: $(command -v gcc)"
     echo "g++: $(command -v g++)"
 
-    gcc --version | head -1
-    g++ --version | head -1
+    echo
+    echo "=== Compiler version ==="
+
+    gcc --version | head -n 1
+    g++ --version | head -n 1
+
+    # ----------------------------------------------------------------------
+    # Executable
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== Executable check ==="
+
+    if [ ! -f "$exe" ]; then
+        echo "::error::Windows executable not found: $exe"
+        return 1
+    fi
+
+    echo "Executable: $exe"
 
     if ! have objdump; then
-        echo "::error::objdump not found."
+        echo "::error::objdump is not available."
         return 1
     fi
 
-    echo "=== CMake compiler ==="
+    # ----------------------------------------------------------------------
+    # DLL dependencies
+    # ----------------------------------------------------------------------
+    echo
+    echo "=== Executable DLL dependencies ==="
 
-    if ! grep -E \
-        'CMAKE_CXX_COMPILER:FILEPATH=.*/g\+\+(.exe)?$' \
-        "$CURRENT_BUILD_DIR/CMakeCache.txt" >/dev/null 2>&1; then
+    local dlls
+    dlls="$(
+        objdump -p "$exe" |
+        sed -n 's/^ *DLL Name: *//p'
+    )"
 
-        echo "::error::CMake did not select MinGW g++."
-        echo "Expected a MinGW g++ compiler."
-        grep -E 'CMAKE_(C|CXX)_COMPILER' \
-            "$CURRENT_BUILD_DIR/CMakeCache.txt" || true
-        return 1
-    fi
+    printf '%s\n' "$dlls"
 
-    echo "CMake compiler: MinGW g++"
+    local required_dll
 
-    echo "=== Binary DLL dependencies ==="
+    for required_dll in \
+        libstdc++-6.dll \
+        libgcc_s_seh-1.dll \
+        libwinpthread-1.dll
+    do
+        if ! printf '%s\n' "$dlls" |
+            grep -Fxi "$required_dll" >/dev/null 2>&1
+        then
+            echo "::error::Executable does not depend on expected MinGW DLL: $required_dll"
+            return 1
+        fi
+    done
 
-    local deps
-    deps="$(objdump -p "$exe" | grep 'DLL Name:' || true)"
-    echo "$deps"
+    echo
+    echo "MinGW toolchain verification: PASS"
 
-    if ! echo "$deps" | grep -qi 'libstdc++-6.dll'; then
-        echo "::error::synth.exe does not depend on libstdc++-6.dll."
-        echo "This binary does not appear to be a MinGW C++ binary."
-        return 1
-    fi
-
-    if ! echo "$deps" | grep -qi 'libgcc_s_seh-1.dll'; then
-        echo "::error::synth.exe does not depend on libgcc_s_seh-1.dll."
-        return 1
-    fi
-
-    if ! echo "$deps" | grep -qi 'libwinpthread-1.dll'; then
-        echo "::error::synth.exe does not depend on libwinpthread-1.dll."
-        return 1
-    fi
-
-    echo "MinGW runtime dependency check: PASS"
     return 0
 }
 
@@ -173,7 +310,7 @@ assemble() {
     rm -rf "$pkg"
     mkdir -p "$pkg/bin" "$pkg/libs" "$pkg/examples"
 
-    cp "$exe" "$pkg/bin/"
+    cp "$exe" "$pkg/bin/" || return 1
 
     # ----------------------------------------------------------------------
     # Windows runtime
@@ -181,6 +318,7 @@ assemble() {
     if [ "$os" = "windows" ]; then
 
         if [ "$name" = "windows-x64" ]; then
+
             if ! have g++; then
                 echo "::error::g++ not found for Windows x64 runtime packaging."
                 return 1
@@ -189,6 +327,7 @@ assemble() {
             local runtime_dir
             runtime_dir="$(dirname "$(command -v g++)")"
 
+            echo
             echo "=== Bundling MinGW runtime ==="
             echo "runtime directory: $runtime_dir"
 
@@ -201,21 +340,27 @@ assemble() {
             local dll
 
             for dll in "${required_dlls[@]}"; do
+
                 if [ ! -f "$runtime_dir/$dll" ]; then
                     echo "::error::Missing required MinGW runtime DLL: $dll"
                     return 1
                 fi
 
                 cp -f "$runtime_dir/$dll" "$pkg/bin/" || return 1
+
                 echo "    + $dll"
             done
 
-            # Verify that every required DLL is actually inside the package.
+            echo
+            echo "=== Verify packaged runtime ==="
+
             for dll in "${required_dlls[@]}"; do
                 if [ ! -f "$pkg/bin/$dll" ]; then
                     echo "::error::Package is missing $dll"
                     return 1
                 fi
+
+                echo "    PASS: $dll"
             done
 
             echo "Windows x64 runtime packaging: PASS"
@@ -234,9 +379,9 @@ assemble() {
         return 1
     fi
 
-    cp "${synl_files[@]}" "$pkg/libs/"
+    cp "${synl_files[@]}" "$pkg/libs/" || return 1
 
-    cp -r examples/. "$pkg/examples/"
+    cp -r examples/. "$pkg/examples/" || return 1
 
     [ -f LICENSE ] && cp LICENSE "$pkg/"
 
@@ -311,42 +456,48 @@ smoke_test() {
         return 1
     fi
 
+    echo
     echo "=== Smoke test ==="
     echo "Executable: $exe"
 
-    # IMPORTANT:
-    # Run the executable from the actual package directory so Windows DLL
-    # lookup sees the DLLs next to synth.exe.
-    #
-    # Do NOT copy only synth.exe to /tmp: that would test the runner's
-    # installed runtime instead of the release package.
-
+    # ----------------------------------------------------------------------
+    # Windows
+    # ----------------------------------------------------------------------
     if [ "$os" = "windows" ]; then
 
         local win_pkg
         local win_lib
         local win_example
 
-        if have cygpath; then
-            win_pkg="$(cygpath -w "$pkg")"
-            win_lib="$(cygpath -w "$pkg/libs")"
-            win_example="$(cygpath -w "$pkg/examples/hello.syn")"
-
-            if test_output="$(
-                SYNTH_LIB_DIR="$win_lib" \
-                cmd.exe /c "\"$win_pkg\\bin\\synth.exe\" \"$win_example\"" \
-                2>&1
-            )"; then
-                echo "    smoke: OK -> $test_output"
-            else
-                echo "    smoke: FAILED -> $test_output"
-                return 1
-            fi
-        else
-            echo "::error::cygpath not found; cannot perform Windows package smoke test."
+        if ! have cygpath; then
+            echo "::error::cygpath not found."
             return 1
         fi
 
+        win_pkg="$(cygpath -w "$pkg")"
+        win_lib="$(cygpath -w "$pkg/libs")"
+        win_example="$(cygpath -w "$pkg/examples/hello.syn")"
+
+        echo "Package: $win_pkg"
+        echo "Library: $win_lib"
+        echo "Example: $win_example"
+
+        if test_output="$(
+            SYNTH_LIB_DIR="$win_lib" \
+            cmd.exe /c "\"$win_pkg\\bin\\synth.exe\" \"$win_example\"" \
+            2>&1
+        )"; then
+            echo "    smoke: OK"
+            echo "$test_output"
+        else
+            echo "    smoke: FAILED"
+            echo "$test_output"
+            return 1
+        fi
+
+    # ----------------------------------------------------------------------
+    # Linux / macOS
+    # ----------------------------------------------------------------------
     else
 
         if test_output="$(
@@ -354,9 +505,11 @@ smoke_test() {
             "$exe" "$pkg/examples/hello.syn" \
             2>&1
         )"; then
-            echo "    smoke: OK -> $test_output"
+            echo "    smoke: OK"
+            echo "$test_output"
         else
-            echo "    smoke: FAILED -> $test_output"
+            echo "    smoke: FAILED"
+            echo "$test_output"
             return 1
         fi
 
@@ -392,6 +545,7 @@ for t in "${TARGETS[@]}"; do
     status="$(target_status "$os" "$arch")"
 
     if [ "${status%%:*}" = "skip" ]; then
+
         reason="${status#skip:}"
 
         echo "[!] $name: SKIPPED - $reason"
@@ -411,6 +565,9 @@ for t in "${TARGETS[@]}"; do
 
     bdir="$PKG_BUILD/$name"
 
+    # IMPORTANT:
+    # Always remove the complete CMake build tree before configuring.
+    # This prevents a previous MSVC compiler from being reused.
     rm -rf "$bdir"
 
     cfg=(
@@ -430,17 +587,31 @@ for t in "${TARGETS[@]}"; do
             exit 1
         fi
 
-        if ! have gcc || ! have g++; then
-            echo "::error::MinGW gcc/g++ not found."
+        if ! have gcc; then
+            echo "::error::MinGW gcc not found."
             exit 1
         fi
 
-        echo "=== Windows x64 compiler ==="
+        if ! have g++; then
+            echo "::error::MinGW g++ not found."
+            exit 1
+        fi
+
+        if ! have cmake; then
+            echo "::error::cmake not found."
+            exit 1
+        fi
+
+        echo
+        echo "=== Windows x64 MinGW environment ==="
+        echo "MSYSTEM=${MSYSTEM:-unknown}"
         echo "gcc: $(command -v gcc)"
         echo "g++: $(command -v g++)"
+        echo "cmake: $(command -v cmake)"
 
-        gcc --version | head -1
-        g++ --version | head -1
+        gcc --version | head -n 1
+        g++ --version | head -n 1
+        cmake --version | head -n 1
 
         cfg+=(
             -G "MinGW Makefiles"
@@ -468,9 +639,11 @@ for t in "${TARGETS[@]}"; do
     # ----------------------------------------------------------------------
     # Configure ONCE.
     # ----------------------------------------------------------------------
+    echo
     echo "[*] CMake configure..."
 
     if ! "${cfg[@]}"; then
+
         echo "::error::$name: CMake configure failed."
 
         SKIPPED+=("$name")
@@ -481,32 +654,31 @@ for t in "${TARGETS[@]}"; do
         exit 1
     fi
 
-    CURRENT_BUILD_DIR="$bdir"
-
     # ----------------------------------------------------------------------
-    # Verify Windows x64 actually selected MinGW.
+    # Print actual CMake configuration.
     # ----------------------------------------------------------------------
-    if [ "$name" = "windows-x64" ]; then
+    echo
+    echo "=== CMake configuration result ==="
 
-        if ! grep -E \
-            'CMAKE_CXX_COMPILER:FILEPATH=.*/g\+\+(.exe)?$' \
-            "$bdir/CMakeCache.txt" >/dev/null 2>&1; then
+    if [ -f "$bdir/CMakeCache.txt" ]; then
 
-            echo "::error::windows-x64 is NOT using MinGW g++."
-            echo
-            echo "Actual compiler:"
-            grep -E 'CMAKE_(C|CXX)_COMPILER' \
-                "$bdir/CMakeCache.txt" || true
+        grep -E \
+            '^CMAKE_(GENERATOR|C_COMPILER|CXX_COMPILER|C_COMPILER_ID|CXX_COMPILER_ID):' \
+            "$bdir/CMakeCache.txt" || true
 
-            exit 1
-        fi
+    else
 
-        echo "CMake compiler check: PASS"
+        echo "::error::CMakeCache.txt was not generated."
+        exit 1
+
     fi
+
+    CURRENT_BUILD_DIR="$bdir"
 
     # ----------------------------------------------------------------------
     # Build.
     # ----------------------------------------------------------------------
+    echo
     echo "[*] Building synth..."
 
     if ! cmake --build "$bdir" --target synth -j; then
@@ -542,17 +714,19 @@ for t in "${TARGETS[@]}"; do
         exit 1
     fi
 
+    echo
     echo "Binary: $exe"
 
     # ----------------------------------------------------------------------
-    # Verify Windows x64 binary is actually MinGW.
+    # Verify Windows x64 binary.
     # ----------------------------------------------------------------------
     if [ "$name" = "windows-x64" ]; then
 
         if ! verify_windows_mingw "$exe"; then
-            echo "::error::Windows x64 toolchain verification failed."
+            echo "::error::Windows x64 MinGW verification failed."
             exit 1
         fi
+
     fi
 
     # ----------------------------------------------------------------------
