@@ -8,17 +8,32 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 # ---- host detection -----------------------------------------------------
+
 case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) HOST_OS=windows ;;
-    Darwin)               HOST_OS=macos ;;
-    Linux)                HOST_OS=linux ;;
-    *)                    HOST_OS=unknown ;;
+    MINGW*|MSYS*|CYGWIN*)
+        HOST_OS=windows
+        ;;
+    Darwin)
+        HOST_OS=macos
+        ;;
+    Linux)
+        HOST_OS=linux
+        ;;
+    *)
+        HOST_OS=unknown
+        ;;
 esac
 
 case "$(uname -m)" in
-    x86_64|AMD64|amd64) HOST_ARCH=x64 ;;
-    aarch64|arm64)      HOST_ARCH=arm64 ;;
-    *)                  HOST_ARCH=unknown ;;
+    x86_64|AMD64|amd64)
+        HOST_ARCH=x64
+        ;;
+    aarch64|arm64)
+        HOST_ARCH=arm64
+        ;;
+    *)
+        HOST_ARCH=unknown
+        ;;
 esac
 
 DIST_DIR="build/dist"
@@ -30,12 +45,14 @@ have() {
 }
 
 # ---- help ----------------------------------------------------------------
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     sed -n '2,40p' "$0"
     exit 0
 fi
 
 # ---- target table --------------------------------------------------------
+
 TARGETS=(
     "windows-x64|windows|x64|-|-|Native Windows x64 build with MinGW-w64."
     "windows-arm64|windows|arm64|cmake/toolchain-windows-arm64.cmake|-|Cross to Windows/ARM64 via aarch64-w64-mingw32."
@@ -45,20 +62,21 @@ TARGETS=(
 )
 
 # ---- target availability -------------------------------------------------
+
 target_status() {
     local os="$1"
     local arch="$2"
 
     if [ -n "${SYNTH_FORCE_BUILD:-}" ]; then
         echo "build"
-        return
+        return 0
     fi
 
     case "$os" in
         windows)
             if [ "$HOST_OS" != "windows" ]; then
                 echo "skip:Windows packages must be built on a Windows host (or with a MinGW-w64 cross toolchain)."
-                return
+                return 0
             fi
 
             if [ "$arch" = "arm64" ]; then
@@ -97,7 +115,7 @@ target_status() {
 }
 
 # ---- Windows MinGW validation -------------------------------------------
-# ---- Windows MinGW validation -------------------------------------------
+
 verify_windows_mingw() {
     local exe="$1"
     local cache_file="$CURRENT_BUILD_DIR/CMakeCache.txt"
@@ -113,29 +131,50 @@ verify_windows_mingw() {
     fi
 
     # ----------------------------------------------------------------------
-    # Generator
+    # MSYS2 environment
     # ----------------------------------------------------------------------
+
+    echo
+    echo "=== MSYS2 environment ==="
+
+    local msystem
+    msystem="${MSYSTEM:-}"
+
+    echo "MSYSTEM=${msystem:-unset}"
+
+    if [ "$msystem" != "MINGW64" ]; then
+        echo "::error::Windows x64 must use MSYS2 MINGW64."
+        echo "::error::MSYSTEM=${msystem:-unset}"
+        return 1
+    fi
+
+    # ----------------------------------------------------------------------
+    # CMake generator
+    # ----------------------------------------------------------------------
+
     echo
     echo "=== CMake generator ==="
 
     local generator
+
     generator="$(
         sed -n 's/^CMAKE_GENERATOR:.*=//p' \
             "$cache_file" |
         head -n 1
     )"
 
-    echo "CMAKE_GENERATOR=$generator"
+    echo "CMAKE_GENERATOR=${generator:-unset}"
 
     if [ "$generator" != "MinGW Makefiles" ]; then
         echo "::error::windows-x64 is not using MinGW Makefiles."
-        echo "::error::Actual generator: $generator"
+        echo "::error::Actual generator: ${generator:-unset}"
         return 1
     fi
 
     # ----------------------------------------------------------------------
-    # Compiler
+    # CMake compiler
     # ----------------------------------------------------------------------
+
     echo
     echo "=== CMake compiler ==="
 
@@ -172,10 +211,10 @@ verify_windows_mingw() {
         head -n 1
     )"
 
-    echo "CMAKE_C_COMPILER=$c_compiler"
-    echo "CMAKE_CXX_COMPILER=$cxx_compiler"
-    echo "CMAKE_C_COMPILER_ID=$c_compiler_id"
-    echo "CMAKE_CXX_COMPILER_ID=$cxx_compiler_id"
+    echo "CMAKE_C_COMPILER=${c_compiler:-unset}"
+    echo "CMAKE_CXX_COMPILER=${cxx_compiler:-unset}"
+    echo "CMAKE_C_COMPILER_ID=${c_compiler_id:-unset}"
+    echo "CMAKE_CXX_COMPILER_ID=${cxx_compiler_id:-unset}"
 
     if [ -z "$c_compiler" ]; then
         echo "::error::CMAKE_C_COMPILER was not found."
@@ -220,8 +259,9 @@ verify_windows_mingw() {
     fi
 
     # ----------------------------------------------------------------------
-    # Actual toolchain in PATH
+    # Actual compiler in PATH
     # ----------------------------------------------------------------------
+
     echo
     echo "=== Compiler executable check ==="
 
@@ -235,8 +275,14 @@ verify_windows_mingw() {
         return 1
     fi
 
-    echo "gcc: $(command -v gcc)"
-    echo "g++: $(command -v g++)"
+    local gcc_path
+    local gxx_path
+
+    gcc_path="$(command -v gcc)"
+    gxx_path="$(command -v g++)"
+
+    echo "gcc: $gcc_path"
+    echo "g++: $gxx_path"
 
     echo
     echo "=== Compiler version ==="
@@ -247,6 +293,7 @@ verify_windows_mingw() {
     # ----------------------------------------------------------------------
     # Executable
     # ----------------------------------------------------------------------
+
     echo
     echo "=== Executable check ==="
 
@@ -257,7 +304,7 @@ verify_windows_mingw() {
 
     echo "Executable: $exe"
 
-    if ! command -v objdump >/dev/null 2>&1; then
+    if ! have objdump; then
         echo "::error::objdump is not available."
         return 1
     fi
@@ -266,14 +313,15 @@ verify_windows_mingw() {
     # DLL dependency inspection
     #
     # IMPORTANT:
-    # Do NOT require libstdc++-6.dll to appear in the executable.
-    # MinGW may legitimately link some runtime components differently.
-    # We only report the actual dependencies here.
+    # Do not require a specific MinGW DLL to appear in imports.
+    # The actual runtime linkage is reported only.
     # ----------------------------------------------------------------------
+
     echo
     echo "=== Executable DLL dependencies ==="
 
     local dlls
+
     dlls="$(
         objdump -p "$exe" |
         sed -n 's/^ *DLL Name: *//p'
@@ -292,6 +340,7 @@ verify_windows_mingw() {
 }
 
 # ---- assemble package ----------------------------------------------------
+
 assemble() {
     local name="$1"
     local os="$2"
@@ -303,68 +352,78 @@ assemble() {
     echo "[*] assembling $pkg"
 
     rm -rf "$pkg"
-    mkdir -p "$pkg/bin" "$pkg/libs" "$pkg/examples"
 
-    cp "$exe" "$pkg/bin/" || return 1
+    mkdir -p \
+        "$pkg/bin" \
+        "$pkg/libs" \
+        "$pkg/examples"
+
+    if ! cp "$exe" "$pkg/bin/"; then
+        echo "::error::Failed to copy executable into package."
+        return 1
+    fi
 
     # ----------------------------------------------------------------------
-    # Windows runtime
+    # Windows x64 MinGW runtime
     # ----------------------------------------------------------------------
-    if [ "$os" = "windows" ]; then
 
-        if [ "$name" = "windows-x64" ]; then
+    if [ "$os" = "windows" ] && [ "$name" = "windows-x64" ]; then
 
-            if ! have g++; then
-                echo "::error::g++ not found for Windows x64 runtime packaging."
+        if ! have g++; then
+            echo "::error::g++ not found for Windows x64 runtime packaging."
+            return 1
+        fi
+
+        local runtime_dir
+        runtime_dir="$(dirname "$(command -v g++)")"
+
+        echo
+        echo "=== Bundling MinGW runtime ==="
+        echo "runtime directory: $runtime_dir"
+
+        local required_dlls=(
+            "libstdc++-6.dll"
+            "libgcc_s_seh-1.dll"
+            "libwinpthread-1.dll"
+        )
+
+        local dll
+
+        for dll in "${required_dlls[@]}"; do
+
+            if [ ! -f "$runtime_dir/$dll" ]; then
+                echo "::error::Missing required MinGW runtime DLL: $runtime_dir/$dll"
                 return 1
             fi
 
-            local runtime_dir
-            runtime_dir="$(dirname "$(command -v g++)")"
+            if ! cp -f "$runtime_dir/$dll" "$pkg/bin/"; then
+                echo "::error::Failed to package $dll"
+                return 1
+            fi
 
-            echo
-            echo "=== Bundling MinGW runtime ==="
-            echo "runtime directory: $runtime_dir"
+            echo "    + $dll"
+        done
 
-            local required_dlls=(
-                libstdc++-6.dll
-                libgcc_s_seh-1.dll
-                libwinpthread-1.dll
-            )
+        echo
+        echo "=== Verify packaged runtime ==="
 
-            local dll
+        for dll in "${required_dlls[@]}"; do
 
-            for dll in "${required_dlls[@]}"; do
+            if [ ! -f "$pkg/bin/$dll" ]; then
+                echo "::error::Package is missing $dll"
+                return 1
+            fi
 
-                if [ ! -f "$runtime_dir/$dll" ]; then
-                    echo "::error::Missing required MinGW runtime DLL: $dll"
-                    return 1
-                fi
+            echo "    PASS: $dll"
+        done
 
-                cp -f "$runtime_dir/$dll" "$pkg/bin/" || return 1
-
-                echo "    + $dll"
-            done
-
-            echo
-            echo "=== Verify packaged runtime ==="
-
-            for dll in "${required_dlls[@]}"; do
-                if [ ! -f "$pkg/bin/$dll" ]; then
-                    echo "::error::Package is missing $dll"
-                    return 1
-                fi
-
-                echo "    PASS: $dll"
-            done
-
-            echo "Windows x64 runtime packaging: PASS"
-        fi
+        echo "Windows x64 runtime packaging: PASS"
     fi
 
     # ----------------------------------------------------------------------
     # Standard libraries
     # ----------------------------------------------------------------------
+
     shopt -s nullglob
 
     local synl_files=(lib/*.synl)
@@ -374,15 +433,24 @@ assemble() {
         return 1
     fi
 
-    cp "${synl_files[@]}" "$pkg/libs/" || return 1
+    if ! cp "${synl_files[@]}" "$pkg/libs/"; then
+        echo "::error::Failed to copy .synl libraries."
+        return 1
+    fi
 
-    cp -r examples/. "$pkg/examples/" || return 1
+    if ! cp -r examples/. "$pkg/examples/"; then
+        echo "::error::Failed to copy examples."
+        return 1
+    fi
 
-    [ -f LICENSE ] && cp LICENSE "$pkg/"
+    if [ -f LICENSE ]; then
+        cp LICENSE "$pkg/" || return 1
+    fi
 
     # ----------------------------------------------------------------------
     # Package README
     # ----------------------------------------------------------------------
+
     cat > "$pkg/README.md" <<EOF
 # Syclun — Synth-OOP Interpreter ($name)
 
@@ -422,6 +490,7 @@ EOF
 }
 
 # ---- smoke test ----------------------------------------------------------
+
 smoke_test() {
     local pkg="$1"
     local os="$2"
@@ -458,6 +527,7 @@ smoke_test() {
     # ----------------------------------------------------------------------
     # Windows
     # ----------------------------------------------------------------------
+
     if [ "$os" = "windows" ]; then
 
         local win_pkg
@@ -482,17 +552,22 @@ smoke_test() {
             cmd.exe /c "\"$win_pkg\\bin\\synth.exe\" \"$win_example\"" \
             2>&1
         )"; then
+
             echo "    smoke: OK"
             echo "$test_output"
+
         else
+
             echo "    smoke: FAILED"
             echo "$test_output"
             return 1
+
         fi
 
     # ----------------------------------------------------------------------
     # Linux / macOS
     # ----------------------------------------------------------------------
+
     else
 
         if test_output="$(
@@ -500,12 +575,16 @@ smoke_test() {
             "$exe" "$pkg/examples/hello.syn" \
             2>&1
         )"; then
+
             echo "    smoke: OK"
             echo "$test_output"
+
         else
+
             echo "    smoke: FAILED"
             echo "$test_output"
             return 1
+
         fi
 
     fi
@@ -514,6 +593,7 @@ smoke_test() {
 }
 
 # ---- initialize summary -------------------------------------------------
+
 mkdir -p "$DIST_DIR"
 
 {
@@ -531,11 +611,14 @@ SKIPPED=()
 FILTER="${PACKAGE_TARGETS:-}"
 
 # ---- build targets -------------------------------------------------------
+
 for t in "${TARGETS[@]}"; do
 
     IFS='|' read -r name os arch toolchain osx_arch note <<< "$t"
 
-    [ -n "$FILTER" ] && [ "$FILTER" != "$name" ] && continue
+    if [ -n "$FILTER" ] && [ "$FILTER" != "$name" ]; then
+        continue
+    fi
 
     status="$(target_status "$os" "$arch")"
 
@@ -560,9 +643,9 @@ for t in "${TARGETS[@]}"; do
 
     bdir="$PKG_BUILD/$name"
 
-    # IMPORTANT:
-    # Always remove the complete CMake build tree before configuring.
-    # This prevents a previous MSVC compiler from being reused.
+    # Always remove the complete CMake build tree.
+    # This prevents a previous compiler/generator from being reused.
+
     rm -rf "$bdir"
 
     cfg=(
@@ -573,12 +656,19 @@ for t in "${TARGETS[@]}"; do
     )
 
     # ----------------------------------------------------------------------
-    # Windows x64 MUST use MinGW-w64.
+    # Windows x64 MUST use MSYS2 MINGW64 + MinGW-w64 GCC/G++.
     # ----------------------------------------------------------------------
+
     if [ "$name" = "windows-x64" ]; then
 
         if [ "$HOST_OS" != "windows" ]; then
             echo "::error::windows-x64 must be built on a Windows host."
+            exit 1
+        fi
+
+        if [ "${MSYSTEM:-}" != "MINGW64" ]; then
+            echo "::error::windows-x64 must run inside MSYS2 MINGW64."
+            echo "::error::MSYSTEM=${MSYSTEM:-unset}"
             exit 1
         fi
 
@@ -599,7 +689,7 @@ for t in "${TARGETS[@]}"; do
 
         echo
         echo "=== Windows x64 MinGW environment ==="
-        echo "MSYSTEM=${MSYSTEM:-unknown}"
+        echo "MSYSTEM=$MSYSTEM"
         echo "gcc: $(command -v gcc)"
         echo "g++: $(command -v g++)"
         echo "cmake: $(command -v cmake)"
@@ -615,33 +705,58 @@ for t in "${TARGETS[@]}"; do
         )
     fi
 
-    [ "$toolchain" != "-" ] && \
-        cfg+=(-DCMAKE_TOOLCHAIN_FILE="$toolchain")
+    # ----------------------------------------------------------------------
+    # Toolchain
+    # ----------------------------------------------------------------------
 
-    [ "$osx_arch" != "-" ] && \
-        cfg+=(-DCMAKE_OSX_ARCHITECTURES="$osx_arch")
-
-    # Optional explicit compilers for cross-builds.
-    [ -n "${CMAKE_C_COMPILER:-}" ] && \
-        cfg+=(-DCMAKE_C_COMPILER="$CMAKE_C_COMPILER")
-
-    [ -n "${CMAKE_CXX_COMPILER:-}" ] && \
-        cfg+=(-DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER")
-
-    [ -n "${CMAKE_RC_COMPILER:-}" ] && \
-        cfg+=(-DCMAKE_RC_COMPILER="$CMAKE_RC_COMPILER")
+    if [ "$toolchain" != "-" ]; then
+        cfg+=(
+            -DCMAKE_TOOLCHAIN_FILE="$toolchain"
+        )
+    fi
 
     # ----------------------------------------------------------------------
-    # Configure ONCE.
+    # macOS architecture
     # ----------------------------------------------------------------------
+
+    if [ "$osx_arch" != "-" ]; then
+        cfg+=(
+            -DCMAKE_OSX_ARCHITECTURES="$osx_arch"
+        )
+    fi
+
+    # ----------------------------------------------------------------------
+    # Optional explicit compilers for cross-builds
+    # ----------------------------------------------------------------------
+
+    if [ -n "${CMAKE_C_COMPILER:-}" ]; then
+        cfg+=(
+            -DCMAKE_C_COMPILER="$CMAKE_C_COMPILER"
+        )
+    fi
+
+    if [ -n "${CMAKE_CXX_COMPILER:-}" ]; then
+        cfg+=(
+            -DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER"
+        )
+    fi
+
+    if [ -n "${CMAKE_RC_COMPILER:-}" ]; then
+        cfg+=(
+            -DCMAKE_RC_COMPILER="$CMAKE_RC_COMPILER"
+        )
+    fi
+
+    # ----------------------------------------------------------------------
+    # Configure
+    # ----------------------------------------------------------------------
+
     echo
     echo "[*] CMake configure..."
 
     if ! "${cfg[@]}"; then
 
         echo "::error::$name: CMake configure failed."
-
-        SKIPPED+=("$name")
 
         printf '| synth-%s | failed | CMake configure error |\n' \
             "$name" >> "$SUMMARY"
@@ -650,8 +765,9 @@ for t in "${TARGETS[@]}"; do
     fi
 
     # ----------------------------------------------------------------------
-    # Print actual CMake configuration.
+    # Print actual CMake configuration
     # ----------------------------------------------------------------------
+
     echo
     echo "=== CMake configuration result ==="
 
@@ -671,16 +787,15 @@ for t in "${TARGETS[@]}"; do
     CURRENT_BUILD_DIR="$bdir"
 
     # ----------------------------------------------------------------------
-    # Build.
+    # Build
     # ----------------------------------------------------------------------
+
     echo
     echo "[*] Building synth..."
 
     if ! cmake --build "$bdir" --target synth -j; then
 
         echo "::error::$name: build failed."
-
-        SKIPPED+=("$name")
 
         printf '| synth-%s | failed | build error |\n' \
             "$name" >> "$SUMMARY"
@@ -689,8 +804,9 @@ for t in "${TARGETS[@]}"; do
     fi
 
     # ----------------------------------------------------------------------
-    # Locate executable.
+    # Locate executable
     # ----------------------------------------------------------------------
+
     if [ "$os" = "windows" ]; then
         exe="$bdir/synth.exe"
     else
@@ -700,8 +816,6 @@ for t in "${TARGETS[@]}"; do
     if [ ! -f "$exe" ]; then
 
         echo "::error::$name: build produced no binary."
-
-        SKIPPED+=("$name")
 
         printf '| synth-%s | failed | no binary produced |\n' \
             "$name" >> "$SUMMARY"
@@ -713,8 +827,9 @@ for t in "${TARGETS[@]}"; do
     echo "Binary: $exe"
 
     # ----------------------------------------------------------------------
-    # Verify Windows x64 binary.
+    # Verify Windows x64 binary
     # ----------------------------------------------------------------------
+
     if [ "$name" = "windows-x64" ]; then
 
         if ! verify_windows_mingw "$exe"; then
@@ -725,13 +840,12 @@ for t in "${TARGETS[@]}"; do
     fi
 
     # ----------------------------------------------------------------------
-    # Assemble package.
+    # Assemble package
     # ----------------------------------------------------------------------
+
     if ! assemble "$name" "$os" "$arch" "$exe"; then
 
         echo "::error::$name: package assembly failed."
-
-        SKIPPED+=("$name")
 
         printf '| synth-%s | failed | package assembly error |\n' \
             "$name" >> "$SUMMARY"
@@ -740,13 +854,12 @@ for t in "${TARGETS[@]}"; do
     fi
 
     # ----------------------------------------------------------------------
-    # Verify final package itself.
+    # Verify final package itself
     # ----------------------------------------------------------------------
+
     if ! smoke_test "$DIST_DIR/synth-$name" "$os" "$arch"; then
 
         echo "::error::$name: package smoke test failed."
-
-        SKIPPED+=("$name")
 
         printf '| synth-%s | failed | package smoke test failed |\n' \
             "$name" >> "$SUMMARY"
@@ -762,6 +875,7 @@ for t in "${TARGETS[@]}"; do
 done
 
 # ---- final report --------------------------------------------------------
+
 prod_list="$(printf '%s ' "${PRODUCED[@]}")"
 skip_list="$(printf '%s ' "${SKIPPED[@]}")"
 
@@ -781,8 +895,8 @@ echo " Skipped : ${skip_list:-none}"
 echo " See: $SUMMARY"
 echo "============================================================"
 
-# A packaging run that was explicitly asked to build a target must never
-# silently succeed without producing it.
+# Explicitly requested target must never silently succeed without output.
+
 if [ -n "$FILTER" ] && [ "${#PRODUCED[@]}" -eq 0 ]; then
     echo "::error::Requested target '$FILTER' was not produced."
     exit 1
