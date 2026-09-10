@@ -971,15 +971,28 @@ namespace rt_builtin {
     // 返回值的类型约束——编译器 / 解释器在调用前据此核查，
     // runtime 层不做运行时类型守卫，闭包体可信任参数符合约束。
     // 修饰符 {isConst(@!), isPrivate(@#)} 作为 Callable 属性
-    // 记录，供解释器在重绑 / 派发时核查。状态取 `{}`（值
-    // 初始化 = NORMAL，非常数契约）；~> / => 的纯度由闭包
-    // 只读纪律保证（详见文件头注释第 2 条）。
+    // 记录，供解释器在重绑 / 派发时核查。
+    //
+    // `state` is the native method's DECLARED MODE — the arrow it would have
+    // been written with in Synth source. It defaults to NORMAL ('->') because
+    // most native methods do write their own value, but a method that provably
+    // does NOT touch its host's state must say CONST ('~>'): io::OStream.:=
+    // only prints, it never changes `out`. That distinction is exactly what
+    // makes `-(io::OStream! out); out << "x";` legal while
+    // `-(std::String! s); s << "x";` is not (spec 3.4.1 / 3.4.3 / 4.5).
+    // `state` 是原生方法所**声明的模式**——即它在 Synth 源码中会被写成的
+    // 那个箭头。默认 NORMAL（'->'），因为多数原生方法确实要写自身的值；
+    // 但一个明确不触碰宿主状态的方法必须声明 CONST（'~>'）：io::OStream.:=
+    // 只负责打印，从不改变 `out` 自身。正是这一区别使
+    // `-(io::OStream! out); out << "x";` 合法，而
+    // `-(std::String! s); s << "x";` 不合法（文档 3.4.1 / 3.4.3 / 4.5）。
     inline rt_basic::Callable native_method(
         rt_basic::NativeClosure body, rt_basic::CallableSign sign,
-        std::pair<bool, bool> attr = {true, false}
+        std::pair<bool, bool> attr = {true, false},
+        rt_basic::BehavStateOBJ state = rt_basic::BehavStateOBJ::NORMAL
     ) {
         return rt_basic::Callable(
-            std::move(body), std::move(sign), {}, attr
+            std::move(body), std::move(sign), state, attr
         );
     }
 

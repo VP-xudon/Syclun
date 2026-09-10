@@ -16,7 +16,13 @@
 // Member data is accessed by its bare name; `self.name` also works.
 // 成员数据用裸名访问；`self.name` 亦可。
 $Program {
-    -(std::Number! memberN);   // a member (zero value); assigned inside @::
+    // Mutable on purpose: @:: assigns it below. A member declared with '!' is a
+    // CONST member — unmodifiable from then on, so it must take its value
+    // inline here (e.g. -(std::Number(42)! m)) instead of in @::.
+    // 刻意可变：下方 @:: 要为它赋值。以 '!' 声明的成员是**常数成员**——
+    // 此后不可修改，故其值必须在此行内给定（如 -(std::Number(42)! m)），
+    // 而非在 @:: 里赋值。
+    -(std::Number memberN);    // a member (zero value); assigned inside @::
 
     @:: << [() -> () {
         -(io::OStream out);

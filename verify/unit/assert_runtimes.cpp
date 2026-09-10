@@ -1600,6 +1600,183 @@ namespace {
             "Array.=(arr2): element count overwritten wholesale to 3");
         check(num(call(arr1, "get", {rt_builtin::make_int(0)})) == 3,
             "Array.=(arr2): element positions overwritten correctly (first 3)");
+
+        // ------------------------------------------------------------------
+        // Const locals: the explicit assign method `.=` is the same write as
+        // the flow `<<`, so a '!' variable must reject it too. Before the fix
+        // `.=` bypassed the const guard entirely (only the flow path checked
+        // Frame::constFlag).
+        // 常数局部：显式赋值方法 `.=` 与流 `<<` 是同一次写入，故带 '!' 的
+        // 变量也必须拒收。修复前 `.=` 完全绕过了常数守卫（只有流路径检查
+        // Frame::constFlag）。
+        // ------------------------------------------------------------------
+        check(expect_runtime_error(
+            "&io;\n"
+            "$Program {\n"
+            "  @:: << [{ -(std::String! str); str.=(\"3\"); }];\n"
+            "};\n",
+            "ConstException"),
+            "const local: '.=' assignment is rejected like '<<' (ConstException)");
+        check(expect_runtime_error(
+            "&io;\n"
+            "$Program {\n"
+            "  @:: << [{ -(std::Number(1)! n); n << 2; }];\n"
+            "};\n",
+            "ConstException"),
+            "const local: re-flowing '<<' into a const is still rejected");
+        // The guard must not over-block: a non-const local is assignable
+        // through '.='.
+        // 守卫不得过度拦截：非常数局部仍可经 '.=' 赋值。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @:: << [{ -(std::String str); str.=(\"3\"); io::out << str; }];\n"
+            "};\n",
+            "3"),
+            "non-const local: '.=' assignment still works and is observable");
+    }
+
+    // --------------------------------------------------------
+    // Const consistency: '!' must mean the same thing on every
+    // write path — a const LOCAL and a const MEMBER both reject
+    // `x << v`, `self.x << v` and `x.=(v)`; a frozen object
+    // ('#()') rejects rebinding just as it rejects injection.
+    // 常数一致性：'!' 必须在每条写入通路上含义一致——常数**局部**与
+    // 常数**成员**都拒绝 `x << v`、`self.x << v` 与 `x.=(v)`；
+    // 冻结对象（'#()'）拒绝重绑，正如它拒绝注入。
+    // --------------------------------------------------------
+    void test_const_consistency() {
+        section("Const consistency: members & frozen objects");
+
+        // What const means: a '!' name may only be subjected to operations
+        // that do NOT modify it — and that is decided by the ARROW of the
+        // method carrying the operation out, not by the syntax used. Only
+        // '->' (non-const) is rejected; '~>' / '=>' stay legal.
+        // 常数的含义：'!' 名字只能承受**不修改它**的操作——这由执行该操作的
+        // 方法的**箭头**决定，而非抵达它的语法。仅 '->'（非常数）被拒，
+        // '~>' / '=>' 依然合法。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @:: << [() -> () { -(io::OStream! out); out << \"const stream ok\"; }];\n"
+            "};\n",
+            "const stream ok"),
+            "const local of a '~>' type: 'out << v' stays legal (spec 3.4.3)");
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @:: << [() -> () { -(io::OStream! out); out.push_line(\"push ok\"); }];\n"
+            "};\n",
+            "push ok"),
+            "const local of a '~>' type: method calls stay legal");
+
+        // A const member takes its value from an inline constructor; a later
+        // write through a '->' method is rejected, in every spelling.
+        // 常数成员的值来自行内构造器；此后经 '->' 方法的写入一律被拒，
+        // 不论写法。
+        const std::string member_head =
+            "&io;\n"
+            "$Program {\n"
+            "  -(std::Number(7)! k);\n"
+            "  @:: << [() -> () { ";
+        const std::string member_tail = " }];\n};\n";
+
+        check(expect_runtime_error(member_head + "k << 1;" + member_tail,
+            "ConstException"),
+            "const member: bare-name flow 'k << 1' is rejected (Number.:= is '->')");
+        check(expect_runtime_error(member_head + "self.k << 1;" + member_tail,
+            "ConstException"),
+            "const member: member-access flow 'self.k << 1' is rejected");
+        check(expect_runtime_error(member_head + "k.=(1);" + member_tail,
+            "ConstException"),
+            "const member: explicit assign 'k.=(1)' is rejected");
+
+        // A const member whose value is an OStream is still writable: its
+        // ':=' is '~>' and never changes the object itself.
+        // 值为 OStream 的常数成员仍可被写入：其 ':=' 是 '~>'，从不改变对象自身。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  -(io::OStream! o);\n"
+            "  @:: << [() -> () { o << \"member stream ok\"; }];\n"
+            "};\n",
+            "member stream ok"),
+            "const member of a '~>' type: flowing into it stays legal");
+
+        // Without '!' the same write is legal; and the inline constructor
+        // value is readable either way.
+        // 去掉 '!' 后同一写入合法；行内构造的值无论如何都可读。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  -(std::Number(7) k);\n"
+            "  @:: << [() -> () { k << 1; io::out << k; }];\n"
+            "};\n",
+            "1"),
+            "mutable member: 'k << 1' still works (no over-blocking)");
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  -(std::Number(7)! k);\n"
+            "  @:: << [() -> () { io::out << k; }];\n"
+            "};\n",
+            "7"),
+            "const member: an inline constructor value is readable");
+
+        // A frozen object: injection was already rejected; rebinding an
+        // existing method must be rejected too.
+        // 冻结对象：注入早已被拒；重绑已有方法同样必须被拒。
+        const std::string frozen_head =
+            "&io;\n"
+            "$P {\n"
+            "  @m << [{ }];\n"
+            "  @:: << [() -> () { }];\n"
+            "};\n"
+            "$Program {\n"
+            "  @:: << [{ -(P p); p.#(); ";
+        const std::string frozen_tail = " }];\n};\n";
+
+        check(expect_runtime_error(
+            frozen_head + "p.m.=([{ }]);" + frozen_tail, "ConstException"),
+            "frozen object: rebinding 'p.m.=(...)' is rejected");
+        check(expect_runtime_error(
+            frozen_head + "p.m << [{ }];" + frozen_tail, "ConstException"),
+            "frozen object: rebinding 'p.m << [...]' is rejected");
+        check(expect_runtime_error(
+            frozen_head + "p:@n << [{ }];" + frozen_tail, "ConstException"),
+            "frozen object: injecting 'p:@n << [...]' is rejected");
+
+        // Not frozen: rebinding stays legal (the guard must not over-block).
+        // 未冻结：重绑仍然合法（守卫不得过度拦截）。
+        check(expect_clean_run(
+            "&io;\n"
+            "$P {\n"
+            "  @m << [{ }];\n"
+            "  @:: << [() -> () { }];\n"
+            "};\n"
+            "$Program {\n"
+            "  @:: << [{ -(P p); p.m.=([{ }]); }];\n"
+            "};\n"),
+            "unfrozen object: rebinding 'p.m.=(...)' still works");
+
+        // A parameter declared with '!' is constant inside the body: binding
+        // it is the initialization, so writing it is rejected.
+        // 以 '!' 声明的参数在函数体内为常数：绑定即初始化，故写入被拒。
+        check(expect_runtime_error(
+            "&io;\n"
+            "$Program {\n"
+            "  @f << [(std::Number! x) -> () { x << 1; }];\n"
+            "  @:: << [() -> () { self.f(0); }];\n"
+            "};\n",
+            "ConstException"),
+            "const parameter: writing 'x << 1' inside the body is rejected");
+        check(expect_clean_run(
+            "&io;\n"
+            "$Program {\n"
+            "  @f << [(std::Number x) -> () { x << 1; }];\n"
+            "  @:: << [() -> () { self.f(0); }];\n"
+            "};\n"),
+            "non-const parameter: writing it stays legal (no over-blocking)");
     }
 
     // --------------------------------------------------------
@@ -1837,6 +2014,7 @@ int main(int argc, char** argv) {
     test_sugar_infix();
     test_stdlib_d1_d5();
     test_library_presets();
+    test_const_consistency();
 
     std::cout << "\n------------------------------------------------------------\n";
     std::cout << std::format(" {} passed, {} failed\n", passed, failed);

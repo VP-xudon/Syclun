@@ -60,7 +60,9 @@ namespace rt_lib_io {
                 }
                 return rb::empty_result();
             },
-            rb::make_sign(":=", {{"value", "std::Object"}}, {})
+            rb::make_sign(":=", {{"value", "std::Object"}}, {}),
+            // '~>': printing never changes `out` itself. '~>'：打印从不改变 out 自身。
+            {true, false}, rt_basic::kConstBehavior
         );
     }
 
@@ -84,7 +86,9 @@ namespace rt_lib_io {
                 }
                 return rb::empty_result();
             },
-            rb::make_sign("push", {{"value", "std::Object"}}, {})
+            rb::make_sign("push", {{"value", "std::Object"}}, {}),
+            // '~>': printing never changes `out` itself. '~>'：打印从不改变 out 自身。
+            {true, false}, rt_basic::kConstBehavior
         );
     }
 
@@ -107,7 +111,9 @@ namespace rt_lib_io {
                 std::cout << "\n";
                 return rb::empty_result();
             },
-            rb::make_sign("push_line", {{"value", "std::Object"}}, {})
+            rb::make_sign("push_line", {{"value", "std::Object"}}, {}),
+            // '~>': printing never changes `out` itself. '~>'：打印从不改变 out 自身。
+            {true, false}, rt_basic::kConstBehavior
         );
     }
 
@@ -137,7 +143,9 @@ namespace rt_lib_io {
                     rb::make_string(""), "input stream ended"
                 )});
             },
-            rb::make_sign("=:", {}, {{"result", "std::String"}})
+            rb::make_sign("=:", {}, {{"result", "std::String"}}),
+            // '~>': reading never changes `in` itself. '~>'：读取从不改变 in 自身。
+            {true, false}, rt_basic::kConstBehavior
         );
     }
 
@@ -162,7 +170,9 @@ namespace rt_lib_io {
                     rb::make_string(""), "input stream ended"
                 )});
             },
-            rb::make_sign("get", {}, {{"result", "std::String"}})
+            rb::make_sign("get", {}, {{"result", "std::String"}}),
+            // '~>': reading never changes `in` itself. '~>'：读取从不改变 in 自身。
+            {true, false}, rt_basic::kConstBehavior
         );
     }
 
@@ -196,7 +206,9 @@ namespace rt_lib_io {
                     rb::make_string(""), "input stream ended"
                 )});
             },
-            rb::make_sign("get_line", {}, {{"result", "std::String"}})
+            rb::make_sign("get_line", {}, {{"result", "std::String"}}),
+            // '~>': reading never changes `in` itself. '~>'：读取从不改变 in 自身。
+            {true, false}, rt_basic::kConstBehavior
         );
     }
 

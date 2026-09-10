@@ -813,6 +813,10 @@ namespace interp {
             }
             cls->set_attribute(d->name, obj);
             cls->set_private_attr(d->name);
+            // Same '!' meaning as everywhere else: the initializer above is
+            // the construction, after which the value is frozen.
+            // '!' 的含义与其它位置一致：上述初始化即构造，其后该值被冻结。
+            if (d->isConst) cls->set_const_attr(d->name);
         }
     }
 
@@ -834,6 +838,47 @@ namespace interp {
         );
     }
 
+    // Guard constant members: `-(Type! name)` in a class body makes that
+    // member's value unmodifiable, so EVERY write path must reject it — the
+    // bare-name flow `member << v`, the explicit assign `member.=(v)`, the
+    // member-access forms `self.member << v` / `self.member.=(v)`, and tuple
+    // destructuring into a member. This mirrors the const-local guard so the
+    // same '!' means the same thing everywhere (spec 4.5 / D.6).
+    // 常数成员守卫：类体中的 `-(类型! 名)` 令该成员的值不可修改，故**每一条**
+    // 写入通路都必须拒绝对它的写入——裸名流 `成员 << 值`、显式赋值
+    // `成员.=(值)`、成员访问形式 `self.成员 << 值` / `self.成员.=(值)`，
+    // 以及元组解构到成员。它与常数局部守卫同构，使同一个 '!' 在任何位置都
+    // 是同一个含义（文档 4.5 / D.6）。
+    inline void guard_const_write(
+        RuntimeObjectPtr receiver, const std::string& method,
+        const std::string& what
+    ) {
+        auto cls = std::dynamic_pointer_cast<RuntimeClass>(receiver);
+        if (!cls) return;
+        if (!cls->modifies_self(method)) return;
+        interp_error(
+            "ConstException",
+            "cannot modify const " + what + ": '" + method
+                + "' is a non-const behavior ('->') and may change the object "
+                  "itself (declare it without '!' to make it mutable)"
+        );
+    }
+
+    // A const ('!') MEMBER: whether a write is legal is decided the same way as
+    // for a const local — by the arrow of the method that would carry it out.
+    // A member declared '!' whose value is an io::OStream may still be flowed
+    // into, exactly like a const local of that type.
+    // 常数（'!'）**成员**：写入是否合法，判定方式与常数局部完全一致——看
+    // 执行该写入的方法的箭头。声明为 '!'、其值却是 io::OStream 的成员，仍
+    // 可被流入，正如同类型的常数局部一样。
+    inline void guard_const_member(
+        const RuntimeClass* owner, const std::string& field,
+        RuntimeObjectPtr value, const std::string& method
+    ) {
+        if (!owner || !owner->is_const_attr(field)) return;
+        guard_const_write(value, method, "member '" + field + "'");
+    }
+
     // Rebind a user method on a runtime object *in place*. This is the single
     // shared implementation behind both `obj.method.=(beh)` and
     // `obj.method << beh`. A method is just a member variable holding a
@@ -848,6 +893,21 @@ namespace interp {
     inline void rebind_method(
         RuntimeClass* cls, const std::string& field, AstNodePtr behAST
     ) {
+        // A frozen object ('obj.#()') can never be changed again — neither by
+        // injection (guarded in injection_target) nor by rebinding an existing
+        // method. Without this the freeze was only half-enforced: `obj:@m << b`
+        // was rejected while `obj.m.=(b)` slipped through.
+        // 冻结对象（`对象.#()`）此后永不可更改——既不可注入（由
+        // injection_target 守卫），也不可重绑已有方法。缺了这道守卫，冻结只
+        // 落实了一半：`对象:@m << b` 被拒，而 `对象.m.=(b)` 却溜了过去。
+        if (cls->is_const_state()) {
+            interp_error(
+                "ConstException",
+                "cannot rebind method '" + field + "' on a const object "
+                "('.#()' froze it permanently; a frozen object can never be "
+                "changed again)"
+            );
+        }
         auto mit = cls->get_methods().find(field);
         if (mit == cls->get_methods().end()) return;
         if (mit->second.get_attr().first) {
@@ -880,15 +940,13 @@ namespace interp {
             std::string name = recvNode->value;
             if (f.locals.count(name)) {
                 receiverObj = f.locals[name];
-                // Reassigning a const local is forbidden (spec D.6).
-                // 重赋值常数局部变量是被禁止的（文档 D.6）。
+                // A const local may only be subjected to operations that do
+                // NOT modify it: reject the flow iff the receiver's ':='
+                // behavior is non-const ('->'). 常数局部只能承受不修改它的
+                // 操作：当且仅当接收方的 ':=' 行为是非常数（'->'）时拒绝。
                 if (f.constFlag.count(name) && f.constFlag[name]) {
-                    interp_error(
-                        "ConstException",
-                        "cannot reassign const variable '" + name
-                            + "' (declare it without '!' or initialize it "
-                              "inline via a constructor)"
-                    );
+                    guard_const_write(
+                        receiverObj, ":=", "variable '" + name + "'");
                 }
                 // Variable constraint: a constrained local must keep holding a
                 // value that satisfies its constraint after the assignment.
@@ -917,6 +975,8 @@ namespace interp {
             } else if (f.outer && f.outer->count(name)) {
                 receiverObj = (*f.outer)[name];
                 isOuter = true;
+                // Same rule for a const member (spec 4.5). 常数成员同理（文档 4.5）。
+                guard_const_member(f.self.get(), name, receiverObj, ":=");
             } else {
                 // Everything else resolves exactly like any expression: the
                 // scope chain first, then the global object registry — where
@@ -986,6 +1046,10 @@ namespace interp {
                 }
             }
             receiverObj = eval_expr(f, recvNode);
+            // Not a method: a data attribute. A const member rejects the write
+            // iff ':=' would modify it. 非方法：数据属性。常数成员在 ':=' 会
+            // 修改它时拒绝写入。
+            guard_const_member(cls.get(), field, receiverObj, ":=");
         } else if (recvNode->kind == "tuple") {
             // Tuple destructuring as a flow receiver (spec 5.4.3):
             //   (-(a), -(b)) << self.pair();
@@ -1053,6 +1117,9 @@ namespace interp {
                     } else if (f.outer && f.outer->count(elemName)) {
                         elemReceiver = (*f.outer)[elemName];
                         anyOuter = true;
+                        // Same rule for a const member (spec 4.5). 常数成员同理（文档 4.5）。
+                        guard_const_member(
+                            f.self.get(), elemName, elemReceiver, ":=");
                     } else {
                         interp_error(
                             "InterException",
@@ -1290,6 +1357,10 @@ namespace interp {
                         rebind_method(cls.get(), field, behAST);
                         return rb::first_of(rb::empty_result());
                     }
+                    // Not a method: a data attribute. A const member rejects
+                    // the write iff '=' would modify it. 非方法：数据属性。
+                    // 常数成员在 '=' 会修改它时拒绝写入。
+                    guard_const_member(cls.get(), field, receiverObj, "=");
                 }
                 // Not a method on an object: fall through to the normal
                 // `=` dispatch (data attribute or any value's `=` method).
@@ -1308,6 +1379,18 @@ namespace interp {
             // / 对象接收），故此处仅追加约束守卫，保持 `.=(...)` 既有语义不变。
             if (node->value == "=" && node->kids[0]->kind == "name") {
                 const std::string& vname = node->kids[0]->value;
+                // A const local ('!') must not be written through the explicit
+                // assign method either. `.=` and `<<` are the SAME write under
+                // two spellings, so `-(std::String! s); s.=(x)` must be
+                // rejected exactly like `s << x` is (spec 4.5 / D.6).
+                // 常数局部（'!'）同样不得经显式赋值方法写入。`.=` 与 `<<`
+                // 是同一次写入的两种写法，故 `-(std::String! s); s.=(x)`
+                // 必须像 `s << x` 一样被拒（文档 4.5 / D.6）。
+                if (f.locals.count(vname) && f.constFlag.count(vname)
+                        && f.constFlag[vname]) {
+                    guard_const_write(
+                        receiverObj, "=", "variable '" + vname + "'");
+                }
                 // v1.30: library preset objects are const bindings — a plain
                 // name assignment would rebind the interface, not change the
                 // object, and a preset's interface belongs to its library.
@@ -1321,6 +1404,14 @@ namespace interp {
                             + "' (library presets are const; change the "
                               "object's state through its methods)"
                     );
+                }
+                // A name that is neither a local nor a preset but lives in the
+                // outer scope is a member of the running instance; a const
+                // member rejects the write (spec 4.5).
+                // 既非局部也非预置、却存在于外层作用域的名字，即当前实例的
+                // 成员；常数成员拒绝写入（文档 4.5）。
+                if (!f.locals.count(vname) && f.outer && f.outer->count(vname)) {
+                    guard_const_member(f.self.get(), vname, receiverObj, "=");
                 }
                 if (f.constraints.count(vname) && !f.constraints[vname].empty()
                         && !args.empty()
@@ -1561,6 +1652,14 @@ namespace interp {
                 auto& p = params[i];
                 if (p->isPlaceholder) continue;
                 f.locals[p->name] = rb::para_at(paras, i);
+                // A parameter declared with '!' is constant inside the body.
+                // Binding it here IS its initialization, so any later write to
+                // it (a flow or '.=') is rejected by the const-local guard —
+                // the same '!' meaning as a local (spec 4.5).
+                // 以 '!' 声明的参数在函数体内为常数。此处的绑定**就是**它的
+                // 初始化，故此后对它的任何写入（流或 '.='）都会被常数局部
+                // 守卫拒绝——与局部变量上的 '!' 同义（文档 4.5）。
+                f.constFlag[p->name] = p->isConst;
                 // Parameter constraint (e.g. `name[Addable]`): once the actual
                 // argument is bound, verify it satisfies the constraint.
                 // 参数约束（如 `名称[Addable]`）：实参绑定后立即校验约束。
@@ -1974,6 +2073,14 @@ namespace interp {
                         call_constructor(f, zero, d->kids[0]);
                     }
                     proto->set_attribute(d->name, zero);
+                    // A member declared with '!' is a constant member: its
+                    // value may be given here (inline constructor) but can
+                    // never be written afterwards (spec 4.5).
+                    // 以 '!' 声明的成员是常数成员：其值可在此（行内构造）给定，
+                    // 但此后永不可被写入（文档 4.5）。
+                    if (d->isConst) {
+                        proto->set_const_attr(d->name);
+                    }
                 }
             } else if (item->kind == "methoddef") {
                 // Method injection: wrap the behavior AST as a Callable.

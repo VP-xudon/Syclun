@@ -18,7 +18,11 @@ $Animal {
 }
 
 $Dog [Animal] {
-    -(std::Number! age);          // constant marker '!' after type
+    // Mutable, because @inc writes it below. A '!' here would make it a const
+    // member (unmodifiable); const locals still showcase '!' at line 57.
+    // 可变，因为下方 @inc 要写它。此处加 '!' 会使其成为常数成员（不可修改）；
+    // '!' 标记仍由第 57 行的常数局部展示。
+    -(std::Number age);            // member (mutable; written by @inc)
     @get << [() ~> (result) {     // constant pattern ~>
         result << age;
     }];

@@ -1184,7 +1184,20 @@ namespace parser {
                 auto var_tok = advance();
                 auto p = mknode("param", ln);
                 p->mode = "type";
-                p->value = first.value;     // type name (e.g. std::Number)
+                // Peel a trailing '!' exactly as parse_decl does: '!' is a NAME
+                // character, so `std::Number!` arrives as one token. Left
+                // unpeeled it was silently ignored AND it poisoned the type
+                // name, which for an output parameter made ::stdRT.make() fall
+                // back to std::Object. A const parameter is constant inside the
+                // body (spec 4.5) — enforced via Frame::constFlag.
+                // 与 parse_decl 完全一致地剥掉尾部 '!'：'!' 是**名称字符**，
+                // 故 `std::Number!` 作为一个 token 抵达。不剥则既被静默忽略，
+                // 又污染类型名——对输出参数会令 ::stdRT.make() 回落到
+                // std::Object。常数参数在函数体内即为常数（文档 4.5），
+                // 由 Frame::constFlag 落实。
+                auto [tn, c] = split_const_typename(first.value);
+                p->value = tn;              // type name (e.g. std::Number)
+                p->isConst = c;
                 p->name = var_tok.value;    // parameter name
                 p->constraint = constraint; // may be empty
                 return p;

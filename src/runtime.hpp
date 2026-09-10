@@ -118,6 +118,19 @@ namespace rt_basic {
         STRICT
     };
 
+    // The Windows SDK defines `CONST` as a macro (`#define CONST const`, see
+    // windef.h). Any translation unit that pulls in <windows.h> before this
+    // point — lib/cpp/io.hpp does, via system.hpp — therefore cannot spell
+    // `BehavStateOBJ::CONST`: the preprocessor rewrites it into invalid
+    // syntax. This alias is bound here, while the macro does not exist yet,
+    // so native libraries can name the const mode safely on every platform.
+    // Windows SDK 把 `CONST` 定义为宏（`#define CONST const`，见 windef.h）。
+    // 凡在此点之前引入 <windows.h> 的编译单元——lib/cpp/io.hpp 经 system.hpp
+    // 正是如此——便无法书写 `BehavStateOBJ::CONST`：预处理器会把它改写成
+    // 非法语法。此别名在宏尚不存在时绑定于此，使原生库在各平台都能安全地
+    // 指称常数模式。
+    inline constexpr BehavStateOBJ kConstBehavior = BehavStateOBJ::CONST;
+
     class Callable {
         BehavStateOBJ behav_state = BehavStateOBJ::NORMAL;
         bool isConst = false;
@@ -175,6 +188,16 @@ namespace rt_basic {
         std::pair<bool, bool> get_attr() const {
             return {isConst, isPrivate};
         }
+        // The declared behavior mode (the arrow it was written with):
+        // '->' NORMAL, '~>' CONST, '=>' STRICT. Only '->' may modify the
+        // object the behavior is bound to; the interpreter uses this to decide
+        // whether an operation on a const ('!') name is legal.
+        // 声明的行为模式（书写时所用的箭头）：'->' NORMAL、'~>' CONST、
+        // '=>' STRICT。仅 '->' 可修改该行为所依附的对象；解释器据此判定
+        // 对常数（'!'）名字的某个操作是否合法。
+        BehavStateOBJ get_behav_state() const {
+            return behav_state;
+        }
         // True when this Callable wraps a user-defined behavior AST node
         // (as opposed to a native C++ closure). Used by the runtime to decide
         // whether to record an execution-stack frame.
@@ -216,10 +239,20 @@ namespace rt_basic {
         // 进程级状态（按实例 id 索引），使长时程序不累积未回收项（工业化审计 D5）。
         std::function<void(InstanceMap&)> on_release;
 
+        // Constant member attributes: `-(Type! name)` written in a class body
+        // marks that member's value unmodifiable (spec 4.5). It is recorded on
+        // the prototype exactly like the attributes themselves, and copied into
+        // every instance, so the interpreter can reject any write to it.
+        // 常数成员属性：类体中的 `-(类型! 名)` 标记该成员的值不可修改
+        //（文档 4.5）。它与属性本身一样登记于原型之上，并拷入每个实例，
+        // 使解释器得以拒绝对它的任何写入。
+        std::unordered_set<std::string> const_attrs;
+
         ClsProto() = default;
         ClsProto(const ClsProtoPtr &_prototype) {
             if (_prototype) {
                 attributes = _prototype->attributes;
+                const_attrs = _prototype->const_attrs;
                 // Do NOT inherit Object's no-op default `::` (construct)
                 // method into derived types. A derived type must fall through
                 // to its own user-defined `@::` constructor, or to the
@@ -268,11 +301,25 @@ namespace rt_basic {
             attributes[name] = value;
         }
 
+        // Mark a member attribute constant (`-(Type! name)`). Additive only:
+        // there is no way to un-mark it, mirroring the const state of `#()`.
+        // 把成员属性标记为常数（`-(类型! 名)`）。只增不减：没有任何解除
+        // 手段，与 `#()` 的常数状态同构。
+        void set_const_attr(const std::string &name) {
+            const_attrs.insert(name);
+        }
+        bool is_const_attr(const std::string &name) const {
+            return const_attrs.find(name) != const_attrs.end();
+        }
+
         const InstanceMap& get_attributes() const {
             return attributes;
         }
         const CallableMap& get_methods() const {
             return methods;
+        }
+        const std::unordered_set<std::string>& get_const_attrs() const {
+            return const_attrs;
         }
     };
 
@@ -340,6 +387,13 @@ namespace runtime {
         // `对象:@方法 << [行为];` 注入的方法进行。
         std::unordered_set<std::string> private_attrs;
 
+        // Constant member attributes (`-(Type! name)` in a class body), copied
+        // from the prototype at construction. Writing to such a member is
+        // rejected by the interpreter on every write path (spec 4.5).
+        // 常数成员属性（类体中的 `-(类型! 名)`），构造时从原型拷贝。对这类
+        // 成员的写入由解释器在所有写入通路上拒绝（文档 4.5）。
+        std::unordered_set<std::string> const_attrs;
+
         // Set when any method of this instance is (re)bound at runtime
         // (e.g. via `obj.method.=(beh)` / `obj.method << beh`). Exposed to
         // the `Checker` standard library as `has_changed()`.
@@ -360,10 +414,35 @@ namespace runtime {
             return private_attrs.find(name) != private_attrs.end();
         }
 
+        void set_const_attr(const std::string& name) {
+            const_attrs.insert(name);
+        }
+        bool is_const_attr(const std::string& name) const {
+            return const_attrs.find(name) != const_attrs.end();
+        }
+
+        // Does calling `name` on this object modify the object itself? Decided
+        // by the DECLARED MODE of the behavior, not by the syntax used to
+        // reach it: only '->' (NORMAL) may modify its host, while '~>' (CONST)
+        // and '=>' (STRICT) may not. A method that does not exist cannot
+        // modify anything, so it answers false (the missing-method error is
+        // raised later, at dispatch).
+        // 调用本对象的 `name` 会修改对象自身吗？由行为的**声明模式**决定，
+        // 而非抵达它的语法：仅 '->'（NORMAL）可修改宿主，'~>'（CONST）与
+        // '=>'（STRICT）不可。不存在的方法无法修改任何东西，故回答 false
+        // （方法缺失的错误稍后在派发时抛出）。
+        bool modifies_self(const std::string& name) const {
+            auto it = methods.find(name);
+            if (it == methods.end()) return false;
+            return it->second.get_behav_state()
+                       == rt_basic::BehavStateOBJ::NORMAL;
+        }
+
         RuntimeClass(rt_basic::ClsProtoPtr _prototype) : prototype(_prototype) {
             if (_prototype) {
                 attributes = prototype->get_attributes();
                 methods = prototype->get_methods();
+                const_attrs = prototype->get_const_attrs();
             } else {
                 Thrower.throwE("InterException", "Nullptr when build RuntimeClass.");
             }
@@ -620,6 +699,7 @@ namespace rt_basic {
         if (_prototype) {
             attributes = _prototype->get_attributes(); // Safely!
             methods = _prototype->get_methods();       // Safely!
+            const_attrs = _prototype->const_attrs;     // Safely!
         } else {
             Thrower.throwE("InterException", "Nullptr when build ClsProto.");
         }
