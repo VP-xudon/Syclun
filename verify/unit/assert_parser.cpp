@@ -77,7 +77,7 @@ static parser::AstNodePtr parse(const std::string& src) {
 // (used for closure-level expression / flow tests).
 // 把一条语句包进方法体，返回其 AST 节点（用于闭包内表达式/流测试）。
 static parser::AstNodePtr first_stmt(const std::string& stmt) {
-    std::string src = "$A { @m << [()->() {\n" + stmt + "\n}]; }";
+    std::string src = "$A { @m[()->() {\n" + stmt + "\n}]; }";
     auto root = parse(src);
     auto cls = root->kids[0];            // classdef
     auto body = cls->kids.back();        // block (kids[0] when no parent)
@@ -163,11 +163,11 @@ int main(int argc, char** argv) {
         check(first_kind(root, "classdef") != nullptr, "class definition accepted");
         check(first_kind(root, "classdef")->value == "A", "class name is A");
 
-        root = parse("#C { @m << [()->()]; }");
+        root = parse("#C { @m[()->()]; }");
         check(first_kind(root, "contractdef") != nullptr, "contract definition accepted");
         check(first_kind(root, "contractdef")->value == "C", "contract name is C");
 
-        root = parse("&io;\n$A { -(std::Number x); }\n#C { @m << [()->()]; }");
+        root = parse("&io;\n$A { -(std::Number x); }\n#C { @m[()->()]; }");
         check(root->kids.size() == 3, "all three top-level items coexist (3 items)");
         check(root->kids[0]->kind == "import"
               && root->kids[1]->kind == "classdef"
@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
             "$A {\n"
             "  -(std::Number x);\n"
             "  -(std::String s) << \"hi\";\n"
-            "  @add << [(std::Number a) -> (std::Number) {\n"
+            "  @add[(std::Number a) -> (std::Number) {\n"
             "    x << x.+(a);\n"
             "  }];\n"
             "}");
@@ -209,8 +209,8 @@ int main(int argc, char** argv) {
     {
         auto root = parse(
             "#Addable {\n"
-            "  @add << [(std::Number a) -> (std::Number)];\n"
-            "  @!zero << [()->(std::Number)];\n"
+            "  @add[(std::Number a) -> (std::Number)];\n"
+            "  @!zero[()->(std::Number)];\n"
             "}");
         auto c = first_kind(root, "contractdef");
         auto body = c->kids.back();              // block (kids[0] when no parent)
@@ -225,7 +225,7 @@ int main(int argc, char** argv) {
         // Contract signature vs class method: a class method is a behavior
         // (with a block body).
         // 约束签名 vs 类方法：类方法是 behavior（含 block 体）
-        auto root2 = parse("$A { @m << [()->() { }]; }");
+        auto root2 = parse("$A { @m[()->() { }]; }");
         auto mdef = first_kind(root2, "methoddef");
         check(mdef->kids[0]->kind == "behavior"
               && mdef->kids[0]->kids.size() == 2,
@@ -235,29 +235,29 @@ int main(int argc, char** argv) {
     // ----------------------------------------------------------
     section("Modifier stripping: @ / @! / @# / @!#");
     {
-        auto root = parse("$A { @m << [()->() { }]; }");
+        auto root = parse("$A { @m[()->() { }]; }");
         auto m = first_kind(root, "methoddef");
         check(!m->isConst && !m->isPrivate && m->value == "m",
               "@m -> non-const, non-private, name m");
 
-        root = parse("$A { @!m << [()->() { }]; }");
+        root = parse("$A { @!m[()->() { }]; }");
         m = first_kind(root, "methoddef");
         check(m->isConst && !m->isPrivate && m->value == "m",
               "@!m -> const, name m (! stripped)");
 
-        root = parse("$A { @#m << [()->() { }]; }");
+        root = parse("$A { @#m[()->() { }]; }");
         m = first_kind(root, "methoddef");
         check(!m->isConst && m->isPrivate && m->value == "m",
               "@#m -> private, name m (# stripped)");
 
-        root = parse("$A { @!#m << [()->() { }]; }");
+        root = parse("$A { @!#m[()->() { }]; }");
         m = first_kind(root, "methoddef");
         check(m->isConst && m->isPrivate && m->value == "m",
               "@!#m -> const and private, name m");
 
         // @!# in a contract is stripped the same way.
         // 约束中 @!# 同样剥离
-        root = parse("#C { @!#m << [()->()]; }");
+        root = parse("#C { @!#m[()->()]; }");
         auto si = first_kind(root, "signitem");
         check(si->isConst && si->isPrivate && si->value == "m",
               "contract sign @!#m -> const and private, name m (!,# stripped)");
@@ -324,20 +324,20 @@ int main(int argc, char** argv) {
     // ----------------------------------------------------------
     section("Behavior modes: -> / ~> / =>");
     {
-        auto root = parse("$A { @m << [()->() { }]; }");
+        auto root = parse("$A { @m[()->() { }]; }");
         auto sign = first_kind(root, "sign");
         check(sign->value == "->", "-> mode captured");
 
-        root = parse("#C { @m << [(std::Number a) ~> (std::Number)]; }");
+        root = parse("#C { @m[(std::Number a) ~> (std::Number)]; }");
         sign = first_kind(root, "sign");
         check(sign->value == "~>", "~> mode captured");
 
-        root = parse("#C { @m << [(a) => (b)]; }");
+        root = parse("#C { @m[(a) => (b)]; }");
         sign = first_kind(root, "sign");
         check(sign->value == "=>", "=> mode captured");
 
         // Illegal mode must be rejected.
-        check_rejected("$A { @m << [(a) <> (b) { }]; }", "illegal behavior mode <> rejected");
+        check_rejected("$A { @m[(a) <> (b) { }]; }", "illegal behavior mode <> rejected");
     }
 
     // ----------------------------------------------------------
@@ -383,10 +383,10 @@ int main(int argc, char** argv) {
         auto root = parse(
             "$Counter {\n"
             "  -(std::Number value);\n"
-            "  @inc << [(std::Number n) -> () {\n"
+            "  @inc[(std::Number n) -> () {\n"
             "    value << value.+(n);\n"
             "  }];\n"
-            "  @show << [()->() {\n"
+            "  @show[()->() {\n"
             "    -(std::OStream o);\n"
             "    o << value;\n"
             "  }];\n"
@@ -414,7 +414,7 @@ int main(int argc, char** argv) {
         // The dump helper lives in ast_dump.hpp; assert it renders the tree
         // and exposes the node kinds we expect.
         // dump 辅助位于 ast_dump.hpp；断言它能渲染树并暴露期望的节点种类。
-        auto root = parse("$A { @m << [()->() { }]; }");
+        auto root = parse("$A { @m[()->() { }]; }");
         std::string out = parser::dump(root);
         check(out.find("classdef") != std::string::npos, "dump shows 'classdef'");
         check(out.find("methoddef") != std::string::npos, "dump shows 'methoddef'");
@@ -434,11 +434,11 @@ int main(int argc, char** argv) {
         check_accepts("-(std::Number x);",
                       "top-level variable definition accepted (v1.31 library presets)");
         check_rejected("$A { foo; }", "illegal class-body statement (bare expr) rejected");
-        check_rejected("#C { @m << [()->()] { }; }", "contract sign with {} rejected");
+        check_rejected("#C { @m[()->()] { }; }", "contract sign with {} rejected");
         check_rejected("$A { -(std::Number x) }", "missing semicolon rejected");
-        check_rejected("$A { @m << [()->() { }] }", "method injection missing ';' rejected");
+        check_rejected("$A { @m[()->() { }] }", "method injection missing ';' rejected");
         check_rejected("&io", "import missing ';' rejected");
-        check_rejected("@m << [()->() { }];", "top-level method injection rejected");
+        check_rejected("@m[()->() { }];", "top-level method injection rejected");
 
         // A rejected program must also FAIL the process, not merely print a
         // diagnostic: `synth bad.syn && cmd` must never run cmd, and CI has to
@@ -458,20 +458,20 @@ int main(int argc, char** argv) {
     {
         // Block sugar: `[{ body }]` == `[() -> () { body }]`.
         // 代码块语法糖：`[{ 体 }]` == `[() -> () { 体 }]`。
-        check_accepts("$A { @m << [{ }]; }", "[{...}] block sugar accepted");
+        check_accepts("$A { @m[{ }]; }", "[{...}] block sugar accepted");
         // Runtime method injection, both binding forms.
         // 运行期方法注入的两种绑定形式。
-        check_accepts("$A { @m << [() -> () { -(std::Object o); o:@n << [{ }]; }]; }",
+        check_accepts("$A { @m[() -> () { -(std::Object o); o:@n[{ }]; }]; }",
                       "method injection via << accepted");
-        check_accepts("$A { @m << [() -> () { -(std::Object o); o:@n .= [{ }]; }]; }",
+        check_accepts("$A { @m[() -> () { -(std::Object o); o:@n[{ }]; }]; }",
                       "method injection via .= accepted");
         // Private-attribute injection with an initializer.
         // 带初始化器的私有属性注入。
-        check_accepts("$A { @m << [() -> () { -(std::Object o); o:-(std::Number v) << 0; }]; }",
+        check_accepts("$A { @m[() -> () { -(std::Object o); o:-(std::Number v) << 0; }]; }",
                       "private attribute injection accepted");
         // Const-state call.
         // 常数状态调用。
-        check_accepts("$A { @m << [() -> () { -(std::Object o); o.#(); }]; }",
+        check_accepts("$A { @m[() -> () { -(std::Object o); o.#(); }]; }",
                       "const-state call accepted");
         // A library face may declare preset object instances at the top level.
         // 库形态可在顶层声明预置对象实例。
@@ -482,8 +482,35 @@ int main(int argc, char** argv) {
         // Injecting an EXISTING method is still a parse-level OK (duplicate
         // declaration is a runtime error).
         // 注入已有方法在解析层仍合法（重复声明是运行期错误）。
-        check_accepts("$A { @m << [() -> () { -(std::Object o); o:@n << [{ }]; o:@n .= [{ }]; }]; }",
-                      "duplicate injection parses (runtime rejects)");
+        check_accepts("$A { @m[() -> () { -(std::Object o); o:@n[{ }]; o:@n[{ }]; }]; }",
+                      "duplicate injection parses (runtime rebinds or rejects)");
+
+        // ----------------------------------------------------------
+        // v1.32 closure-binding syntax: '@name[closure];' is the ONE way.
+        // v1.32 闭包绑定语法：'@名[闭包];' 是唯一写法。
+        // ----------------------------------------------------------
+        // The new binding form parses everywhere a method may appear.
+        // 新绑定形式在方法可出现的任何位置均可解析。
+        check_accepts("$A { @m[() -> () { }]; }",
+                      "v1.32 method binding '@m[closure];' accepted");
+        check_accepts("$A { @::[{ }]; }",
+                      "v1.32 block-sugar constructor '@::[{...}];' accepted");
+        check_accepts("$A { @m[() -> () { @f[{ }]; f(); }]; }",
+                      "v1.32 closure variable '@f[closure];' accepted");
+        check_accepts("#P { @m[() -> ()]; }",
+                      "v1.32 contract signature '@m[(params) mode (outs)];' accepted");
+        check_accepts("$A { @m[() -> () { -(std::Object o); o:@n[{ }]; }]; }",
+                      "v1.32 injection 'obj:@n[closure];' accepted");
+        // The retired '<<' / '.=' binding forms are rejected with guidance.
+        // 退役的 '<<' / '.=' 绑定形式被拒绝并给出指引。
+        check_rejected("$A { @m << [() -> () { }]; }",
+                       "v1.32 retired '@m << [...]' rejected");
+        check_rejected("$A { @m .= [() -> () { }]; }",
+                       "v1.32 retired '@m .= [...]' rejected");
+        check_rejected("#P { @m << [() -> ()]; }",
+                       "v1.32 retired contract '@m << [sign];' rejected");
+        check_rejected("$A { @m[() -> () { -(std::Object o); o:@n << [{ }]; }]; }",
+                       "v1.32 retired injection 'obj:@n << [...]' rejected");
     }
 
     // ----------------------------------------------------------

@@ -1,6 +1,6 @@
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // A pair packed into a tuple.  打包成元组的键值对。

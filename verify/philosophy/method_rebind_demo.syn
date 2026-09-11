@@ -8,12 +8,12 @@
 &io;
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(Counter c);
         c.inc(); c.inc();
-        c.inc.=([()->() {
+        c:@inc[()->() {
             value << value.+(2);
-        }]);
+        }];
         c.inc();
         -(io::OStream out);
         out << c.get();
@@ -22,10 +22,10 @@ $Program {
 
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }

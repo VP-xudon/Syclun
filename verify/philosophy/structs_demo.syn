@@ -1,7 +1,7 @@
 &io;
 &structs;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // ---- Queue (FIFO) / 队列 ----

@@ -5,7 +5,7 @@
 // (verify/unit/assert_runtimes.cpp :: test_stdlib_d1_d5) asserts these.
 // 每块演示一项已修复缺陷；回归套件对下列行为做了断言。
 $Program {
-  @:: << [() -> () {
+  @::[() -> () {
     -(io::OStream out);
 
     // D1: Map keys keep type identity (Number 1 != String "1").

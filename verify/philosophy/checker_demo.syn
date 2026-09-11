@@ -8,7 +8,7 @@
 &assert;
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(Counter c);
         -(assert::Checker chk);
         -(io::OStream out);
@@ -23,9 +23,9 @@ $Program {
 
         // Rebind inc at runtime, then re-check.
         // 运行期重绑 inc，再检查。
-        c.inc.=([()->() {
+        c:@inc[()->() {
             value << value.+(100);
-        }]);
+        }];
 
         out << "has_method(inc)=";
         out << chk.has_method(c, "inc");
@@ -39,10 +39,10 @@ $Program {
 
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }

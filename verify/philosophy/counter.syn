@@ -1,6 +1,6 @@
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(Counter c);
         c.inc();
         c.inc();
@@ -11,10 +11,10 @@ $Program {
 
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }

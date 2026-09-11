@@ -120,7 +120,7 @@ int main() {
     expect("D.1 full program lexing",
         "&io;\n"
         "$Program {\n"
-        "    @:: << [() -> (void) {\n"
+        "    @::[() -> (void) {\n"
         "        -(std::Number num);\n"
         "        -(io::OStream out);\n"
         "        out << num;\n"
@@ -128,7 +128,7 @@ int main() {
         "}\n",
         {S("&"), N("io"), S(";"),
          S("$"), N("Program"), S("{"),
-         S("@"), N("::"), S("<<"), S("["),
+         S("@"), N("::"), S("["),
          S("("), S(")"), N("->"), S("("), N("void"), S(")"), S("{"),
          N("-"), S("("), N("std::Number"), N("num"), S(")"), S(";"),
          N("-"), S("("), N("io::OStream"), N("out"), S(")"), S(";"),
@@ -162,24 +162,24 @@ int main() {
     // 3. 保留方法名（6.3 节）与 @! 修饰
     // --------------------------------------------------------
     section("3. Reserved method names (Section 6.3: :: ~ =: :=) and @! modifier");
-    expect("@:: constructor (D.13)", "@:: << [() ~> (void) {}];",
-        {S("@"), N("::"), S("<<"), S("["), S("("), S(")"), N("~>"),
+    expect("@:: constructor (D.13)", "@::[() ~> (void) {}];",
+        {S("@"), N("::"), S("["), S("("), S(")"), N("~>"),
          S("("), N("void"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@~ destructor (D.13)", "@~ << [() -> (void) {}];",
-        {S("@"), N("~"), S("<<"), S("["), S("("), S(")"), N("->"),
+    expect("@~ destructor (D.13)", "@~[() -> (void) {}];",
+        {S("@"), N("~"), S("["), S("("), S(")"), N("->"),
          S("("), N("void"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@=: publish function (D.13)", "@=: << [() ~> (result) {}];",
-        {S("@"), N("=:"), S("<<"), S("["), S("("), S(")"), N("~>"),
+    expect("@=: publish function (D.13)", "@=:[() ~> (result) {}];",
+        {S("@"), N("=:"), S("["), S("("), S(")"), N("~>"),
          S("("), N("result"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@:= receive function (D.13)", "@:= << [(msg) -> (void) {}];",
-        {S("@"), N(":="), S("<<"), S("["), S("("), N("msg"), S(")"), N("->"),
+    expect("@:= receive function (D.13)", "@:=[(msg) -> (void) {}];",
+        {S("@"), N(":="), S("["), S("("), N("msg"), S(")"), N("->"),
          S("("), N("void"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
     expect("@!=: i.e. @! + =: (! merged into name, stripped by Parser)",
-        "@!=: << [() ~> (void) {}];",
-        {S("@"), N("!=:"), S("<<"), S("["), S("("), S(")"), N("~>"),
+        "@!=:[() ~> (void) {}];",
+        {S("@"), N("!=:"), S("["), S("("), S(")"), N("~>"),
          S("("), N("void"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@!:= i.e. @! + :=", "@!:= << [() ~> (void) {}];",
-        {S("@"), N("!:="), S("<<"), S("["), S("("), S(")"), N("~>"),
+    expect("@!:= i.e. @! + :=", "@!:=[() ~> (void) {}];",
+        {S("@"), N("!:="), S("["), S("("), S(")"), N("~>"),
          S("("), N("void"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
 
     // --------------------------------------------------------
@@ -188,17 +188,17 @@ int main() {
     // --------------------------------------------------------
     section("4. Operator method declarations "
         "(Section 2.3.2: @+ @% @<= @!= ...)");
-    expect("@+ declaration",  "@+ << [(other) => (result) {}];",
-        {S("@"), N("+"), S("<<"), S("["), S("("), N("other"), S(")"), N("=>"),
+    expect("@+ declaration",  "@+[(other) => (result) {}];",
+        {S("@"), N("+"), S("["), S("("), N("other"), S(")"), N("=>"),
          S("("), N("result"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@% declaration",  "@% << [(other) => (result) {}];",
-        {S("@"), N("%"), S("<<"), S("["), S("("), N("other"), S(")"), N("=>"),
+    expect("@% declaration",  "@%[(other) => (result) {}];",
+        {S("@"), N("%"), S("["), S("("), N("other"), S(")"), N("=>"),
          S("("), N("result"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@<= declaration", "@<= << [(other) => (result) {}];",
-        {S("@"), N("<="), S("<<"), S("["), S("("), N("other"), S(")"), N("=>"),
+    expect("@<= declaration", "@<=[(other) => (result) {}];",
+        {S("@"), N("<="), S("["), S("("), N("other"), S(")"), N("=>"),
          S("("), N("result"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
-    expect("@!= declaration", "@!= << [(other) => (result) {}];",
-        {S("@"), N("!="), S("<<"), S("["), S("("), N("other"), S(")"), N("=>"),
+    expect("@!= declaration", "@!=[(other) => (result) {}];",
+        {S("@"), N("!="), S("["), S("("), N("other"), S(")"), N("=>"),
          S("("), N("result"), S(")"), S("{"), S("}"), S("]"), S(";"), E()});
 
     // --------------------------------------------------------
@@ -379,13 +379,13 @@ int main() {
     // 16. 约束与类声明（第八章 / 9.3 / 9.6 节）
     // --------------------------------------------------------
     section("16. Contracts and class declarations (Chapter 8 / 9.3 / 9.6)");
-    expect("contract #Printable (Section 9.3)", "#Printable { @print << [() -> (void) {}]; }",
-        {S("#"), N("Printable"), S("{"), S("@"), N("print"), S("<<"), S("["), S("("), S(")"),
+    expect("contract #Printable (Section 9.3)", "#Printable { @print[() -> (void) {}]; }",
+        {S("#"), N("Printable"), S("{"), S("@"), N("print"), S("["), S("("), S(")"),
          N("->"), S("("), N("void"), S(")"), S("{"), S("}"), S("]"), S(";"), S("}"), E()});
     expect("contract inheritance #Comparable [Addable] (Section 9.6)",
-        "#Comparable [Addable] { @< << [(other) => (result) {}]; }",
+        "#Comparable [Addable] { @<[(other) => (result) {}]; }",
         {S("#"), N("Comparable"), S("["), N("Addable"), S("]"), S("{"),
-         S("@"), N("<"), S("<<"), S("["), S("("), N("other"), S(")"), N("=>"),
+         S("@"), N("<"), S("["), S("("), N("other"), S(")"), N("=>"),
          S("("), N("result"), S(")"), S("{"), S("}"), S("]"), S(";"), S("}"), E()});
     expect("class with inheritance $Student [Human] (D.11)", "$Student [Human] { }",
         {S("$"), N("Student"), S("["), N("Human"), S("]"), S("{"), S("}"), E()});
@@ -433,7 +433,7 @@ int main() {
         const char *src =
             "&io;\n"
             "$Program {\n"
-            "    @:: << [() -> (void) {\n"
+            "    @::[() -> (void) {\n"
             "        -(std::Number num);\n"
             "        -(io::OStream out);\n"
             "        out << num;\n"

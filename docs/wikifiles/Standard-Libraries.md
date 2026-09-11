@@ -57,7 +57,7 @@ Since v1.31, a library's `.synl` may create **ready-made const objects** at the 
 ```text
 &io;
 $Program {
-    @:: << [{
+    @::[{
         io::out.push_line("io::out 生来就在");   # 不用声明 / no need to declare
     }];
 }
@@ -81,8 +81,8 @@ Bad input is caught at the source, not deep inside a closure.
 
 ## 5. 想加一个新库？ / Adding a library
 
-见 [`Syclun标准库参考`](https://github.com/VP-xudon/Syclun/blob/main/doc/Syclun标准库参考.md) 的「如何新增标准库」清单（`.synl` 接口 + `lib/cpp/<name>.hpp` 底层 + 自注册 + 聚合进 `std_libs.hpp` + 示例 + 重建验证）。
-See the "how to add a standard library" checklist in the [Syclun Standard-Library Reference](https://github.com/VP-xudon/Syclun/blob/main/doc/Syclun标准库参考.md).
+见 [`Syclun标准库参考`](https://github.com/VP-xudon/Syclun/blob/main/docs/olddocs/Syclun标准库参考.md) 的「如何新增标准库」清单（`.synl` 接口 + `lib/cpp/<name>.hpp` 底层 + 自注册 + 聚合进 `std_libs.hpp` + 示例 + 重建验证）。
+See the "how to add a standard library" checklist in the [Syclun Standard-Library Reference](https://github.com/VP-xudon/Syclun/blob/main/docs/olddocs/Syclun标准库参考.md).
 
 > ⚠️ 贡献硬规则：**别轻易新开库名**。能归入现有模块（`maths`/`structs`/`file`/`system`/`re`/`hash`/`io`/`async`/`assert`/`sugar`）的功能就归入。
 > Hard rule: **don't invent a new library name** unless it truly can't fit an existing module.

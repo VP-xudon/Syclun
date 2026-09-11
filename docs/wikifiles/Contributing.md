@@ -34,7 +34,7 @@ If a clean checkout is red, **fix your environment first**.
 
 建议阅读顺序 / suggested reading order:
 1. [`README.md`](https://github.com/VP-xudon/Syclun/blob/main/README.md)
-2. [基本语法 / Basic Syntax](Basic-Syntax) 与语言规范 [`Synth-OOP语言文档-修正版.md`](https://github.com/VP-xudon/Syclun/blob/main/doc/Synth-OOP语言文档-修正版.md)
+2. [基本语法 / Basic Syntax](Basic-Syntax) 与语言规范 [`Synth-OOP语言文档-修正版.md`](https://github.com/VP-xudon/Syclun/blob/main/docs/olddocs/Synth-OOP语言文档-修正版.md)
 3. [标准库总览 / Standard Libraries](Standard-Libraries)
 
 ---

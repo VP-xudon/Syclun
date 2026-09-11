@@ -8,14 +8,14 @@
 // 主张：对象是运行期持续塑形的活物。成员可在构造之后新增——方法、私有属性——
 // 但永不移除，冻结的对象永不可解冻。
 $Program {
-    @:: << [{
+    @::[{
         -(io::OStream out);
 
         // A bare object. Just an object. 只是对象。
         -(std::Object box);
 
         // Inject a method. 注入方法。
-        box:@describe << [{
+        box:@describe[{
             -(io::OStream o);
             o.push_line("I am a box with ");
             o.push(self.items);
@@ -26,7 +26,7 @@ $Program {
 
         // Private attributes are invisible from outside...
         // 私有属性从外部不可见……
-        box:@add << [{
+        box:@add[{
             self.items.=( self.items.+(1) );
         }];
         box.add();

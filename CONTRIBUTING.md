@@ -81,7 +81,7 @@ Only if the answer to all four points at "new module" should you open one.
 ```bash
 bash build.sh                      # must succeed / 必须成功
 ./build/assert_lexer.exe           # 83 / 83
-./build/assert_parser.exe          # 71 / 71
+./build/assert_parser.exe          # 80 / 80
 ./build/assert_runtimes.exe        # 143 / 143
 for f in examples/*.syn; do ./build/synth.exe "$f"; done
 ```
@@ -192,7 +192,7 @@ For a bug: how do I reproduce it on a clean checkout?
 | Suite              | Before | After |
 |--------------------|--------|-------|
 | assert_lexer       | 83/83  |       |
-| assert_parser      | 71/71  |       |
+| assert_parser      | 80/80  |       |
 | assert_runtimes    | 143/143|       |
 | examples + philosophy | all pass |     |
 

@@ -11,10 +11,10 @@
 // Minimal parent so the "extends" showcase resolves.
 // 最小父类，使"继承"展示可解析。
 $Animal {
-    @!:: << [() ~> () {}];    // constructor / 构造
-    @~  << [() ~> () {}];     // destructor / 析构
-    @=: << [() ~> (out) {}];      // publication / 公布
-    @:= << [(v) -> () {}];    // reception / 接收
+    @!::[() ~> () {}];    // constructor / 构造
+    @~[() ~> () {}];     // destructor / 析构
+    @=:[() ~> (out) {}];      // publication / 公布
+    @:=[(v) -> () {}];    // reception / 接收
 }
 
 $Dog [Animal] {
@@ -23,30 +23,30 @@ $Dog [Animal] {
     // 可变，因为下方 @inc 要写它。此处加 '!' 会使其成为常数成员（不可修改）；
     // '!' 标记仍由第 57 行的常数局部展示。
     -(std::Number age);            // member (mutable; written by @inc)
-    @get << [() ~> (result) {     // constant pattern ~>
+    @get[() ~> (result) {     // constant pattern ~>
         result << age;
     }];
-    @inc << [() -> () {       // non-constant pattern ->
+    @inc[() -> () {       // non-constant pattern ->
         age << age.+(1);
     }];
-    @!:: << [() ~> () {}];    // const constructor (reserved method)
-    @~  << [() ~> () {}];     // destructor
-    @=: << [() ~> (out) {}];      // publication function
-    @:= << [(v) -> () {}];    // reception function
+    @!::[() ~> () {}];    // const constructor (reserved method)
+    @~[() ~> () {}];     // destructor
+    @=:[() ~> (out) {}];      // publication function
+    @:=[(v) -> () {}];    // reception function
 }
 
 // ---- Constraint declaration (with parent) / 约束声明（含父约束）----
 // A contract body holds signatures only (no method body).
 // 约束体内只写签名（不带方法体）。
 #Addable {
-    @+ << [(other) -> (result)];
+    @+[(other) -> (result)];
 }
 #Comparable [Addable] {
-    @< << [(other) -> (result)];
+    @<[(other) -> (result)];
 }
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // instantiation expression / 实例化表达式
@@ -108,7 +108,7 @@ $Program {
         -(Counter c);
         out << "has_method(inc)="; out << chk.has_method(c, "inc"); out << "\n";
         out << "has_changed=";     out << chk.has_changed(c);       out << "\n";
-        c.inc.=([()->() { value << value.+(100); }]);   // runtime rebind
+        c:@inc[()->() { value << value.+(100); }];   // runtime rebind
         out << "has_method(inc)="; out << chk.has_method(c, "inc"); out << "\n";
         out << "has_changed=";     out << chk.has_changed(c);       out << "\n";
 
@@ -121,10 +121,10 @@ $Program {
 // assert::Checker 演示所用的最小类。
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }
@@ -132,5 +132,5 @@ $Counter {
 // A small class used by the zero-side-effect behavior showcase above.
 // 零副作用行为演示所用的最小类。
 $Calc {
-    @add3 << [(x) => (sum) { sum << x.+(3); }];   // => : zero-side-effect pattern
+    @add3[(x) => (sum) { sum << x.+(3); }];   // => : zero-side-effect pattern
 }

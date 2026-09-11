@@ -430,6 +430,29 @@ namespace interp {
                 return p == std::string::npos ? s : s.substr(p + 2);
             };
             if (unqual(vkey) != unqual(proto->name)) {
+                // v1.32 structural fallback: the runtime keeps no inheritance
+                // chain, so an exact prototype match is not the only way to
+                // satisfy a class constraint. Any object whose methods cover
+                // every sign of the constraint class satisfies it — duck
+                // typing at the call boundary ("if it walks like an Addable
+                // and adds like an Addable, it is an Addable"). This is what
+                // makes runtime injection (`obj:@m[closure];`) able to bring
+                // a plain object into a constraint's shape.
+                // v1.32 结构化回退：运行期不保留继承链，故精确原型匹配并非
+                // 满足类约束的唯一途径。凡其方法覆盖约束类全部签名的对象即
+                // 满足——调用边界上的鸭子式判定（「走起来像 Addable、加起来
+                // 像 Addable，它就是 Addable」）。这使运行期注入
+                //（`对象:@名[闭包];`）能把普通对象塑造成约束要求的形状。
+                if (auto vc = std::dynamic_pointer_cast<RuntimeClass>(value)) {
+                    rt_basic::ClassContract structural;
+                    for (const auto& [mname, call] : proto->get_methods()) {
+                        (void)mname;
+                        structural.add_sign(call.get_sign());
+                    }
+                    if (structural.validate(vc)) {
+                        return;
+                    }
+                }
                 interp_error(
                     "ConstraintException",
                     "value of type '" + (vkey.empty() ? "<unknown>" : vkey)
@@ -717,13 +740,23 @@ namespace interp {
     inline void exec_objmethod(Frame& f, AstNodePtr node) {
         auto cls = injection_target(f, node->kids[0]);
         const std::string& mname = node->value;
+        // v1.32: `obj:@m[closure];` is create-or-replace — the ONE closure
+        // modification syntax. Replacing an existing method is allowed
+        // unless that method is const (`@!m`): a const binding refuses to
+        // be changed, exactly like any other const.
+        // v1.32：`对象:@名[闭包];` 即创建或重绑——闭包修改的唯一语法。
+        // 替换已有方法是允许的，除非该方法为常数（`@!m`）：常数绑定拒绝
+        // 被更改，与其他常数一致。
         if (cls->get_methods().count(mname)) {
-            interp_error(
-                "InterException",
-                "method '" + mname + "' is already declared on this object "
-                "(duplicate declaration; change it with 'obj." + mname
-                    + ".=(behavior)' instead)"
-            );
+            const Callable& prev = cls->get_methods().at(mname);
+            if (prev.get_attr().first) {
+                interp_error(
+                    "ConstException",
+                    "cannot rebind const method '" + mname + "' (declared "
+                        "with '@!" + mname + "'; a const binding refuses to "
+                        "be changed)"
+                );
+            }
         }
         // The RHS AST must be taken from the NODE when it is a literal
         // behavior: a RuntimeBehavior produced by make_closure carries a
@@ -750,10 +783,10 @@ namespace interp {
             );
         }
         CallableSign sign = build_sign(behAST, mname);
-        // {isConst, isPrivate}: `@!m` marks the injected method constant, so a
-        // later `obj.m.=(...)` is rejected as a const change.
+        // {isConst, isPrivate}: `@!m` marks the injected method constant, so
+        // a later `obj:@m[...]` replacement is rejected as a const change.
         // {isConst, isPrivate}：`@!m` 把注入的方法标记为常数，此后
-        // `对象.m.=(...)` 会以「更改常量」被拒。
+        // `对象:@名[...]` 的替换会以「更改常量」被拒。
         Callable c(behAST, sign, state_from_mode(behAST->value),
                    {node->isConst, node->isPrivate});
         cls->set_method(mname, c);
@@ -990,6 +1023,21 @@ namespace interp {
                 // 就是它的名字，而这是一切名字唯一的查找路径。
                 receiverObj = resolve(f, name);
             }
+            // v1.32: a closure is NOT a class object but a separate major
+            // category, with no methods of its own — a flow cannot receive
+            // into it (`:=` does not exist there). Rebind with
+            // `obj:@name[closure];` / `@name[closure];`.
+            // v1.32：闭包不是类对象，而是独立的大类，自身没有方法——流无法
+            // 向它接收（那里不存在 `:=`）。重绑请用
+            // `对象:@名[闭包];` / `@名[闭包];`。
+            if (receiverObj && receiverObj->is_behav()) {
+                interp_error(
+                    "InterException",
+                    "cannot flow into '" + name + "': a closure is NOT a "
+                        "class object but a separate major category, with "
+                        "no methods of its own (v1.32)"
+                );
+            }
         } else if (recvNode->kind == "inst") {
             // Inline declaration used as a flow receiver: a const inline
             // declaration must NOT be (re)assigned by a flow statement.
@@ -1011,38 +1059,27 @@ namespace interp {
             }
             receiverObj = eval_expr(f, recvNode);   // declares + binds (non-const)
         } else if (recvNode->kind == "access") {
-            // Symmetric flow form of method rebinding: `obj.method << beh`.
-            // If the field names an existing user method on the owner, rebind
-            // it in place (the behavior literal on the right becomes the new
-            // callable). Otherwise this is a normal attribute flow and we fall
-            // through to the usual access evaluation below.
-            // 方法重绑定的对称流形式：`obj.method << beh`。若 field 确为所有者
-            // 上的已有用户方法，则就地重绑（右侧行为字面量成为新 callable）；
-            // 否则视作普通属性流，落到下方常规 access 求值。
+            // v1.32: flowing into `obj.method` is retired. A closure is NOT
+            // a class object but a separate major category, with no methods
+            // of its own — `<<` cannot reach it. Bind or rebind behaviors
+            // with `obj:@method[closure];` only.
+            // v1.32：流入 `对象.方法` 已退役。闭包不是类对象，而是独立的
+            // 大类，自身没有方法——`<<` 触达不了它。绑定或重绑行为只可用
+            // `对象:@方法[闭包];`。
             auto owner = eval_expr(f, recvNode->kids[0]);
             const std::string& field = recvNode->value;
             auto cls = std::dynamic_pointer_cast<RuntimeClass>(owner);
             if (cls) {
                 auto mit = cls->get_methods().find(field);
                 if (mit != cls->get_methods().end()) {
-                    // The flow's right side is the behavior literal; read its
-                    // AST directly. A RuntimeBehavior produced by make_closure
-                    // keeps a lambda, not the AST, so the node must be taken
-                    // before evaluation (the `.=` form does the same).
-                    // 流的右侧即行为字面量，直接读取其 AST。make_closure 产出的
-                    // RuntimeBehavior 保存的是 lambda 而非 AST，故须在求值前
-                    // 取节点（`.=` 形式同理）。
-                    AstNodePtr behAST = nullptr;
-                    AstNodePtr senderNode = flowNode->kids[1];
-                    if (senderNode->kind == "behavior") {
-                        behAST = senderNode;
-                    } else {
-                        auto rbptr = std::dynamic_pointer_cast<RuntimeBehavior>(
-                            senderObj);
-                        if (rbptr) behAST = rbptr->get_astn();
-                    }
-                    rebind_method(cls.get(), field, behAST);
-                    return cls;
+                    interp_error(
+                        "InterException",
+                        "retired closure binding '" + field + " << [...]' "
+                        "(v1.32): a closure is NOT a class object but a "
+                        "separate major category, with no methods of its "
+                        "own. Bind or rebind it with 'obj:@" + field
+                            + "[closure];' instead"
+                    );
                 }
             }
             receiverObj = eval_expr(f, recvNode);
@@ -1324,15 +1361,13 @@ namespace interp {
                     "side of '.=(...)' must be a variable, e.g. `x.=(value)`)"
                 );
             }
-            // Member-method (re)binding: `obj.method.=(beh)` or `obj.method = beh`.
-            // A method variable is just a member holding a behavior; assigning
-            // to it swaps the callable. This is the natural consequence of
-            // "a method is a variable bound to a behavior" — no special rule.
-            // Const methods (@!inc) refuse to be rebound.
-            // 成员方法（重）绑定：`obj.method.=(beh)` 或 `obj.method = beh`。
-            // 方法变量即持有行为的成员，对其赋值即替换 callable——这正是
-            // “方法即绑定到行为之上的变量”的自然结论，无需特判。常数方法
-            // （@!inc）拒绝被重绑。
+            // v1.32: assigning to `obj.method` is retired. A closure is NOT a
+            // class object but a separate major category, with no methods of
+            // its own — `=` / `.=` cannot reach it. Bind or rebind behaviors
+            // with `obj:@method[closure];` only.
+            // v1.32：对 `对象.方法` 赋值已退役。闭包不是类对象，而是独立的
+            // 大类，自身没有方法——`=` / `.=` 触达不了它。绑定或重绑行为
+            // 只可用 `对象:@方法[闭包];`。
             if (node->value == "=" && node->kids[0]->kind == "access") {
                 auto owner = eval_expr(f, node->kids[0]->kids[0]);
                 const std::string& field = node->kids[0]->value;
@@ -1340,22 +1375,15 @@ namespace interp {
                 if (cls) {
                     auto mit = cls->get_methods().find(field);
                     if (mit != cls->get_methods().end()) {
-                        // Resolve the RHS behavior AST: a literal behavior
-                        // node, or a value that is already a RuntimeBehavior.
-                        // 解析右值行为 AST：字面量行为节点，或本身就是
-                        // RuntimeBehavior 的值。
-                        AstNodePtr behAST = nullptr;
-                        AstNodePtr rhsNode = node->kids[1]->kids[0];
-                        if (rhsNode->kind == "behavior") {
-                            behAST = rhsNode;
-                        } else if (!args.empty()) {
-                            auto rb
-                                = std::dynamic_pointer_cast<RuntimeBehavior>(
-                                    args[0]);
-                            if (rb) behAST = rb->get_astn();
-                        }
-                        rebind_method(cls.get(), field, behAST);
-                        return rb::first_of(rb::empty_result());
+                        interp_error(
+                            "InterException",
+                            "retired closure binding '" + field
+                                + " .= [...] / = [...]' (v1.32): a closure "
+                                  "is NOT a class object but a separate "
+                                  "major category, with no methods of its "
+                                  "own. Bind or rebind it with 'obj:@"
+                                + field + "[closure];' instead"
+                        );
                     }
                     // Not a method: a data attribute. A const member rejects
                     // the write iff '=' would modify it. 非方法：数据属性。

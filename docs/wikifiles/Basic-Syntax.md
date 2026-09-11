@@ -14,7 +14,7 @@ A program *is* the construction of its `$Program` class. The entry is `@::` (con
 ```text
 &io;                       # 导入标准库 / import a stdlib
 $Program {                # 程序类 / the program class
-    @:: << [{             # 构造行为 = 程序入口 / construct behavior = entry point
+    @::[{             # 构造行为 = 程序入口 / construct behavior = entry point
         io::out.push_line("hi");
     }];
 }
@@ -95,9 +95,9 @@ The basic unit of executable logic, written with brackets. *Functions, closures,
 Declare methods with `@name << behavior`; three shapes:
 
 ```text
-@get  << [() ~> (result) { result << value; }];        # 读 / getter
-@inc  << [() -> ()     { value << self.next_value(); }]; # 写，用 self / setter, uses self
-@name << [() -> ()     { … }];                          # 普通 / plain
+@get[() ~> (result) { result << value; }];        # 读 / getter
+@inc[() -> ()     { value << value.+(1); }];       # 写，用 self / setter, uses self
+@name[() -> ()     { … }];                          # 普通 / plain
 ```
 
 - 实例方法经 `self.NAME(...)` 调用（`self` 指当前对象）。
@@ -111,8 +111,8 @@ Declare methods with `@name << behavior`; three shapes:
 ```text
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) { result << value; }];
-    @inc << [() -> () { value << self.next_value(); }];
+    @get[() ~> (result) { result << value; }];
+    @inc[() -> () { value << value.+(1); }];
 }
 ```
 
@@ -130,7 +130,7 @@ $Counter {
 ```text
 &io;
 $Program {
-    @:: << [{
+    @::[{
         -(std::Boolean ok) << true;
         ok.if_([{ io::out << "yes"; }], [{ io::out << "no"; }]);   # if_ 条件, 真分支, 假分支
         -(std::Number i) << 0;
@@ -152,7 +152,7 @@ A constraint is a checklist of "which methods an object must have". Declared wit
 
 ```text
 #Addable {
-    @+ << [(other) -> (result) {}];     # 只写签名，函数体留空 / signature only
+    @+[(other) -> (result) {}];     # 只写签名，函数体留空 / signature only
 }
 
 [(a[Addable]) -> (r) { r << a.+(1); }]  # 参数必须满足 Addable / param must satisfy Addable
@@ -171,7 +171,7 @@ A constraint is a checklist of "which methods an object must have". Declared wit
 Objects stay alive after construction:
 
 ```text
-obj:@m   << [{ … }];    # 注入新方法 / inject a new method
+obj:@m[{ … }];    # 注入新方法 / inject a new method
 obj:-(T v) << init;     # 加私有属性（仅可初始化，只有自身方法能访问）/ private attr
 obj.#();                # 永久冻结 / freeze forever
 ```

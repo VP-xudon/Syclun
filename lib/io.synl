@@ -29,13 +29,13 @@ $OStream {
     // with no trailing newline. Triggered by the flow `out << value`.
     // 接收（公布）任意类型的值并写入标准输出（无尾随换行）。
     // 由流 `out << value` 触发。
-    @:= << [(value[std::Object]) ~> () { }];
+    @:=[(value[std::Object]) ~> () { }];
 
     // Method-form output, no trailing newline. 方法式输出，不换行。
-    @push << [(value[std::Object]) ~> () { }];
+    @push[(value[std::Object]) ~> () { }];
 
     // Method-form output that appends a newline. 方法式输出并换行。
-    @push_line << [(value[std::Object]) ~> () { }];
+    @push_line[(value[std::Object]) ~> () { }];
 }
 
 $IStream {
@@ -43,13 +43,13 @@ $IStream {
     // String. Triggered by the flow `x << in` (i.e. `x =: in`).
     // 公布（读取）标准输入中一个以空白分隔的词，作为 String。
     // 由流 `x << in`（即 `x =: in`）触发。
-    @=: << [() ~> (result[std::String]) { }];
+    @=:[() ~> (result[std::String]) { }];
 
     // Method-form input: read one word. 方法式输入：读取一个词。
-    @get << [() ~> (result[std::String]) { }];
+    @get[() ~> (result[std::String]) { }];
 
     // Method-form input: read a whole line. 方法式输入：读取一整行。
-    @get_line << [() ~> (result[std::String]) { }];
+    @get_line[() ~> (result[std::String]) { }];
 }
 
 // ------------------------------------------------------------

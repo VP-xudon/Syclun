@@ -27,8 +27,8 @@ There are no "types" either: the class name at declaration (`std::Number`) is th
 构造之后对象仍是活的，你可以：
 Objects stay alive after construction. You can:
 
-- 运行时**注入**一个方法：`box:@hi << [{ … }];`
-  inject a method at runtime: `box:@hi << [{ … }];`
+- 运行时**注入**一个方法：`box:@hi[{ … }];`
+  inject a method at runtime: `box:@hi[{ … }];`
 - 给它一个**私有属性**，只有它自己的方法能碰：`box:-(std::Number secret) << 42;`
   give it a *private* attribute only its own methods can touch: `box:-(std::Number secret) << 42;`
 - 用 `box.#()` 把它**永久冻结**——单向、只可设置的开关。任何东西都无法移除，冻结的对象永不可解冻。

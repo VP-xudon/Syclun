@@ -20,7 +20,7 @@
 &re;
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // ---- maths: abs ----

@@ -1,7 +1,7 @@
 &io;
 &sugar;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // ---- Basic literal arithmetic / 基础字面量算术 ----

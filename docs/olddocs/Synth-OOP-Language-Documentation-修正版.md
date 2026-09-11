@@ -1,5 +1,5 @@
 # Synth OOP Language Documentation
-**Version: v1.31**
+**Version: v1.32**
 
 > This is the official language documentation for Synth OOP, fully covering all syntax features up to the current version. This document is written entirely in clear, accessible, and friendly language. After reading it, you'll be able to write any valid Synth OOP program. This document is intended both for **compiler developers** and for anyone who wishes to learn more about the language: the syntax described herein takes precedence, and Appendix D provides compiler acceptance test cases.
 
@@ -25,9 +25,14 @@ Related documents:
 - Project introduction and the 30-second tour: [`../README.md`](../README.md)
 
 ## Revision History
+- **v1.32**: **Closure-binding syntax `@name[closure];` — strict separation of closures from class objects; structural satisfaction of class constraints.** `<<` and `.` are value flow and assignment; "binding a behavior to a name" is neither — it now has a syntax of its own.
+  - **New binding syntax** `@name[closure];` covers every site: class-body methods (`@inc[...]`), closure variables inside behaviors (`@f[...]`), contract signatures (`@add[(params)->(outs)];`), and runtime injection / rebinding (`obj:@name[closure];` — replacing an existing non-const method rebinds it; `@!name` const methods still refuse with `ConstException`).
+  - **Retired forms**: `@name << [closure]`, `@name .= [closure]`, `obj.name << [closure]`, and `obj.name.=(closure)` are now errors. The message explains: **a closure is NOT a class object but a separate major category, with no methods of its own** — use `@name[closure];` instead. Flows `<<` and assignments `.=` between ordinary objects are unaffected.
+  - **Structural class constraints**: a class-name constraint (e.g. `-(objs[Addable] x)`) no longer demands an exact prototype match — any object whose methods cover every sign of the constraint class satisfies it (duck typing at the call boundary). Runtime injection can now shape a plain object into a constraint's form.
+  - **Closure environment**: closures capture their defining scope as before; block-sugar closures read preset objects (e.g. `io::out`) and enclosing locals, and a local closure variable is callable by bare name.
 - **v1.31**: **Runtime object injection, block sugar, and library preset objects.** The language's OOP premise is taken to its conclusion: an object is a live thing you keep shaping at runtime.
   - **Block sugar** `[{ body }]` is exactly `[() -> () { body }]` — the callback-shaped block used for condition branches and other empty-signature behaviors.
-  - **Method injection** `obj:@name << [behavior];` (or `.=`) binds a **new** method onto a live object. Re-declaring an existing method is a duplicate-declaration error — change an existing method with `obj.name.=(behavior)` instead. `@!name` injects a const method, which refuses later rebinding.
+  - **Method injection** `obj:@name[behavior];` (or `.=`) binds a **new** method onto a live object. Re-declaring an existing method is a duplicate-declaration error — change an existing method with `obj.name.=(behavior)` instead. `@!name` injects a const method, which refuses later rebinding.
   - **Private-attribute injection** `obj:-(Type v) << init;` adds a private attribute that can only be initialized at injection; it is reachable only from methods of the owning object, so later changes must go through an injected method.
   - **Const state** `obj.#()` permanently freezes the object: no further injection, no rebinding, no way back. Set-only by design.
   - **Library preset objects**: a library face (`.synl`) may create top-level object instances (e.g. `-(io::OStream! io::out);`) that arrive with the import. An object's name is its **full qualified name** — the leading module is how a program finds the library's runtime space, the object lives there exactly like the library's classes do, and access takes the ordinary name-resolution path with no splitting or special-casing. `&io;` now provides const `io::out` / `io::in`, and `&maths;` provides const `maths::math` — no factory ceremony. A preset's name MUST carry the module prefix; a user program (`.syn`) must NOT declare global objects directly; objects live inside `$Program` or inside a library face.
@@ -193,11 +198,11 @@ Any class that does not explicitly declare a parent class inherits from `std::Ob
 
 ```text
 $Object {
-    @!:: << [() ~> () {}];                      // Constructor: called on object creation
-    @!~ << [() ~> () {}];                       // Destructor: called on object destruction
-    @!=: << [() ~> (result) { /* publish self value */ }];  // Publication: sender in a stream statement; by default cooperates with the receiver and publishes self as-is
-    @!:= << [(value) -> () { /* receive value */ }];     // Reception: receiver in a stream statement; when value's type matches self, by default assigns self directly from value (the underlying source of streaming assignment)
-    @= << [(value) -> () { /* assign self from value */ }]; // Assignment: a.=(b), equivalent to the a << b assignment usage
+    @!::[() ~> () {}];                      // Constructor: called on object creation
+    @!~[() ~> () {}];                       // Destructor: called on object destruction
+    @!=:[() ~> (result) { /* publish self value */ }];  // Publication: sender in a stream statement; by default cooperates with the receiver and publishes self as-is
+    @!:=[(value) -> () { /* receive value */ }];     // Reception: receiver in a stream statement; when value's type matches self, by default assigns self directly from value (the underlying source of streaming assignment)
+    @=[(value) -> () { /* assign self from value */ }]; // Assignment: a.=(b), equivalent to the a << b assignment usage
 }
 ```
 
@@ -211,43 +216,43 @@ Below, each native object's built-in methods are described one by one using Synt
 
 ```text
 $Number {
-    @+ << [(std::Number other) => (std::Number result) {
+    @+[(std::Number other) => (std::Number result) {
         // Addition: result = self.+(other)
     }];
-    @- << [(std::Number other) => (std::Number result) {
+    @-[(std::Number other) => (std::Number result) {
         // Subtraction: result = self.-(other)
     }];
-    @* << [(std::Number other) => (std::Number result) {
+    @*[(std::Number other) => (std::Number result) {
         // Multiplication: result = self.*(other)
     }];
-    @/ << [(std::Number other) => (std::Number result) {
+    @/[(std::Number other) => (std::Number result) {
         // Division: result = self./(other); per IEEE 754, dividing by zero yields Infinity/NaN (the historical "poison" fallback is retired)
     }];
-    @% << [(std::Number other) => (std::Number result) {
+    @%[(std::Number other) => (std::Number result) {
         // Modulo: result = self.%(other)
     }];
-    @< << [(std::Number other) => (std::Boolean result) {
+    @<[(std::Number other) => (std::Boolean result) {
         // Less than: result = (self.<(other))
     }];
-    @> << [(std::Number other) => (std::Boolean result) {
+    @>[(std::Number other) => (std::Boolean result) {
         // Greater than: result = (self.>(other))
     }];
-    @<= << [(std::Number other) => (std::Boolean result) {
+    @<=[(std::Number other) => (std::Boolean result) {
         // Less than or equal: result = (self.<=(other))
     }];
-    @>= << [(std::Number other) => (std::Boolean result) {
+    @>=[(std::Number other) => (std::Boolean result) {
         // Greater than or equal: result = (self.>=(other))
     }];
-    @== << [(std::Number other) => (std::Boolean result) {
+    @==[(std::Number other) => (std::Boolean result) {
         // Equal: result = (self.==(other))
     }];
-    @!= << [(std::Number other) => (std::Boolean result) {
+    @!=[(std::Number other) => (std::Boolean result) {
         // Not equal: result = (self.!=(other))
     }];
-    @to_string << [() => (std::String result) {
+    @to_string[() => (std::String result) {
         // Convert self to a decimal string representation
     }];
-    @repeat_ << [(body) -> (value) {
+    @repeat_[(body) -> (value) {
         // Loop: self is the loop count (Number), body is the loop-body behavior;
         // body is like [(state) -> (state)], its parameter format must equal its return format;
         // value is the value returned by the last execution of body
@@ -259,11 +264,11 @@ $Number {
 
 ```text
 $Boolean {
-    @if_ << [(true_branch, false_branch) -> (value) {
+    @if_[(true_branch, false_branch) -> (value) {
         // Conditional branch: execute true_branch when self is true, otherwise false_branch;
         // value is the output of the executed branch, both branches must output the same type
     }];
-    @while_ << [(body, condition_check) -> (value) {
+    @while_[(body, condition_check) -> (value) {
         // Loop: self is the initial condition (Boolean), body is the loop-body behavior, condition_check is the condition-check behavior (after body);
         // body is like [(state) -> (state)], its parameter format must equal its return format;
         // condition_check is like [(state) ~> (flag)], its parameter format must equal body's return format;
@@ -278,28 +283,28 @@ Parameter notes: `true_branch`, `false_branch`, `body`, and `condition_check` ar
 
 ```text
 $String {
-    @+ << [(std::String other) => (std::String result) {
+    @+[(std::String other) => (std::String result) {
         // Concatenation: result = self.+(other), returns a new string (original unchanged)
     }];
-    @upper << [() => (std::String result) {
+    @upper[() => (std::String result) {
         // To uppercase, returns a new string
     }];
-    @lower << [() => (std::String result) {
+    @lower[() => (std::String result) {
         // To lowercase, returns a new string
     }];
-    @reverse << [() => (std::String result) {
+    @reverse[() => (std::String result) {
         // Reverse character order, returns a new string
     }];
-    @length << [() => (std::Number result) {
+    @length[() => (std::Number result) {
         // Return the character count
     }];
-    @get << [(std::Number index) => (std::String result) {
+    @get[(std::Number index) => (std::String result) {
         // Return the index-th character (index starts from 0)
     }];
-    @contains << [(std::String sub) => (std::Boolean result) {
+    @contains[(std::String sub) => (std::Boolean result) {
         // Whether self contains substring sub
     }];
-    @slice << [(std::Number start, std::Number end) => (std::String result) {
+    @slice[(std::Number start, std::Number end) => (std::String result) {
         // Return the substring in the [start, end) range
     }];
 }
@@ -309,31 +314,31 @@ $String {
 
 ```text
 $Array {
-    @push_back << [(value) -> () {
+    @push_back[(value) -> () {
         // Append element value at the end (like vector::push_back)
     }];
-    @get << [(std::Number index) ~> (value) {
+    @get[(std::Number index) ~> (value) {
         // Get an element by index, index starts from 0; may also be named query
     }];
-    @size << [() ~> (std::Number result) {
+    @size[() ~> (std::Number result) {
         // Return the element count
     }];
-    @pop_back << [() -> () {
+    @pop_back[() -> () {
         // Remove the last element
     }];
-    @remove << [(std::Number index) -> () {
+    @remove[(std::Number index) -> () {
         // Delete the index-th element
     }];
-    @insert << [(std::Number index, value) -> () {
+    @insert[(std::Number index, value) -> () {
         // Insert value at position index, shifting subsequent elements
     }];
-    @clear << [() -> () {
+    @clear[() -> () {
         // Remove all elements
     }];
-    @front << [() ~> (value) {
+    @front[() ~> (value) {
         // Return the first element
     }];
-    @back << [() ~> (value) {
+    @back[() ~> (value) {
         // Return the last element
     }];
 }
@@ -345,25 +350,25 @@ $Array {
 
 ```text
 $Dict {
-    @get << [(key) ~> (value) {
+    @get[(key) ~> (value) {
         // Get a value by key; returns the zero value of that type when the key is absent (the historical "poison" fallback is retired)
     }];
-    @set << [(key, value) -> () {
+    @set[(key, value) -> () {
         // Set a key-value pair; overwrite if the key already exists
     }];
-    @remove << [(key) -> () {
+    @remove[(key) -> () {
         // Delete the key-value pair for key
     }];
-    @has << [(key) ~> (std::Boolean result) {
+    @has[(key) ~> (std::Boolean result) {
         // Whether key exists
     }];
-    @size << [() ~> (std::Number result) {
+    @size[() ~> (std::Number result) {
         // Return the number of key-value pairs
     }];
-    @keys << [() ~> (std::Array result) {
+    @keys[() ~> (std::Array result) {
         // Return an array of all keys
     }];
-    @values << [() ~> (std::Array result) {
+    @values[() ~> (std::Array result) {
         // Return an array of all values
     }];
 }
@@ -373,13 +378,13 @@ $Dict {
 
 ```text
 $Tuple {
-    @get << [(std::Number index) ~> (value) {
+    @get[(std::Number index) ~> (value) {
         // Get an element by index, index starts from 0
     }];
-    @make << [(elements) => (std::Tuple result) {
+    @make[(elements) => (std::Tuple result) {
         // Construct a tuple from elements, where elements are arbitrary objects in positional order
     }];
-    @size << [() ~> (std::Number result) {
+    @size[() ~> (std::Number result) {
         // Return the element count
     }];
 }
@@ -391,7 +396,7 @@ $Tuple {
 
 ```text
 $OStream {
-    @!:= << [(value) ~> () {
+    @!:=[(value) ~> () {
         // Reception function (constant pattern ~>): output value to standard output;
         // does not modify out's own state, so out may be declared constant
     }];
@@ -402,7 +407,7 @@ $OStream {
 
 ```text
 $IStream {
-    @!=: << [() ~> (result) {
+    @!=:[() ~> (result) {
         // Publication function (const semantics): read from standard input and publish to result;
         // does not modify in's own state, so in may be declared constant
     }];
@@ -641,7 +646,7 @@ Tuples support **structural decomposition** syntax, which unpacks the values in 
 ```text
 // Method definition with multiple returns: (q, r) -> ...
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
@@ -682,10 +687,10 @@ Tuple objects can be directly passed as method arguments or returned from method
 &io;
 -(io::OStream out);
 $Point {
-    @make << [(x, y) -> (result) {
+    @make[(x, y) -> (result) {
         result << (x, y);
     }];
-    @print << [(point) -> () {
+    @print[(point) -> () {
         out << point.get(0);
         out << point.get(1);
     }];
@@ -705,11 +710,11 @@ You can pass the multiple return values of a method directly as arguments to ano
 &io;
 -(io::OStream out);
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
-    @process << [(x, y) -> () {
+    @process[(x, y) -> () {
         out << x;
         out << y;
     }];
@@ -783,9 +788,9 @@ A behavior can access variables outside its defining scope — this is known as 
 $Counter {
     -(std::Number value);
     // Constant-pattern method: can read the member, cannot modify it
-    @peek << [() ~> (result) { result << value; }];
+    @peek[() ~> (result) { result << value; }];
     // Non-constant-pattern method: can read and modify the member
-    @inc << [() -> () { value << value.+(1); }];
+    @inc[() -> () { value << value.+(1); }];
 }
 ```
 
@@ -825,11 +830,11 @@ Core idea: **The behavior pattern is the sole switch for side effects — three 
 A method is a behavior bound to an object. The syntax is highly fluent — simply pass a behavior into the method name:
 
 ```text
-@methodName << [behavior];
+@methodName[behavior];
 ```
 
 > 💡 **Beginner clarification: Methods cannot exist independently of a class**
-> **A method must be bound to some class (or some object); it cannot exist independently of a class.** Think of a method as an "ability attached to a class" — without a class to act as the carrier, there's nothing for the method to attach to. This is the same as how "member functions belong to a class" in C++/Java: a method name must be declared inside a class definition body like `$ClassName { ... }` (e.g. `$Counter { @inc << ...; }`), or be bound to a specific object. Writing a standalone `@methodName << [behavior];` with no class to host it is **illegal**.
+> **A method must be bound to some class (or some object); it cannot exist independently of a class.** Think of a method as an "ability attached to a class" — without a class to act as the carrier, there's nothing for the method to attach to. This is the same as how "member functions belong to a class" in C++/Java: a method name must be declared inside a class definition body like `$ClassName { ... }` (e.g. `$Counter { @inc << ...; }`), or be bound to a specific object. Writing a standalone `@methodName[behavior];` with no class to host it is **illegal**.
 > By contrast, **behaviors themselves may exist freely** — they are the units of executable logic and can be stored in variables, passed to behaviors, and used as arguments (see Section 5.1). But once a behavior is declared as a "method" via `@methodName << ...`, it must have an owning class/object. To remember it simply: **behaviors are free; methods belong to classes.**
 
 ### 6.2 Method Modifiers
@@ -876,7 +881,7 @@ There are four method names reserved by the language, each with a specific role:
 
 ```text
 $Example {
-    @!:: << [() ~> () {}];
+    @!::[() ~> () {}];
 }
 ```
 
@@ -955,7 +960,7 @@ Here, the boolean constant `true` is directly used as the condition, demonstrati
 
 ```text
 $Checker {
-    @check << [() ~> (result) {
+    @check[() ~> (result) {
         -(std::Number x) << 5;
         -(std::Boolean cond) << (x.>(3));
         result << cond;
@@ -1115,7 +1120,7 @@ When the parent position holds an **instance**, Synth OOP performs a "reverse de
 $Student [Human] {
     -(std::Number age);
     -(std::String major);
-    @:: << [(a, n, m) -> () {
+    @::[(a, n, m) -> () {
         age << a;
         name << n; // name is inherited from Human
         major << m;
@@ -1127,7 +1132,7 @@ s.age << 22;
 s.major << "Computer Science";
 // Derive the new class GraduateStudent from instance s
 $GraduateStudent [s] {
-    @addResearch << [(topic) -> () {
+    @addResearch[(topic) -> () {
         name << name.+(" (Research: ").+(topic).+(")");
     }];
 }
@@ -1145,7 +1150,7 @@ The syntax of a constraint closely resembles a **class definition** (see Chapter
 
 ```
 #Addable {
-    @+ << [(other) -> (result) {}];
+    @+[(other) -> (result) {}];
 }
 ```
 
@@ -1172,8 +1177,8 @@ A constraint can contain multiple method signatures. The syntax resembles a clas
 
 ```
 #Printable {
-    @print << [() -> () {}];
-    @toString << [() -> (result) {}];
+    @print[() -> () {}];
+    @toString[() -> (result) {}];
 }
 ```
 
@@ -1205,10 +1210,10 @@ Constraints also support **inheritance** — just as classes may specify a paren
 
 ```
 #Addable {
-    @+ << [(other) -> (result) {}];
+    @+[(other) -> (result) {}];
 }
 #Comparable [Addable] {        // Comparable inherits all of Addable's signatures
-    @< << [(other) -> (result) {}];
+    @<[(other) -> (result) {}];
 }
 ```
 
@@ -1404,13 +1409,13 @@ The following complete program demonstrates all the core mechanisms described in
 ```text
 &io;
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(Math m);
         -(std::Number total) << 0;
@@ -1491,7 +1496,7 @@ int main() {
 // Synth OOP
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::String text) << "Yahoo!";
         -(io::OStream out);
         out << text;
@@ -1534,10 +1539,10 @@ class Counter {
 // Synth OOP: Whether it's const is written on the arrow
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }
@@ -1557,7 +1562,7 @@ std::pair<int, int> divmod(int a, int b) {
 ```text
 // Synth OOP: Multiple return values implemented through multiple output parameters, tuples are the language's internal underlying mechanism
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
@@ -1614,11 +1619,11 @@ auto [x, y] = std::tie(a, b);
 ```text
 // Synth OOP: Tuples are language built-in constructs, can be transparently passed as method arguments
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
-    @process << [(x, y) -> () { /* receive two independent arguments */ }];
+    @process[(x, y) -> () { /* receive two independent arguments */ }];
 }
 -(Math m);
 m.process(m.divide(10, 3));
@@ -1632,7 +1637,7 @@ This appendix is a set of acceptance tests for compiler developers. The syntax i
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number num);
         -(io::OStream out);
         out << num;
@@ -1646,7 +1651,7 @@ Expected: Output `0`. Variables are automatically zero-value initialized at the 
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::String s) << "Yeah.";
         -(io::OStream out);
         out << s;
@@ -1660,7 +1665,7 @@ Expected: Output `Yeah.`
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         // The declaration expression itself has a value, can directly participate in stream operations
         out << (-(std::String msg) << "Hello, World!");
@@ -1673,7 +1678,7 @@ Expected: Output `Hello, World!`. The instantiation expression `(-(std::String m
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number outer) << 1;
         [() ~> () { outer << 2; }]; // ~> behavior tries to modify external variable outer
     }];
@@ -1685,7 +1690,7 @@ Expected: **Compilation failure**. `~>` behaviors can read external variables, b
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number outer) << 1;
         [() => (v) { v << outer; }]; // => behavior not even allowed to read outer
     }];
@@ -1697,7 +1702,7 @@ Expected: **Compilation failure**. `=>` behaviors absolutely cannot access any e
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number! frozen) << 7;
         frozen << 8; // Attempting to modify a constant
     }];
@@ -1710,7 +1715,7 @@ Expected: **Compilation failure**. Modifying a constant marked with `!` — the 
 ```text
 $Counter {
     -(std::Number value);
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }
@@ -1722,7 +1727,7 @@ Expected: Compilation success. `->` behaviors inside a class as methods can acce
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number x) << "not a number";
         -(io::OStream out);
         out << x;
@@ -1735,13 +1740,13 @@ Expected: Program doesn't crash. Stream negotiation fails, graceful degradation,
 
 ```text
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         // Directly decouple multi-return values — strictly matched by position
         -(Math m);
         -(std::Number q, std::Number r) << m.divide(10, 3);
@@ -1754,17 +1759,17 @@ Expected: Compilation success, tuple creation and structural binding decompositi
 
 ```text
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
     // Define a method that accepts separate parameters
-    @process << [(x, y) -> () {
+    @process[(x, y) -> () {
         // x is quotient, y is remainder
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         // Pass divide's multiple return values directly to process — aligned by position
         -(Math m);
         m.process(m.divide(10, 3));
@@ -1791,7 +1796,7 @@ Expected: Compilation success, inheritance chain Human → Student correctly est
 $Student [Human] {
     -(std::Number age);
     -(std::String major);
-    @:: << [(a, n, m) -> () {
+    @::[(a, n, m) -> () {
         age << a;
         name << n; // name is inherited from Human
         major << m;
@@ -1802,7 +1807,7 @@ s.name << "Alice";
 s.age << 22;
 s.major << "Computer Science";
 $GraduateStudent [s] {
-    @addResearch << [(topic) -> () {
+    @addResearch[(topic) -> () {
         name << name.+(" (Research: ").+(topic).+(")");
     }];
 }
@@ -1813,10 +1818,10 @@ Expected: Compilation success, new class GraduateStudent derived from instance s
 
 ```text
 $Channel {
-    @:: << [() -> () {}];
-    @~ << [() -> () {}];
-    @=: << [() -> (result) { result << "published"; }];
-    @:= << [(msg) -> () {}];
+    @::[() -> () {}];
+    @~[() -> () {}];
+    @=:[() -> (result) { result << "published"; }];
+    @:=[(msg) -> () {}];
 }
 ```
 
@@ -1826,15 +1831,15 @@ Expected: Compilation success, four reserved method names `::`, `~`, `=:`, `:=` 
 ```text
 $Calculator {
     -(std::Number value);
-    @add << [(x) -> () {
+    @add[(x) -> () {
         value << value.+(x);
     }];
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(Calculator c);
         // Instantiation expression directly calls method
         (-(Calculator c2)).add(10).get();
@@ -1847,13 +1852,13 @@ Expected: Compilation success, instantiation expression return value can directl
 
 ```text
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         // Only care about quotient, use _ as placeholder for remainder — strictly matched by position
         -(Math m);
         -(std::Number q, _) << m.divide(10, 3);
@@ -1867,7 +1872,7 @@ Expected: Compilation success, `_` placeholder correctly ignores unwanted return
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         // repeat_ loop body receives state and returns a new state of the same type
         -(std::Number last) << 3.repeat_(
@@ -1905,7 +1910,7 @@ Expected: Output `3` and `3`. repeat_ executes 3 times (state accumulates from 0
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Tuple t) << (10, "Alice", true);
     }];
 }
@@ -1916,7 +1921,7 @@ Expected: Compilation success, tuple literal correctly created and assigned.
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Tuple t) << (10, "Alice", true);
         -(std::Number x) << t.get(0);
         -(std::String name) << t.get(1);
@@ -1930,7 +1935,7 @@ Expected: Compilation success, tuple elements accessed correctly by index.
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Tuple t) << (10, "Alice", true);
         -(std::Number name) << t.get(1); // t.get(1) is String, cannot assign to Number
     }];
@@ -1943,16 +1948,16 @@ Expected: **Compilation failure**. `t.get(1)` returns String type, receiving var
 ```text
 &io;
 $Point {
-    @make << [(x, y) -> (result) {
+    @make[(x, y) -> (result) {
         result << (x, y);
     }];
-    @print << [(point) -> () {
+    @print[(point) -> () {
         out << point.get(0);
         out << point.get(1);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(Point p);
         -(std::Tuple t) << p.make(5, 15);

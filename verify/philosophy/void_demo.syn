@@ -9,18 +9,18 @@
 //  - compute()：返回单个公布输出 (x)。
 //  - nothing()：`() -> ()`——返回列表为空，仅为副作用运行，不公布任何值。
 $SideEffectDemo {
-    @compute << [() -> (x) {
+    @compute[() -> (x) {
         x << 42;
     }];
 
-    @nothing << [() -> () {
+    @nothing[() -> () {
         -(io::OStream out);
         out << "void-only method ran for its side effect";
     }];
 }
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(SideEffectDemo d);
 

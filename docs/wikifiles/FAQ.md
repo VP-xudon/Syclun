@@ -24,7 +24,7 @@
 不是。名字只是对象的**访问接口**；`a << 5` 是把 5 流进 a 这个对象本身，而非让 a 改指向别处。语言也没有「类型」——声明处的类名是塑造对象的模板，不是对象终身标签。
 
 ### Q6. 对象和类是活的吗？/ Are objects alive?
-构造之后仍是活的：可运行期注入方法（`obj:@m << [{…}]`）、加私有属性（`obj:-(T v) << init`）、用 `obj.#()` 永久冻结。冻结后永不可解冻。见 [基本语法 §9 / Basic Syntax §9](Basic-Syntax)。
+构造之后仍是活的：可运行期注入方法（`obj:@m[{…}]`）、加私有属性（`obj:-(T v) << init`）、用 `obj.#()` 永久冻结。冻结后永不可解冻。见 [基本语法 §9 / Basic Syntax §9](Basic-Syntax)。
 
 ### Q7. 怎么用标准库？/ How do I use a library?
 在文件顶部 `&模块;` 导入，例如 `&io;` `&maths;` `&re;`。导入后类（如 `maths::Maths`）即可用；`io` 还会随带常数对象 `io::out`/`io::in`。见 [标准库总览 / Standard Libraries](Standard-Libraries) 与 [对象使用 / Using StdLib Objects](Standard-Library-Objects)。

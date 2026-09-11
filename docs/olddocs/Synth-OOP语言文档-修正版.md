@@ -1,5 +1,5 @@
 # Synth OOP 语言文档
-**版本：v1.31**
+**版本：v1.32**
 
 > 这是 Synth OOP 的正式语言文档，完整收录截至当前版本的全部语法特性。本文档只用通俗易懂、亲切自然的语言写作。读完它，你就能写出任何合法的 Synth OOP 程序。本文档同时面向**编译器开发者**与想了解这门语言的人：语法以本文档为准，附录 D 提供编译器验收测试用例。
 
@@ -25,9 +25,14 @@
 - 项目介绍与 30 秒体验：[`../README.md`](../README.md)
 
 ## 修订记录
+- **v1.32**：**闭包绑定语法 `@名[闭包];`——闭包与类对象的严格区分；类约束的结构化满足。** `<<` 与 `.=` 是值的流动与赋值，而「把行为绑定到名字上」既非赋值亦非流——它从此拥有自己的语法。
+  - **新绑定语法** `@名[闭包];` 统一覆盖：类体方法定义（`@inc[...]`）、行为体内闭包变量（`@f[...]`）、约束签名（`@add[(参数)->(结果)];`）、运行期注入与重绑（`对象:@名[闭包];`——对已有非常数方法是重绑，对 `@!名` 常数方法仍以 `ConstException` 拒绝）。
+  - **退役旧写法**：`@名 << [闭包]`、`@名 .= [闭包]`、`对象.名 << [闭包]`、`对象.名.=(闭包)` 一律报错。错误消息会说明：**闭包不是类对象，而是独立的大类，自身没有方法、不可被调用**——请改用 `@名[闭包];`。普通对象之间的流 `<<` 与赋值 `.=` 不受影响。
+  - **类约束结构化满足**：类名约束（如 `-(objs[Addable] x)`）不再要求精确原型匹配——凡其方法覆盖约束类全部签名的对象即满足（调用边界上的鸭子式判定）。这使运行期注入能把普通对象塑造成约束要求的形状。
+  - **闭包环境**：闭包按既定语义捕获定义处作用域；块糖闭包可读取预置对象（如 `io::out`）与外层局部变量，局部闭包变量可直接以裸名调用。
 - **v1.31**：**运行期对象注入、代码块语法糖与库预置对象。** 把语言的面向对象前提贯彻到底：对象是可以在运行期持续塑形的活物。
   - **代码块语法糖** `[{ 体 }]` 恰为 `[() -> () { 体 }]`——条件分支等回调式场景所用的空签名代码块。
-  - **方法注入** `对象:@名 << [行为];`（或 `.=`）把**新**方法绑定到活对象上。重新声明已有方法属重复声明错误——修改已有方法请用 `对象.名.=(行为)`。`@!名` 注入常数方法，此后拒绝重绑。
+  - **方法注入** `对象:@名[行为];`（或 `.=`）把**新**方法绑定到活对象上。重新声明已有方法属重复声明错误——修改已有方法请用 `对象.名.=(行为)`。`@!名` 注入常数方法，此后拒绝重绑。
   - **私有属性注入** `对象:-(类型 变量) << 初值;` 新增只能在注入时初始化的私有属性；它只能被宿主对象自己的方法访问，此后的修改必须经注入的方法进行。
   - **常数状态** `对象.#()` 永久冻结对象：不可再注入、不可重绑、无法解冻。设计为只可设置。
   - **库预置对象**：库形态（.synl）可创建顶层对象实例（如 `-(io::OStream! io::out);`），随导入一同到来。对象的名字是**全限定名**——前导的库名即程序找到该库运行空间的路径，对象与库的类居于同一空间，访问走普通的名字解析，无任何拆分或特判。`&io;` 现提供常数 `io::out` / `io::in`，`&maths;` 现提供常数 `maths::math`——无需工厂仪式。库形态中的预置对象名**必须**带库前缀；用户程序（.syn）不得直接声明全局对象；对象应活在 `$Program` 或库形态之内。
@@ -202,11 +207,11 @@ Synth OOP 采用**鸭子类型**（Duck Typing）：一个对象是否是某种"
 
 ```text
 $Object {
-    @!:: << [() ~> () {}];                      // 构造：对象创建时调用
-    @!~ << [() ~> () {}];                       // 析构：对象销毁时调用
-    @!=: << [() ~> (result) { /* 公布自身值 */ }];  // 公布：流语句的发送方；默认配合接收方，原样公布自身
-    @!:= << [(value) -> () { /* 接收 value */ }]; // 接收：流语句的接收方；当 value 与自身类型一致时，默认直接拿 value 赋值自身（流式赋值的底层来源）
-    @= << [(value) -> () { /* 用 value 赋值自身 */ }]; // 赋值：a.=(b)，与 a << b 的赋值用法等价
+    @!::[() ~> () {}];                      // 构造：对象创建时调用
+    @!~[() ~> () {}];                       // 析构：对象销毁时调用
+    @!=:[() ~> (result) { /* 公布自身值 */ }];  // 公布：流语句的发送方；默认配合接收方，原样公布自身
+    @!:=[(value) -> () { /* 接收 value */ }]; // 接收：流语句的接收方；当 value 与自身类型一致时，默认直接拿 value 赋值自身（流式赋值的底层来源）
+    @=[(value) -> () { /* 用 value 赋值自身 */ }]; // 赋值：a.=(b)，与 a << b 的赋值用法等价
 }
 ```
 
@@ -220,43 +225,43 @@ $Object {
 
 ```text
 $Number {
-    @+ << [(std::Number other) => (std::Number result) {
+    @+[(std::Number other) => (std::Number result) {
         // 加法：result = self.+(other)
     }];
-    @- << [(std::Number other) => (std::Number result) {
+    @-[(std::Number other) => (std::Number result) {
         // 减法：result = self.-(other)
     }];
-    @* << [(std::Number other) => (std::Number result) {
+    @*[(std::Number other) => (std::Number result) {
         // 乘法：result = self.*(other)
     }];
-    @/ << [(std::Number other) => (std::Number result) {
+    @/[(std::Number other) => (std::Number result) {
         // 除法：result = self./(other)；other 为 0 时 result 带毒（error 置为错误信息）
     }];
-    @% << [(std::Number other) => (std::Number result) {
+    @%[(std::Number other) => (std::Number result) {
         // 取模：result = self.%(other)
     }];
-    @< << [(std::Number other) => (std::Boolean result) {
+    @<[(std::Number other) => (std::Boolean result) {
         // 小于比较：result = (self.<(other))
     }];
-    @> << [(std::Number other) => (std::Boolean result) {
+    @>[(std::Number other) => (std::Boolean result) {
         // 大于比较：result = (self.>(other))
     }];
-    @<= << [(std::Number other) => (std::Boolean result) {
+    @<=[(std::Number other) => (std::Boolean result) {
         // 小于等于：result = (self.<=(other))
     }];
-    @>= << [(std::Number other) => (std::Boolean result) {
+    @>=[(std::Number other) => (std::Boolean result) {
         // 大于等于：result = (self.>=(other))
     }];
-    @== << [(std::Number other) => (std::Boolean result) {
+    @==[(std::Number other) => (std::Boolean result) {
         // 相等比较：result = (self.==(other))
     }];
-    @!= << [(std::Number other) => (std::Boolean result) {
+    @!=[(std::Number other) => (std::Boolean result) {
         // 不等比较：result = (self.!=(other))
     }];
-    @to_string << [() => (std::String result) {
+    @to_string[() => (std::String result) {
         // 把 self 转为十进制字符串表示
     }];
-    @repeat_ << [(body) -> (value) {
+    @repeat_[(body) -> (value) {
         // 循环：self 为循环次数（Number），body 为循环体行为；
         // body 形如 [(state) -> (state)]，其参数格式必须等于返回格式；
         // value 为最后一次执行 body 的返回值
@@ -268,11 +273,11 @@ $Number {
 
 ```text
 $Boolean {
-    @if_ << [(true_branch, false_branch) -> (value) {
+    @if_[(true_branch, false_branch) -> (value) {
         // 条件分支：self 为真时执行 true_branch，否则执行 false_branch；
         // value 为所执行分支的输出，两个分支的输出类型必须一致
     }];
-    @while_ << [(body, condition_check) -> (value) {
+    @while_[(body, condition_check) -> (value) {
         // 循环：self 为初始条件（Boolean），body 为循环体行为，condition_check 为条件检查行为（在 body 之后）；
         // body 形如 [(state) -> (state)]，其参数格式必须等于返回格式；
         // condition_check 形如 [(state) ~> (flag)]，其参数格式必须等于 body 的返回格式；
@@ -287,28 +292,28 @@ $Boolean {
 
 ```text
 $String {
-    @+ << [(std::String other) => (std::String result) {
+    @+[(std::String other) => (std::String result) {
         // 字符串拼接：result = self.+(other)，返回新字符串（原串不变）
     }];
-    @upper << [() => (std::String result) {
+    @upper[() => (std::String result) {
         // 转大写，返回新字符串
     }];
-    @lower << [() => (std::String result) {
+    @lower[() => (std::String result) {
         // 转小写，返回新字符串
     }];
-    @reverse << [() => (std::String result) {
+    @reverse[() => (std::String result) {
         // 反转字符顺序，返回新字符串
     }];
-    @length << [() => (std::Number result) {
+    @length[() => (std::Number result) {
         // 返回字符个数
     }];
-    @get << [(std::Number index) => (std::String result) {
+    @get[(std::Number index) => (std::String result) {
         // 返回第 index 个字符（index 从 0 开始）
     }];
-    @contains << [(std::String sub) => (std::Boolean result) {
+    @contains[(std::String sub) => (std::Boolean result) {
         // 判断 self 是否包含子串 sub
     }];
-    @slice << [(std::Number start, std::Number end) => (std::String result) {
+    @slice[(std::Number start, std::Number end) => (std::String result) {
         // 返回 [start, end) 区间子串
     }];
 }
@@ -318,31 +323,31 @@ $String {
 
 ```text
 $Array {
-    @push_back << [(value) -> () {
+    @push_back[(value) -> () {
         // 在末尾追加元素 value（对标 vector::push_back）
     }];
-    @get << [(std::Number index) ~> (value) {
+    @get[(std::Number index) ~> (value) {
         // 按索引取元素，index 从 0 开始；也可命名为 query
     }];
-    @size << [() ~> (std::Number result) {
+    @size[() ~> (std::Number result) {
         // 返回元素个数
     }];
-    @pop_back << [() -> () {
+    @pop_back[() -> () {
         // 移除末尾元素
     }];
-    @remove << [(std::Number index) -> () {
+    @remove[(std::Number index) -> () {
         // 删除第 index 个元素
     }];
-    @insert << [(std::Number index, value) -> () {
+    @insert[(std::Number index, value) -> () {
         // 在第 index 个位置插入 value，后续元素后移
     }];
-    @clear << [() -> () {
+    @clear[() -> () {
         // 清空所有元素
     }];
-    @front << [() ~> (value) {
+    @front[() ~> (value) {
         // 返回首元素
     }];
-    @back << [() ~> (value) {
+    @back[() ~> (value) {
         // 返回末元素
     }];
 }
@@ -354,25 +359,25 @@ $Array {
 
 ```text
 $Dict {
-    @get << [(key) ~> (value) {
+    @get[(key) ~> (value) {
         // 按键 key 取值；键不存在时返回该值类型的零值（历史上的"毒水"兜底已退役）
     }];
-    @set << [(key, value) -> () {
+    @set[(key, value) -> () {
         // 设置键值对；键已存在则覆盖
     }];
-    @remove << [(key) -> () {
+    @remove[(key) -> () {
         // 删除键 key 对应的键值对
     }];
-    @has << [(key) ~> (std::Boolean result) {
+    @has[(key) ~> (std::Boolean result) {
         // 判断是否含键 key
     }];
-    @size << [() ~> (std::Number result) {
+    @size[() ~> (std::Number result) {
         // 返回键值对数量
     }];
-    @keys << [() ~> (std::Array result) {
+    @keys[() ~> (std::Array result) {
         // 返回所有键组成的数组
     }];
-    @values << [() ~> (std::Array result) {
+    @values[() ~> (std::Array result) {
         // 返回所有值组成的数组
     }];
 }
@@ -382,13 +387,13 @@ $Dict {
 
 ```text
 $Tuple {
-    @get << [(std::Number index) ~> (value) {
+    @get[(std::Number index) ~> (value) {
         // 按索引取元素，index 从 0 开始
     }];
-    @make << [(elements) => (std::Tuple result) {
+    @make[(elements) => (std::Tuple result) {
         // 从若干元素构造元组，elements 为按位置排列的任意对象
     }];
-    @size << [() ~> (std::Number result) {
+    @size[() ~> (std::Number result) {
         // 返回元素个数
     }];
 }
@@ -400,7 +405,7 @@ $Tuple {
 
 ```text
 $OStream {
-    @!:= << [(value) ~> () {
+    @!:=[(value) ~> () {
         // 接收函数（常数模式 ~>）：把 value 输出到标准输出；
         // 不修改 out 自身状态，因此 out 可声明为常数
     }];
@@ -411,7 +416,7 @@ $OStream {
 
 ```text
 $IStream {
-    @!=: << [() ~> (result) {
+    @!=:[() ~> (result) {
         // 公布函数（const 语义）：从标准输入读取数据并公布到 result；
         // 不修改 in 自身状态，因此 in 可声明为常数
     }];
@@ -663,7 +668,7 @@ out << msg;
 ```text
 // 方法定义多返回值：(q, r) -> ...
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
@@ -705,10 +710,10 @@ $Math {
 &io;
 -(io::OStream out);
 $Point {
-    @make << [(x, y) -> (result) {
+    @make[(x, y) -> (result) {
         result << (x, y);
     }];
-    @print << [(point) -> () {
+    @print[(point) -> () {
         out << point.get(0);
         out << point.get(1);
     }];
@@ -728,11 +733,11 @@ p.print(t); // 把元组传给另一个方法
 &io;
 -(io::OStream out);
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
-    @process << [(x, y) -> () {
+    @process[(x, y) -> () {
         out << x;
         out << y;
     }];
@@ -811,9 +816,9 @@ m.process(m.divide(10, 3));
 $Counter {
     -(std::Number value);
     // 常数模式方法：可读成员，不可改
-    @peek << [() ~> (result) { result << value; }];
+    @peek[() ~> (result) { result << value; }];
     // 非常数模式方法：可读可改成员
-    @inc << [() -> () { value << value.+(1); }];
+    @inc[() -> () { value << value.+(1); }];
 }
 ```
 
@@ -899,7 +904,7 @@ $Counter {
 
 ```text
 $Example {
-    @!:: << [() ~> () {}];
+    @!::[() ~> () {}];
 }
 ```
 
@@ -978,7 +983,7 @@ condition.if_(true_behavior, false_behavior)
 
 ```text
 $Checker {
-    @check << [() ~> (result) {
+    @check[() ~> (result) {
         -(std::Number x) << 5;
         -(std::Boolean cond) << (x.>(3));
         result << cond;
@@ -1129,7 +1134,7 @@ $Dog [Animal] {
 $Student [Human] {
     -(std::Number age);
     -(std::String major);
-    @:: << [(a, n, m) -> () {
+    @::[(a, n, m) -> () {
         age << a;
         name << n; // name 继承自 Human
         major << m;
@@ -1141,7 +1146,7 @@ s.age << 22;
 s.major << "Computer Science";
 // 基于实例 s 派生新类 GraduateStudent
 $GraduateStudent [s] {
-    @addResearch << [(topic) -> () {
+    @addResearch[(topic) -> () {
         name << name.+(" (Research: ").+(topic).+(")");
     }];
 }
@@ -1159,7 +1164,7 @@ $GraduateStudent [s] {
 
 ```
 #Addable {
-    @+ << [(other) -> (result) {}];
+    @+[(other) -> (result) {}];
 }
 ```
 
@@ -1186,8 +1191,8 @@ $GraduateStudent [s] {
 
 ```
 #Printable {
-    @print << [() -> () {}];
-    @toString << [() -> (result) {}];
+    @print[() -> () {}];
+    @toString[() -> (result) {}];
 }
 ```
 
@@ -1219,10 +1224,10 @@ $GraduateStudent [s] {
 
 ```
 #Addable {
-    @+ << [(other) -> (result) {}];
+    @+[(other) -> (result) {}];
 }
 #Comparable [Addable] {        // Comparable 继承 Addable 的全部签名
-    @< << [(other) -> (result) {}];
+    @<[(other) -> (result) {}];
 }
 ```
 
@@ -1441,13 +1446,13 @@ out << b; // 打印 b 时，会输出错误信息
 ```text
 &io;
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(Math m);
         -(std::Number total) << 0;
@@ -1532,7 +1537,7 @@ int main() {
 // Synth OOP
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::String strlock) << "Yahoo!";
         -(io::OStream out);
         out << strlock;
@@ -1576,10 +1581,10 @@ class Counter {
 // Synth OOP：是不是 const，写在箭头上
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }
@@ -1600,7 +1605,7 @@ std::pair<int, int> divmod(int a, int b) {
 ```text
 // Synth OOP：多返回值通过多个输出参数实现，元组是语言内部的底层机制
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
@@ -1659,11 +1664,11 @@ auto [x, y] = std::tie(a, b);
 ```text
 // Synth OOP：元组是语言内建构造，可以透明地作为方法参数传递
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
-    @process << [(x, y) -> () { /* 接收两个独立参数 */ }];
+    @process[(x, y) -> () { /* 接收两个独立参数 */ }];
 }
 -(Math m);
 m.process(m.divide(10, 3));
@@ -1679,7 +1684,7 @@ m.process(m.divide(10, 3));
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number num);
         -(io::OStream out);
         out << num;
@@ -1694,7 +1699,7 @@ $Program {
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::String s) << "Yeah.";
         -(io::OStream out);
         out << s;
@@ -1709,7 +1714,7 @@ $Program {
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         // 声明表达式本身有值，可以直接参与流操作
         out << (-(std::String msg) << "Hello, World!");
@@ -1723,7 +1728,7 @@ $Program {
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number outer) << 1;
         [() ~> () { outer << 2; }]; // ~> 行为试图修改外部变量 outer
     }];
@@ -1736,7 +1741,7 @@ $Program {
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number outer) << 1;
         [() => (v) { v << outer; }]; // => 行为连读取 outer 都不允许
     }];
@@ -1749,7 +1754,7 @@ $Program {
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number! frozen) << 7;
         frozen << 8; // 试图修改常数
     }];
@@ -1763,7 +1768,7 @@ $Program {
 ```text
 $Counter {
     -(std::Number value);
-    @inc << [() -> () {
+    @inc[() -> () {
         value << value.+(1);
     }];
 }
@@ -1776,7 +1781,7 @@ $Counter {
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Number x) << "not a number";
         -(io::OStream out);
         out << x;
@@ -1790,13 +1795,13 @@ $Program {
 
 ```text
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         // 直接解耦多返回值——按位置严格匹配
         -(Math m);
         -(std::Number q, std::Number r) << m.divide(10, 3);
@@ -1810,17 +1815,17 @@ $Program {
 
 ```text
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
     // 定义接收独立参数的方法
-    @process << [(x, y) -> () {
+    @process[(x, y) -> () {
         // x 是商，y 是余数
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         // 将 divide 的多返回值直接传给 process——按位置严格对齐
         -(Math m);
         m.process(m.divide(10, 3));
@@ -1849,7 +1854,7 @@ $Student [Human] {
 $Student [Human] {
     -(std::Number age);
     -(std::String major);
-    @:: << [(a, n, m) -> () {
+    @::[(a, n, m) -> () {
         age << a;
         name << n; // name 继承自 Human
         major << m;
@@ -1860,7 +1865,7 @@ s.name << "Alice";
 s.age << 22;
 s.major << "Computer Science";
 $GraduateStudent [s] {
-    @addResearch << [(topic) -> () {
+    @addResearch[(topic) -> () {
         name << name.+(" (Research: ").+(topic).+(")");
     }];
 }
@@ -1872,10 +1877,10 @@ $GraduateStudent [s] {
 
 ```text
 $Channel {
-    @:: << [() -> () {}];
-    @~ << [() -> () {}];
-    @=: << [() -> (result) { result << "published"; }];
-    @:= << [(msg) -> () {}];
+    @::[() -> () {}];
+    @~[() -> () {}];
+    @=:[() -> (result) { result << "published"; }];
+    @:=[(msg) -> () {}];
 }
 ```
 
@@ -1886,15 +1891,15 @@ $Channel {
 ```text
 $Calculator {
     -(std::Number value);
-    @add << [(x) -> () {
+    @add[(x) -> () {
         value << value.+(x);
     }];
-    @get << [() ~> (result) {
+    @get[() ~> (result) {
         result << value;
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(Calculator c);
         // 实例化表达式直接调用方法
         (-(Calculator c2)).add(10).get();
@@ -1908,13 +1913,13 @@ $Program {
 
 ```text
 $Math {
-    @divide << [(a, b) -> (q, r) {
+    @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         // 只关心商，余数用 _ 占位——按位置严格匹配
         -(Math m);
         -(std::Number q, _) << m.divide(10, 3);
@@ -1929,7 +1934,7 @@ $Program {
 ```text
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         // repeat_ 循环体接收 state、返回同类型的新 state
         -(std::Number last) << 3.repeat_(
@@ -1969,7 +1974,7 @@ $Program {
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Tuple t) << (10, "Alice", true);
     }];
 }
@@ -1981,7 +1986,7 @@ $Program {
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Tuple t) << (10, "Alice", true);
         -(std::Number x) << t.get(0);
         -(std::String name) << t.get(1);
@@ -1996,7 +2001,7 @@ $Program {
 
 ```text
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(std::Tuple t) << (10, "Alice", true);
         -(std::Number name) << t.get(1); // t.get(1) 是 String，不能赋给 Number 类型
     }];
@@ -2010,16 +2015,16 @@ $Program {
 ```text
 &io;
 $Point {
-    @make << [(x, y) -> (result) {
+    @make[(x, y) -> (result) {
         result << (x, y);
     }];
-    @print << [(point) -> () {
+    @print[(point) -> () {
         out << point.get(0);
         out << point.get(1);
     }];
 }
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(Point p);
         -(std::Tuple t) << p.make(5, 15);

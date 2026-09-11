@@ -10,7 +10,7 @@
 &io;
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // Build a few operands without negative literals (a.-(b) == a - b).

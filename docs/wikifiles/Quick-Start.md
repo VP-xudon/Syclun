@@ -45,7 +45,7 @@ bash build.sh                       # 生成 ./build/synth（Windows 下为 synt
 ```text
 &io;
 $Program {
-    @:: << [{
+    @::[{
         io::out.push_line("Hello, Synth-OOP!");
     }];
 }
@@ -75,7 +75,7 @@ No infix operators; `a.+(b)` is just an ordinary method call.
 &io;
 &maths;
 $Program {
-    @:: << [{
+    @::[{
         -(std::Number r) << 3;
         -(std::Number area) << maths::math.pi().*(r).*(r);
         io::out.push_line(area);          // → 28.274333882308138

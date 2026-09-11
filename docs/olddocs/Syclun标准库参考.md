@@ -75,7 +75,7 @@ method '…'`，而非在闭包深处炸开。流 / 生命周期方法（`::`/`~
 **Scope of enforcement (now complete).** All three layers are implemented and
 runtime-enforced:
   1. **Native / built-in methods** — the call-boundary type check above.
-  2. **`#Contract` definitions** — `#Name { @m << [(in) -> (out)]; … }` declares
+  2. **`#Contract` definitions** — `#Name { @m[(in) -> (out)]; … }` declares
      a contract; `ClassContract::validate` checks that a class implements every
      required signature, compared **by type** (not by parameter name) so a real
      implementation satisfies it.
@@ -86,7 +86,7 @@ runtime-enforced:
      it. The bound value must actually implement the contract's methods, or a
      `ConstraintException` is raised (`value does not satisfy constraint '…'`).
 **强制范围（现已完整）**：三层均已实现并在运行期强制：
-(1) 原生 / 内置方法的调用边界类型检查；(2) `#契约` 定义——`#名 { @m << [(入) -> (出)]; … }`
+(1) 原生 / 内置方法的调用边界类型检查；(2) `#契约` 定义——`#名 { @m[(入) -> (出)]; … }`
 声明契约，`ClassContract::validate` 校验某类是否实现全部所需签名（**按类型**而非
 参数名比较，故真实实现即可满足）；(3) 参数与变量约束——参数 `x[契约]` 或变量
 `-(T[契约] v)` 在绑定值已知时经 `check_constraint` 核查：参数于行为入口核查，变量于

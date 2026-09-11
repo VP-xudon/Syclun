@@ -14,31 +14,31 @@
 
 $Reactor {
     // tasks: an Array of behavior closures. / tasks：行为闭包的数组。
-    @set         << [(tasks[std::Array]) -> () { }];
-    @set_limit   << [(max[std::Number]) -> () { }];
-    @set_timeout << [(ms[std::Number]) -> () { }];
-    @cancel      << [() -> () { }];
-    @start       << [(timeout[std::Number]) ~> (results[std::Tuple]) { }];
+    @set[(tasks[std::Array]) -> () { }];
+    @set_limit[(max[std::Number]) -> () { }];
+    @set_timeout[(ms[std::Number]) -> () { }];
+    @cancel[() -> () { }];
+    @start[(timeout[std::Number]) ~> (results[std::Tuple]) { }];
     // task: a behavior closure; ms: timeout in milliseconds.
     // task：行为闭包；ms：超时毫秒数。
-    @with_timeout << [(task[@], ms[std::Number]) ~> (result[std::Tuple]) { }];
+    @with_timeout[(task[@], ms[std::Number]) ~> (result[std::Tuple]) { }];
     // task: a behavior closure. / task：行为闭包。
-    @spawn       << [(task[@]) ~> (handle[async::Task]) { }];
-    @submit      << [(task[@]) ~> (handle[async::Task]) { }];
-    @async_sleep << [(ms[std::Number]) ~> (handle[async::Task]) { }];
+    @spawn[(task[@]) ~> (handle[async::Task]) { }];
+    @submit[(task[@]) ~> (handle[async::Task]) { }];
+    @async_sleep[(ms[std::Number]) ~> (handle[async::Task]) { }];
 }
 
 $Task {
-    @await   << [(timeout[std::Number]) ~> (result[std::Tuple]) { }];
-    @result  << [() ~> (result[std::Tuple]) { }];
-    @cancel  << [() -> () { }];
-    @is_done << [() ~> (ok[std::Boolean]) { }];
+    @await[(timeout[std::Number]) ~> (result[std::Tuple]) { }];
+    @result[() ~> (result[std::Tuple]) { }];
+    @cancel[() -> () { }];
+    @is_done[() ~> (ok[std::Boolean]) { }];
     // Reclaim the task registry entry immediately (cancels a running thread).
     // 立即回收任务注册表条目（会取消仍在运行的线程）。
-    @dispose << [() ~> () { }];
+    @dispose[() ~> () { }];
 }
 
 $Error {
-    @message << [() ~> (text[std::String]) { }];
-    @kind    << [() ~> (text[std::String]) { }];
+    @message[() ~> (text[std::String]) { }];
+    @kind[() ~> (text[std::String]) { }];
 }

@@ -43,7 +43,7 @@ is **enforced by the interpreter**:
   **Variables aren't boxes, they're interfaces.** `a << 5` doesn't repoint `a` at
   `5` — it *flows* `5` into the object `a`. A name is just an access point.
 
-- **对象是活的。** 运行时给一个活对象「注入」新方法（`box:@hi << [{ … }];`）、塞一个只有
+- **对象是活的。** 运行时给一个活对象「注入」新方法（`box:@hi[{ … }];`）、塞一个只有
   它自己能碰的私有属性、再用 `box.#()` 把它**永久冻结**——单向开关，冻结后永不可解冻。
   **Objects are alive.** At runtime you can inject a new method onto a live object,
   give it a private attribute only its own methods can touch, then `box.#()` to
@@ -65,9 +65,9 @@ is **enforced by the interpreter**:
 // 一个会「长大」的对象 / an object that "grows up" at runtime
 &io;
 $Program {
-    @:: << [{
+    @::[{
         -(std::String s);
-        s:@shout << [() ~> (out[std::String]) { out << s.+( "!!"); }];
+        s:@shout[() ~> (out[std::String]) { out << s.+( "!!"); }];
         s << "hello";
         io::out.push_line(s.shout());      // → hello!!
         s.#();                             // 冻结，此后不可再注入
@@ -118,7 +118,7 @@ bash build.sh                       # 生成 ./build/synth（Windows 下为 synt
 ```
 &io;
 $Program {
-    @:: << [{
+    @::[{
         io::out.push_line("Hello, Synth-OOP!");
     }];
 }
@@ -147,7 +147,7 @@ No infix operators; `a.+(b)` is an ordinary method call.
 &io;
 &maths;
 $Program {
-    @:: << [{
+    @::[{
         -(std::Number r) << 3;
         -(std::Number area) << maths::math.pi().*(r).*(r);
         io::out.push_line(area);          // → 28.274333882308138
@@ -205,8 +205,8 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
 - 📦 **打包与发布 / Packaging** — <https://github.com/VP-xudon/Syclun/wiki/Packaging>
 - ❓ **常见问题 / FAQ** — <https://github.com/VP-xudon/Syclun/wiki/FAQ>
 
-> 权威语言规范（v1.31）仍以 `doc/Synth-OOP语言文档-修正版.md` 为准；本 Wiki 是其通俗、分层的导读。
-> The authoritative spec (v1.31) remains `doc/Synth-OOP语言文档-修正版.md`; the Wiki is its plain-spoken, layered companion.
+> 权威语言规范（v1.32）仍以 `docs/olddocs/Synth-OOP语言文档-修正版.md` 为准；本 Wiki 是其通俗、分层的导读。
+> The authoritative spec (v1.32) remains `docs/olddocs/Synth-OOP语言文档-修正版.md`; the Wiki is its plain-spoken, layered companion.
 
 ---
 
@@ -216,11 +216,11 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
   `lib/cpp/` 下的哈希、正则、数据结构实现均为本项目原创。
   **Cross-platform, zero third-party deps.** Pure C++23 header-only engine; the
   only requirement is your compiler's standard library.
-- **312 条断言测试，全绿——且由 CI 强制保障。** 三套回归套件（词法 83 / 语法 71 /
-  运行时·对象 158）在**每次 push/PR** 经 `ci.yml` 运行、并在 `release.yml` 的发布门禁中
+- **341 条断言测试，全绿——且由 CI 强制保障。** 三套回归套件（词法 83 / 语法 80 /
+  运行时·对象 178）在**每次 push/PR** 经 `ci.yml` 运行、并在 `release.yml` 的发布门禁中
   复跑；任一断言失败即阻断构建/发布。
-  **312 assertion tests, all green — enforced by CI.** Three suites (lexer 83 /
-  parser 71 / runtime·object 158) run on every push/PR via `ci.yml` and again as
+  **341 assertion tests, all green — enforced by CI.** Three suites (lexer 83 /
+  parser 80 / runtime·object 178) run on every push/PR via `ci.yml` and again as
   the release gate; one failing assertion blocks the build/release.
 - **即时、可追踪的错误 + IEEE 754 语义。** 故障在源头以类 g++ 诊断浮现；失败以非 0 退出码
   结束，CI 必察觉。
@@ -290,7 +290,7 @@ Syclun/
 │   │   ├── release.yml        # 验证全部断言 → 构建并发布五个包
 │   │   └── scripts/           # run_asserts.sh / gen_release_notes.sh
 │   └── dco.yml                # 自包含 DCO 检查
-├── doc/                       # 正式文档（见「接下来」）/ formal docs
+├── docs/                      # wikifiles 维基 + olddocs 正式文档 / wiki + formal docs
 ├── examples/                  # hello.syn / flow.syn / counter.syn
 ├── lib/  lib/cpp/             # 标准库（.synl 接口 + C++ 底层）
 ├── src/                       # 解释器引擎（header 模块 + main.cpp）

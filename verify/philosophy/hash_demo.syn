@@ -1,7 +1,7 @@
 &io;
 &hash;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(hash::Hash h);
 

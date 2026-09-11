@@ -52,7 +52,7 @@ interpreter:
   object itself. And the language has no types: a class name at declaration is
   the template you build from, not a label the object carries forever.
 
-- **对象是活的。** 运行期给活对象注入方法（`box:@hi << [{ … }];`），给它一个
+- **对象是活的。** 运行期给活对象注入方法（`box:@hi[{ … }];`），给它一个
   只有它自己的方法能碰的私有属性（`box:-(std::Number secret) << 42;`），或用
   `box.#()` 把它永久冻结——单向、只可设置的开关。任何东西都无法移除，冻结的对象
   永不可解冻。
@@ -105,11 +105,11 @@ interpreter:
   **Behaviors are closures.** Inline behavior literals capture the caller's
   scope, so branches read caller variables (spec C.5).
 
-- **运行期注入（v1.31）。** 对象在构造后仍是活的：`obj:@m << [{ … }];` 新增方法，
+- **运行期注入（v1.31）。** 对象在构造后仍是活的：`obj:@m[{ … }];` 新增方法，
   `obj:-(T v) << init;` 新增私有属性（仅可初始化、只有对象自己的方法能访问），
   `obj.#()` 永久冻结。向已有名字注入属重复声明错误；重绑常数方法属更改常量错误。
   **Runtime injection (v1.31).** Objects stay alive after construction:
-  `obj:@m << [{ … }];` adds a method, `obj:-(T v) << init;` adds a private
+  `obj:@m[{ … }];` adds a method, `obj:-(T v) << init;` adds a private
   attribute (init-only, reachable only from the object's own methods), and
   `obj.#()` freezes the object permanently.
 

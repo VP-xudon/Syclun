@@ -1,7 +1,7 @@
 &io;
 &maths;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         -(maths::Maths m);
 

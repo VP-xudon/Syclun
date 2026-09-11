@@ -1,7 +1,7 @@
 &io;
 &file;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(file::File f);
         f.open("build/_demo_out.txt");
         f.write("Hello from file lib!");

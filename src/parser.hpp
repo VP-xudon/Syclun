@@ -378,7 +378,7 @@ namespace parser {
                     body->kids.push_back(parse_signitem());
                 } else {
                     fail("Inside a contract body only method-signature "
-                         "definitions (@method << [(params) mode (outputs)];) "
+                         "definitions (@method[(params) mode (outputs)];) "
                          "are allowed, and the signature carries no body.");
                 }
             }
@@ -387,8 +387,11 @@ namespace parser {
             return node;
         }
 
-        // Contract signature item: @mod? method << [sign]; (no body).
-        // 约束签名条目：@修饰符? 方法名 << [签名];（无函数体）。
+        // Contract signature item: @mod? method [sign]; (no body).
+        // v1.32: the binding brackets follow the name directly — a signature
+        // is neither an assignment nor a flow.
+        // 约束签名条目：@修饰符? 方法名 [签名];（无函数体）。
+        // v1.32：绑定方括号直接跟在名字后——签名既非赋值亦非流。
         AstNodePtr parse_signitem() {
             long long ln = peek().line;
             bool is_const = false;
@@ -400,7 +403,12 @@ namespace parser {
             node->isConst = is_const;
             node->isPrivate = is_private;
 
-            expect_symbol("<<", "flow symbol binding the signature");
+            if (at("<symbol>", "<<") || at("<symbol>", ".")) {
+                fail("Retired signature binding '@" + mname + " << [...]' / "
+                     "'@" + mname + " .= [...]': a signature is neither an "
+                     "assignment nor a flow. Write '@" + mname
+                     + "[(params) mode (outputs)];' (v1.32).");
+            }
             expect_symbol("[", "behavior (signature) opening bracket '['");
             node->kids.push_back(parse_sign_core());
             expect_symbol("]", "behavior (signature) closing bracket ']'");
@@ -410,7 +418,7 @@ namespace parser {
                 // 语言设计者钦定：约束签名不带函数体（文档示例笔误）。
                 fail("A method signature inside a contract carries no function "
                      "body: omit '{', writing "
-                     "@method << [(params) mode (outputs)];.");
+                     "@method[(params) mode (outputs)];.");
             }
             expect_symbol(";", "statement terminator ';'");
             return node;
@@ -591,25 +599,21 @@ namespace parser {
             node->isConst = is_const;
             node->isPrivate = is_private;
 
-            if (at("<symbol>", "<<")) {
-                advance();
+            // v1.32: `@name[closure];` is the ONE syntax that binds a
+            // behavior to a method / closure name. It is neither an
+            // assignment nor a flow: closures are a separate major category
+            // (not class objects — they have no methods of their own and
+            // cannot be reached with `<<` / `.=`).
+            // v1.32：`@名[闭包];` 是把行为绑定到方法 / 闭包名的唯一语法。
+            // 它既非赋值亦非流：闭包是独立的大类（不是类对象——自身没有
+            // 方法，不可用 `<<` / `.=` 触达）。
+            if (at("<symbol>", "[")) {
+                // The bracketed behavior literal is parsed whole by
+                // parse_postfix (same as the retired `<<` RHS): consuming
+                // the '[' here would hide the literal from it.
+                // 括号行为字面量由 parse_postfix 整体解析（与退役的 `<<`
+                // 右值相同）：在此先消费 '[' 会让它看不到字面量。
                 node->kids.push_back(parse_postfix());       // behavior
-                expect_symbol(";", "statement terminator ';'");
-                return node;
-            }
-            if (at("<symbol>", ".")) {
-                // `.=` assignment binding: `@name .= (behavior)`. The `=` is a
-                // name token (it is a name character), so after consuming the
-                // `.` we read `=` and then the RHS expression.
-                // `.=` 赋值绑定：`@名 .= (行为)`。消费 `.` 后读到 `=`（名称字符），
-                // 再解析右侧表达式。
-                advance();
-                auto eq = expect_name("'=' in method assignment");
-                if (eq.value != "=") {
-                    fail("Expected '=' after '.' when binding method '"
-                         + mname + "'.");
-                }
-                node->kids.push_back(parse_postfix());       // behavior (RHS)
                 expect_symbol(";", "statement terminator ';'");
                 return node;
             }
@@ -622,8 +626,15 @@ namespace parser {
                 node->kids.push_back(make_empty_behavior(ln));
                 return node;
             }
-            fail("Expected flow '<<', assignment '.=', or ';' to bind method '"
-                 + mname + "'.");
+            if (at("<symbol>", "<<") || at("<symbol>", ".")) {
+                fail("Retired closure binding '@" + mname + " << [...]' / "
+                     "'@" + mname + " .= [...]': a closure is NOT a class "
+                     "object but a separate major category, with no methods "
+                     "of its own. Bind it with '@" + mname + "[closure];' "
+                     "(v1.32).");
+            }
+            fail("Expected '[closure]' or ';' to bind method '"
+                 + mname + "' (v1.32: '@" + mname + "[...];').");
             return nullptr;                                  // unreachable
         }
 
@@ -756,24 +767,26 @@ namespace parser {
             node->isConst = is_const;
             node->isPrivate = is_private;
             node->kids.push_back(receiver);                  // the object
-            if (at("<symbol>", "<<")) {
-                advance();
+            // v1.32: `obj:@name[closure];` — create-or-replace injection of a
+            // behavior, the ONE closure-modification syntax. `<<` / `.=` are
+            // retired here exactly as in method definitions.
+            // v1.32：`对象:@名[闭包];`——行为的创建或重绑注入，闭包修改的
+            // 唯一语法。`<<` / `.=` 与方法定义中一样就此退役。
+            if (at("<symbol>", "[")) {
+                // Whole literal parsed by parse_postfix (see methoddef).
+                // 字面量由 parse_postfix 整体解析（见 methoddef）。
                 node->kids.push_back(parse_postfix());       // behavior
                 return node;
             }
-            if (at("<symbol>", ".")) {
-                advance();
-                auto eq = expect_name("'=' in method injection");
-                if (eq.value != "=") {
-                    fail("Expected '=' after '.' when injecting method '"
-                         + mname + "'.");
-                }
-                node->kids.push_back(parse_postfix());       // behavior
-                return node;
+            if (at("<symbol>", "<<") || at("<symbol>", ".")) {
+                fail("Retired closure injection 'obj:@" + mname + " << [...]' / "
+                     "'obj:@" + mname + " .= [...]': a closure is NOT a class "
+                     "object but a separate major category, with no methods "
+                     "of its own. Inject it with 'obj:@" + mname
+                     + "[closure];' (v1.32).");
             }
-            fail("Expected flow '<<' or assignment '.=' to inject method '"
-                 + mname + "' (an object injection always binds a behavior, "
-                 "e.g. obj:@" + mname + " << [{ }];).");
+            fail("Expected '[closure]' to inject method '"
+                 + mname + "' (v1.32: 'obj:@" + mname + "[...];').");
             return nullptr;                                  // unreachable
         }
 

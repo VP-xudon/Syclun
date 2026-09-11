@@ -24,7 +24,7 @@ $Program {
     // 而非在 @:: 里赋值。
     -(std::Number memberN);    // a member (zero value); assigned inside @::
 
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         -(std::Number(5)! n);   // const local, built from the constructor arg
@@ -59,7 +59,7 @@ $Program {
         out << "\n";
     }];
 
-    @squared << [(x[std::Number]) -> (answer[std::Number]) {
+    @squared[(x[std::Number]) -> (answer[std::Number]) {
         answer << (x .*(x));
     }];
 }

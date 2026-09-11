@@ -6,7 +6,7 @@
 // 值通过「流」（`<<`）传递而非赋值。没有中缀运算符：`a.+(b)` 是普通方法调用。
 // 预置对象 `out` 与 `math` 随导入而来——无需声明。
 $Program {
-    @:: << [{
+    @::[{
         // `<<` binds a value into the variable through the receive method `:=`.
         // `<<` 经接收方法 `:=` 把值绑定进变量。
         -(std::Number radius) << 3;

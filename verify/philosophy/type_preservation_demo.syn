@@ -7,7 +7,7 @@
 &assert;
 
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // ---- 1. Universal receiver delegates method dispatch ----
@@ -73,7 +73,7 @@ $Program {
         -(assert::Checker chk);
         -(Counter c);
         out << "12. before  = "; out << chk.has_changed(c); out << "\n"; // false
-        c.inc.=([() -> () { value << value.+(50); }]);
+        c:@inc[() -> () { value << value.+(50); }];
         out << "13. after   = "; out << chk.has_changed(c); out << "\n"; // true
         c.inc();
         out << "14. c.get() = "; out << c.get(); out << "\n";            // 50
@@ -94,15 +94,15 @@ $Program {
 
 $Counter {
     -(std::Number value);
-    @get << [() ~> (result) { result << value; }];
-    @inc << [() -> () { value << value.+(1); }];
+    @get[() ~> (result) { result << value; }];
+    @inc[() -> () { value << value.+(1); }];
 }
 
 $Box {
     -(std::Number(7) inner);
-    @twice << [() -> (result) { result << self.inner.+(self.inner); }];
-    @peek  << [() ~> (result) { result << self.inner; }];   // self access
-    @touch << [() -> () {}];                            // empty method body
+    @twice[() -> (result) { result << self.inner.+(self.inner); }];
+    @peek[() ~> (result) { result << self.inner; }];   // self access
+    @touch[() -> () {}];                            // empty method body
 }
 
 // A tiny pair with a `get_second` accessor, used by test 17.
@@ -110,5 +110,5 @@ $Box {
 $Pair {
     -(std::Number a);
     -(std::Number b);
-    @get_second << [() ~> (result) { result << b; }];
+    @get_second[() ~> (result) { result << b; }];
 }

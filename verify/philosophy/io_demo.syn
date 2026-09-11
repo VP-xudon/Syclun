@@ -4,7 +4,7 @@
 // `out.push_line`). 输出示例：同时演示流风格（`out << value`，分派到
 // `:=` 接收行为）与显式方法风格（`out.push` / `out.push_line`）。
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // flow style, no trailing newline / 流风格，不换行

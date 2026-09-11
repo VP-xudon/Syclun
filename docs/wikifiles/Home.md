@@ -22,7 +22,7 @@ bash build.sh
 ```text
 &io;
 $Program {
-    @:: << [{
+    @::[{
         io::out.push_line("Hello, Synth-OOP!");
     }];
 }

@@ -23,24 +23,24 @@
 // 的权威签名位于 lib/cpp/maths.hpp 的 make_sign；本文件是其可读镜像。
 
 $Maths {
-    @abs   << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @sqrt  << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @pow   << [(base[std::Number], exp[std::Number]) ~> (r[std::Number]) { }];
-    @floor << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @ceil  << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @round << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @sin   << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @cos   << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @tan   << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @log   << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @log10 << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @exp   << [(x[std::Number]) ~> (r[std::Number]) { }];
-    @mod   << [(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
-    @min   << [(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
-    @max   << [(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
-    @pi    << [() ~> (r[std::Number]) { }];
-    @e     << [() ~> (r[std::Number]) { }];
-    @random << [() ~> (r[std::Number]) { }];
+    @abs[(x[std::Number]) ~> (r[std::Number]) { }];
+    @sqrt[(x[std::Number]) ~> (r[std::Number]) { }];
+    @pow[(base[std::Number], exp[std::Number]) ~> (r[std::Number]) { }];
+    @floor[(x[std::Number]) ~> (r[std::Number]) { }];
+    @ceil[(x[std::Number]) ~> (r[std::Number]) { }];
+    @round[(x[std::Number]) ~> (r[std::Number]) { }];
+    @sin[(x[std::Number]) ~> (r[std::Number]) { }];
+    @cos[(x[std::Number]) ~> (r[std::Number]) { }];
+    @tan[(x[std::Number]) ~> (r[std::Number]) { }];
+    @log[(x[std::Number]) ~> (r[std::Number]) { }];
+    @log10[(x[std::Number]) ~> (r[std::Number]) { }];
+    @exp[(x[std::Number]) ~> (r[std::Number]) { }];
+    @mod[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @min[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @max[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @pi[() ~> (r[std::Number]) { }];
+    @e[() ~> (r[std::Number]) { }];
+    @random[() ~> (r[std::Number]) { }];
 }
 
 // ------------------------------------------------------------

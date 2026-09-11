@@ -21,26 +21,26 @@
 $Re {
     // Compile a pattern source string into a reusable Pattern.
     // 把模式源字符串编译为可复用的 Pattern。
-    @compile  << [(pattern[std::String]) ~> (pat[re::Pattern]) { }];
-    @match    << [(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
-    @search   << [(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
-    @findall  << [(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
-    @replace  << [(pattern[std::String], text[std::String], repl[std::String]) ~> (out[std::String]) { }];
-    @split    << [(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
-    @test     << [(pattern[std::String], text[std::String]) ~> (ok[std::Boolean]) { }];
+    @compile[(pattern[std::String]) ~> (pat[re::Pattern]) { }];
+    @match[(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
+    @search[(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
+    @findall[(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
+    @replace[(pattern[std::String], text[std::String], repl[std::String]) ~> (out[std::String]) { }];
+    @split[(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
+    @test[(pattern[std::String], text[std::String]) ~> (ok[std::Boolean]) { }];
 }
 
 $Pattern {
     // Match against an already-compiled pattern.
     // 用已编译的 Pattern 做匹配。
-    @match    << [(text[std::String]) ~> (result[re::Match]) { }];
-    @search   << [(text[std::String]) ~> (result[re::Match]) { }];
-    @findall  << [(text[std::String]) ~> (arr[std::Array]) { }];
-    @replace  << [(text[std::String], repl[std::String]) ~> (out[std::String]) { }];
-    @split    << [(text[std::String]) ~> (arr[std::Array]) { }];
-    @test     << [(text[std::String]) ~> (ok[std::Boolean]) { }];
+    @match[(text[std::String]) ~> (result[re::Match]) { }];
+    @search[(text[std::String]) ~> (result[re::Match]) { }];
+    @findall[(text[std::String]) ~> (arr[std::Array]) { }];
+    @replace[(text[std::String], repl[std::String]) ~> (out[std::String]) { }];
+    @split[(text[std::String]) ~> (arr[std::Array]) { }];
+    @test[(text[std::String]) ~> (ok[std::Boolean]) { }];
     // Reclaim the compiled pattern state immediately. / 立即回收已编译模式状态。
-    @dispose  << [() ~> () { }];
+    @dispose[() ~> () { }];
 }
 
 $Match {

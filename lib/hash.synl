@@ -22,7 +22,7 @@
 // lib/cpp/hash.hpp 的 make_sign；本文件是其可读镜像。
 
 $Hash {
-    @sha256 << [(text[std::String]) ~> (digest[std::String]) { }];
-    @crc32  << [(text[std::String]) ~> (checksum[std::Number]) { }];
-    @fnv1a  << [(text[std::String]) ~> (digest[std::String]) { }];
+    @sha256[(text[std::String]) ~> (digest[std::String]) { }];
+    @crc32[(text[std::String]) ~> (checksum[std::Number]) { }];
+    @fnv1a[(text[std::String]) ~> (digest[std::String]) { }];
 }

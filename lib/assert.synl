@@ -29,6 +29,6 @@
 //   chk.has_changed(c);         -> std::Boolean  (true after c.inc.=(beh))
 
 $Checker {
-    @has_method  << [(target[std::Object], name[std::String]) ~> (result[std::Boolean]) { }];
-    @has_changed << [(target[std::Object]) ~> (result[std::Boolean]) { }];
+    @has_method[(target[std::Object], name[std::String]) ~> (result[std::Boolean]) { }];
+    @has_changed[(target[std::Object]) ~> (result[std::Boolean]) { }];
 }

@@ -516,7 +516,7 @@ namespace {
         // retired poison-water model no longer degrades silently).
         // 越界字符访问现为即时错误（退役的毒水模型不再静默降级）。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::String(\"Synth\")! s);\n"
             "  out << (s.get(99));\n"
@@ -697,7 +697,7 @@ namespace {
         // “方法未找到”错误——与任何缺失方法走同一路径（见下 frobnicate 测试）。
         // 这印证了用户诉求：`1._case()` 须正常报错，而非静默捕获。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Number! n);\n"
             "  out << (n._case([() -> () { }]));\n"
@@ -730,7 +730,7 @@ namespace {
         // 非法算术参数：签名约束器在调用边界拒收非 std::Number 实参——
         // 即时的鸭子式错误（旧的毒水降级已移除）。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Number! n);\n"
             "  out << (n.+( \"one\" ));\n"
@@ -741,7 +741,7 @@ namespace {
         // Missing method: now an immediate error, not a silent poison object.
         // 方法缺失：现为即时错误，而非静默毒水对象。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Number! n);\n"
             "  out << (n.frobnicate());\n"
@@ -756,7 +756,7 @@ namespace {
     // --------------------------------------------------------
 
     void test_method_rebind_and_checker() {
-        section("Method rebinding (c.method.=(beh) / c.method << beh) + Checker");
+        section("Method rebinding (c:@method[beh] / c.method << beh) + Checker");
 
         // Dynamic method rebind via `.=`: a method variable is just a member
         // holding a behavior, so assigning a behavior swaps the callable in
@@ -766,10 +766,10 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(Counter c);\n"
             "    c.inc(); c.inc();\n"
-            "    c.inc.=([()->() { value << value.+(2); }]);\n"
+            "    c:@inc[()->() { value << value.+(2); }];\n"
             "    c.inc();\n"
             "    -(io::OStream out);\n"
             "    out << c.get();\n"
@@ -777,21 +777,21 @@ namespace {
             "}\n"
             "$Counter {\n"
             "  -(std::Number value);\n"
-            "  @get << [() ~> (result) { result << value; }];\n"
-            "  @inc << [() -> () { value << value.+(1); }];\n"
+            "  @get[() ~> (result) { result << value; }];\n"
+            "  @inc[() -> () { value << value.+(1); }];\n"
             "}\n",
             "4"),
-            "dynamic method rebind via '.=' changes behavior (prints 4)");
+            "method rebind via re-injection 'c:@inc[...]' changes behavior (prints 4)");
 
         // Symmetric flow form `c.inc << beh` rebinds too.
         // 对称流形式 `c.inc << beh` 同样重绑。
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(Counter c);\n"
             "    c.inc(); c.inc();\n"
-            "    c.inc << [()->() { value << value.+(5); }];\n"
+            "    c:@inc[()->() { value << value.+(5); }];\n"
             "    c.inc();\n"
             "    -(io::OStream out);\n"
             "    out << c.get();\n"
@@ -799,25 +799,25 @@ namespace {
             "}\n"
             "$Counter {\n"
             "  -(std::Number value);\n"
-            "  @get << [() ~> (result) { result << value; }];\n"
-            "  @inc << [() -> () { value << value.+(1); }];\n"
+            "  @get[() ~> (result) { result << value; }];\n"
+            "  @inc[() -> () { value << value.+(1); }];\n"
             "}\n",
             "7"),
-            "symmetric flow form 'c.inc << beh' also rebinds (prints 7)");
+            "re-injection 'c:@inc[...]' on an existing method rebinds (prints 7)");
 
         // A const method (@!inc) must refuse to be rebound.
         // 常数方法（@!inc）须拒绝被重绑。
         check(expect_runtime_error(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(Consty c);\n"
-            "    c.inc.=([()->() { value << value.+(1); }]);\n"
+            "    c:@inc[()->() { value << value.+(1); }];\n"
             "  }];\n"
             "}\n"
             "$Consty {\n"
             "  -(std::Number value);\n"
-            "  @!inc << [() -> () { value << value.+(1); }];\n"
+            "  @!inc[() -> () { value << value.+(1); }];\n"
             "}\n",
             "ConstException"),
             "rebinding a const method (@!inc) raises ConstException");
@@ -828,7 +828,7 @@ namespace {
             "&io;\n"
             "&assert;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(Counter c);\n"
             "    -(assert::Checker chk);\n"
             "    -(io::OStream out);\n"
@@ -836,14 +836,14 @@ namespace {
             "    out << \";\";\n"
             "    out << chk.has_changed(c);\n"
             "    out << \";\";\n"
-            "    c.inc.=([()->() { value << value.+(1); }]);\n"
+            "    c:@inc[()->() { value << value.+(1); }];\n"
             "    out << chk.has_changed(c);\n"
             "    out << \";\";\n"
             "  }];\n"
             "}\n"
             "$Counter {\n"
             "  -(std::Number value);\n"
-            "  @inc << [() -> () { value << value.+(1); }];\n"
+            "  @inc[() -> () { value << value.+(1); }];\n"
             "}\n",
             "true;false;true;"),
             "Checker.has_method true; has_changed false before, true after rebind");
@@ -868,7 +868,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(std::Number n) << 5.repeat_([(st) -> (next) { next << st.+(1); }]);\n"
             "    out << n;\n"
@@ -882,7 +882,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(std::Object x) << 10;\n"
             "    out << x.+(1);\n"
@@ -898,7 +898,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(Box b);\n"
             "    out << b.inner;\n"
@@ -916,7 +916,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(std::Number m) << true.while_(\n"
             "      [(st) -> (next) { next << st.+(1); }],\n"
@@ -932,7 +932,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(std::Number total) << 0;\n"
             "    -(std::Number k) << 3.repeat_([(i) -> (o) {\n"
@@ -951,7 +951,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(Box b);\n"
             "    out << b.peek();\n"
@@ -960,8 +960,8 @@ namespace {
             "}\n"
             "$Box {\n"
             "  -(std::Number(7) inner);\n"
-            "  @peek << [() ~> (result) { result << self.inner; }];\n"
-            "  @touch << [() -> () {}];\n"
+            "  @peek[() ~> (result) { result << self.inner; }];\n"
+            "  @touch[() -> () {}];\n"
             "}\n",
             "7"),
             "self keyword + empty method `@touch;` work (peek = 7)");
@@ -1021,7 +1021,7 @@ namespace {
         // empty-array front / out-of-bounds get: now immediate errors.
         // 空数组 front / 越界 get：现为即时错误。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Array! a);\n"
             "  out << (a.front());\n"
@@ -1029,7 +1029,7 @@ namespace {
             "empty"),
             "empty-array front raises an immediate error");
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Array! a);\n"
             "  out << (a.get(3));\n"
@@ -1073,7 +1073,7 @@ namespace {
             && num(call(dict, "size")) == 1, "remove deletes a key-value pair");
 
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Dict! d);\n"
             "  out << (d.get(\"ghost\"));\n"
@@ -1168,7 +1168,7 @@ namespace {
 
         // Out of bounds: now an immediate error. 越界：现为即时错误。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Tuple((10, \"Alice\", true))! t);\n"
             "  out << (t.get(9));\n"
@@ -1272,7 +1272,7 @@ namespace {
         // 静默降级）。经解释器二进制验收——无需 stdin（首次读取即遇 EOF）。
         // 在静态套件中运行（无需 --io）。
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::IStream in);\n"
             "  -(std::String w) << in;\n"
             "}];};",
@@ -1424,7 +1424,7 @@ namespace {
             {rt_builtin::make_int(0)})))),
             "divide by zero: value-level result is +Infinity (IEEE 754)");
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Array! a);\n"
             "  out << (a.front());\n"
@@ -1432,7 +1432,7 @@ namespace {
             "empty"),
             "empty-array front raises an immediate error (retired degradation)");
         check(expect_runtime_error(
-            "&io;\n$Program {@:: << [() -> () {\n"
+            "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Boolean(true)! b);\n"
             "  out << (b.if_(1, 0));\n"
@@ -1481,7 +1481,7 @@ namespace {
         std::string src =
             "&io; &structs; &file;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             // ---- D1: Map key collision (type-tagged serialization) ----
             "    -(structs::Map m);\n"
@@ -1613,14 +1613,14 @@ namespace {
         check(expect_runtime_error(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [{ -(std::String! str); str.=(\"3\"); }];\n"
+            "  @::[{ -(std::String! str); str.=(\"3\"); }];\n"
             "};\n",
             "ConstException"),
             "const local: '.=' assignment is rejected like '<<' (ConstException)");
         check(expect_runtime_error(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [{ -(std::Number(1)! n); n << 2; }];\n"
+            "  @::[{ -(std::Number(1)! n); n << 2; }];\n"
             "};\n",
             "ConstException"),
             "const local: re-flowing '<<' into a const is still rejected");
@@ -1630,7 +1630,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [{ -(std::String str); str.=(\"3\"); io::out << str; }];\n"
+            "  @::[{ -(std::String str); str.=(\"3\"); io::out << str; }];\n"
             "};\n",
             "3"),
             "non-const local: '.=' assignment still works and is observable");
@@ -1658,14 +1658,14 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () { -(io::OStream! out); out << \"const stream ok\"; }];\n"
+            "  @::[() -> () { -(io::OStream! out); out << \"const stream ok\"; }];\n"
             "};\n",
             "const stream ok"),
             "const local of a '~>' type: 'out << v' stays legal (spec 3.4.3)");
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () { -(io::OStream! out); out.push_line(\"push ok\"); }];\n"
+            "  @::[() -> () { -(io::OStream! out); out.push_line(\"push ok\"); }];\n"
             "};\n",
             "push ok"),
             "const local of a '~>' type: method calls stay legal");
@@ -1678,7 +1678,7 @@ namespace {
             "&io;\n"
             "$Program {\n"
             "  -(std::Number(7)! k);\n"
-            "  @:: << [() -> () { ";
+            "  @::[() -> () { ";
         const std::string member_tail = " }];\n};\n";
 
         check(expect_runtime_error(member_head + "k << 1;" + member_tail,
@@ -1698,7 +1698,7 @@ namespace {
             "&io;\n"
             "$Program {\n"
             "  -(io::OStream! o);\n"
-            "  @:: << [() -> () { o << \"member stream ok\"; }];\n"
+            "  @::[() -> () { o << \"member stream ok\"; }];\n"
             "};\n",
             "member stream ok"),
             "const member of a '~>' type: flowing into it stays legal");
@@ -1710,7 +1710,7 @@ namespace {
             "&io;\n"
             "$Program {\n"
             "  -(std::Number(7) k);\n"
-            "  @:: << [() -> () { k << 1; io::out << k; }];\n"
+            "  @::[() -> () { k << 1; io::out << k; }];\n"
             "};\n",
             "1"),
             "mutable member: 'k << 1' still works (no over-blocking)");
@@ -1718,7 +1718,7 @@ namespace {
             "&io;\n"
             "$Program {\n"
             "  -(std::Number(7)! k);\n"
-            "  @:: << [() -> () { io::out << k; }];\n"
+            "  @::[() -> () { io::out << k; }];\n"
             "};\n",
             "7"),
             "const member: an inline constructor value is readable");
@@ -1729,35 +1729,37 @@ namespace {
         const std::string frozen_head =
             "&io;\n"
             "$P {\n"
-            "  @m << [{ }];\n"
-            "  @:: << [() -> () { }];\n"
+            "  @m[{ }];\n"
+            "  @::[() -> () { }];\n"
             "};\n"
             "$Program {\n"
-            "  @:: << [{ -(P p); p.#(); ";
+            "  @::[{ -(P p); p.#(); ";
         const std::string frozen_tail = " }];\n};\n";
 
         check(expect_runtime_error(
-            frozen_head + "p.m.=([{ }]);" + frozen_tail, "ConstException"),
-            "frozen object: rebinding 'p.m.=(...)' is rejected");
+            frozen_head + "p:@m[{ }];" + frozen_tail, "ConstException"),
+            "frozen object: rebinding 'p:@m[...]' is rejected");
         check(expect_runtime_error(
-            frozen_head + "p.m << [{ }];" + frozen_tail, "ConstException"),
-            "frozen object: rebinding 'p.m << [...]' is rejected");
+            frozen_head + "p.m << [{ }];" + frozen_tail,
+            "retired closure binding"),
+            "frozen object: retired form 'p.m << [...]' is rejected "
+            "(closures are not class objects)");
         check(expect_runtime_error(
-            frozen_head + "p:@n << [{ }];" + frozen_tail, "ConstException"),
-            "frozen object: injecting 'p:@n << [...]' is rejected");
+            frozen_head + "p:@n[{ }];" + frozen_tail, "ConstException"),
+            "frozen object: injecting 'p:@n[...]' is rejected");
 
         // Not frozen: rebinding stays legal (the guard must not over-block).
         // 未冻结：重绑仍然合法（守卫不得过度拦截）。
         check(expect_clean_run(
             "&io;\n"
             "$P {\n"
-            "  @m << [{ }];\n"
-            "  @:: << [() -> () { }];\n"
+            "  @m[{ }];\n"
+            "  @::[() -> () { }];\n"
             "};\n"
             "$Program {\n"
-            "  @:: << [{ -(P p); p.m.=([{ }]); }];\n"
+            "  @::[{ -(P p); p:@m[{ }]; }];\n"
             "};\n"),
-            "unfrozen object: rebinding 'p.m.=(...)' still works");
+            "unfrozen object: rebinding 'p:@m[...]' still works");
 
         // A parameter declared with '!' is constant inside the body: binding
         // it is the initialization, so writing it is rejected.
@@ -1765,16 +1767,16 @@ namespace {
         check(expect_runtime_error(
             "&io;\n"
             "$Program {\n"
-            "  @f << [(std::Number! x) -> () { x << 1; }];\n"
-            "  @:: << [() -> () { self.f(0); }];\n"
+            "  @f[(std::Number! x) -> () { x << 1; }];\n"
+            "  @::[() -> () { self.f(0); }];\n"
             "};\n",
             "ConstException"),
             "const parameter: writing 'x << 1' inside the body is rejected");
         check(expect_clean_run(
             "&io;\n"
             "$Program {\n"
-            "  @f << [(std::Number x) -> () { x << 1; }];\n"
-            "  @:: << [() -> () { self.f(0); }];\n"
+            "  @f[(std::Number x) -> () { x << 1; }];\n"
+            "  @::[() -> () { self.f(0); }];\n"
             "};\n"),
             "non-const parameter: writing it stays legal (no over-blocking)");
     }
@@ -1804,7 +1806,7 @@ namespace {
         check(expect_program_output(
             "&io;&system;\n"
             "$Program {\n"
-            "  @:: .= [()->() {\n"
+            "  @::[()->() {\n"
             "    -(io::OStream outer);\n"
             "    outer.push_line(\"Hello, world!\");\n"
             "    -(system::System sys);\n"
@@ -1812,23 +1814,23 @@ namespace {
             "  }];\n"
             "};\n",
             "Hello, world!"),
-            "assignment-form method '@:: .= [...]' binds and runs");
+            "assignment-form method '@::[...]' binds and runs");
 
-        // (c) Closure-local closure: '@name << [...]' inside a behavior body
+        // (c) Closure-local closure: '@name[...]' inside a behavior body
         // defines a local closure variable, callable as 'name()'.
-        // 闭包内局部闭包：行为体内的 '@name << [...]' 定义局部闭包变量，
+        // 闭包内局部闭包：行为体内的 '@name[...]' 定义局部闭包变量，
         // 可用 'name()' 调用。
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [()->() {\n"
+            "  @::[()->() {\n"
             "    -(io::OStream out);\n"
-            "    @clos << [()->() { out.push_line(\"called!\"); }];\n"
+            "    @clos[()->() { out.push_line(\"called!\"); }];\n"
             "    clos();\n"
             "  }];\n"
             "};\n",
             "called!"),
-            "closure-local closure '@name << [...]' defines a callable local");
+            "closure-local closure '@name[...]' defines a callable local");
 
         // (d) The legitimate rvalue-flow error is now reported as an
         // ASCII / English diagnostic (no box-drawing or non-ASCII glyphs).
@@ -1836,7 +1838,7 @@ namespace {
         check(expect_runtime_error(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [()->() { 1 << 0; }];\n"
+            "  @::[()->() { 1 << 0; }];\n"
             "};\n",
             "flow target must be a variable name"),
             "rvalue flow target ('1 << 0') is rejected with an ASCII English error");
@@ -1846,7 +1848,7 @@ namespace {
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
-            "  @:: << [()->() {\n"
+            "  @::[()->() {\n"
             "    -(io::OStream out);\n"
             "    out.push_line(\"p\\\\q\");\n"
             "  }];\n"
@@ -1866,7 +1868,7 @@ namespace {
         check(expect_program_output(
             "&sugar;\n&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(sugar::Infix(\"1+(2-3)*(3+5)\") e);\n"
             "    out << (e.parse());\n"
@@ -1879,7 +1881,7 @@ namespace {
         check(expect_program_output(
             "&sugar;\n&io;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(std::Dict d);\n"
             "    d.set(\"a\", 2);\n"
@@ -1898,7 +1900,7 @@ namespace {
         check(expect_runtime_error(
             "&sugar;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(sugar::Infix e);\n"
             "    e.set(\"a+1\");\n"
             "    e.parse();\n"
@@ -1912,7 +1914,7 @@ namespace {
         check(expect_runtime_error(
             "&sugar;\n"
             "$Program {\n"
-            "  @:: << [() -> () {\n"
+            "  @::[() -> () {\n"
             "    -(std::Dict d);\n"
             "    d.set(\"b\", 2);\n"
             "    -(sugar::Infix(\"a+1\") e);\n"
@@ -1937,14 +1939,14 @@ namespace {
         check(expect_program_output(
                   "&io;\n"
                   "$Program {\n"
-                  "  @:: << [{ io::out.push_line(\"qualified ok\"); }];\n"
+                  "  @::[{ io::out.push_line(\"qualified ok\"); }];\n"
                   "};\n",
                   "qualified ok"),
               "io::out resolves through the ordinary name path");
         check(expect_program_output(
                   "&io;\n"
                   "$Program {\n"
-                  "  @:: << [{ io::out << \"flow ok\"; }];\n"
+                  "  @::[{ io::out << \"flow ok\"; }];\n"
                   "};\n",
                   "flow ok"),
               "io::out works as a flow receiver");
@@ -1954,7 +1956,7 @@ namespace {
         check(expect_runtime_error(
                   "&io;\n"
                   "$Program {\n"
-                  "  @:: << [{ out.push_line(\"bare\"); }];\n"
+                  "  @::[{ out.push_line(\"bare\"); }];\n"
                   "};\n",
                   "undefined variable 'out'"),
               "bare 'out' is undefined (objects carry their library name)");
@@ -1964,10 +1966,61 @@ namespace {
         check(expect_runtime_error(
                   "&io;\n"
                   "$Program {\n"
-                  "  @:: << [{ -(io::OStream o); io::out .= (o); }];\n"
+                  "  @::[{ -(io::OStream o); io::out .= (o); }];\n"
                   "};\n",
                   "ConstException"),
               "io::out is a const binding (assignment rejected)");
+
+        // v1.32: a block-sugar closure reads its captured environment —
+        // both the preset io::out and the enclosing locals — and a bare
+        // call resolves a local closure variable.
+        // v1.32：块糖闭包可读取其捕获的环境——预置 io::out 与外层局部
+        // 变量；裸调用可解析局部闭包变量。
+        check(expect_program_output(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @::[{\n"
+                  "    io::out << \"Hello, World!\";\n"
+                  "    @empty[{ io::out << \"Right.\"; }];\n"
+                  "    empty();\n"
+                  "  }];\n"
+                  "};\n",
+                  "Hello, World!Right."),
+              "closure reads io::out from its captured environment; "
+              "bare call finds the local closure");
+
+        // v1.32 structural class-constraint: an object whose injected
+        // methods cover the constraint class's signs satisfies it — exact
+        // prototype match is no longer the only path.
+        // v1.32 结构化类约束：注入方法覆盖约束类签名的对象即满足——精确
+        // 原型匹配不再是唯一途径。
+        check(expect_clean_run(
+                  "$Addable {\n"
+                  "  @add[(oth[std::Number])->(res[std::Number]){}];\n"
+                  "}\n"
+                  "$Program {\n"
+                  "  @::[{\n"
+                  "    -(obj);\n"
+                  "    obj:@add[(oth[std::Number])->(res[std::Number]) {\n"
+                  "      res << oth;\n"
+                  "    }];\n"
+                  "    self.check_cs(obj);\n"
+                  "  }];\n"
+                  "  @check_cs[(objs[Addable])->() { }];\n"
+                  "};\n"),
+              "structurally-satisfying object passes the class constraint");
+        // A Number has no 'add' method: correctly rejected.
+        // Number 没有 add 方法：正确拒绝。
+        check(expect_runtime_error(
+                  "$Addable {\n"
+                  "  @add[(oth[std::Number])->(res[std::Number]){}];\n"
+                  "}\n"
+                  "$Program {\n"
+                  "  @::[{ self.check_cs(1); }];\n"
+                  "  @check_cs[(objs[Addable])->() { }];\n"
+                  "};\n",
+                  "ConstraintException"),
+              "Number still rejected by the Addable class constraint");
     }
     }
 

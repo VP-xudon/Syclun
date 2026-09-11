@@ -103,7 +103,7 @@ and instantiating it **is** the program's lifetime:
 ```
 &io;
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
         out.push_line("Hello, Synth-OOP!");
     }];

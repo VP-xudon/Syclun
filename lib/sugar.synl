@@ -21,22 +21,22 @@
 $Infix {
     // Construct with an expression string, or build empty and @set later.
     // 以表达式字符串构造，或留空后用 @set 设置。
-    @::   << [(expr[std::String]) ~> () { }];
+    @::[(expr[std::String]) ~> () { }];
 
     // Replace the expression text.
     // 替换表达式文本。
-    @set  << [(expr[std::String]) ~> () { }];
+    @set[(expr[std::String]) ~> () { }];
 
     // Bind identifiers to values held in a std::Dict.
     // 把标识符绑定到 std::Dict 中的值。
-    @env  << [(env[std::Dict]) ~> () { }];
+    @env[(env[std::Dict]) ~> () { }];
 
     // Evaluate and return a std::Number. A missing environment or an
     // unresolved identifier raises a runtime error attributed to `parse`.
     // 求值并返回 std::Number。环境缺失或标识符未解析时，抛出归属 `parse`
     // 的运行时错误。
-    @parse << [() ~> (value[std::Number]) { }];
+    @parse[() ~> (value[std::Number]) { }];
     // Reclaim the expression-state registry entry immediately.
     // 立即回收表达式状态注册表条目。
-    @dispose << [() ~> () { }];
+    @dispose[() ~> () { }];
 }

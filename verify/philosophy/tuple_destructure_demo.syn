@@ -11,7 +11,7 @@
 // 演示三种形态：方法返回多输出 / 右侧元组字面量 / 单标量接收方取首项；
 // 并对带约束的解构变量在绑定后重新校验约束。
 $Program {
-    @:: << [() -> () {
+    @::[() -> () {
         -(io::OStream out);
 
         // (1) method returns two outputs -> bind a=100, b=200
@@ -35,7 +35,7 @@ $Program {
         out << "constrained: "; out << p; out << " "; out << q; out << "\n";
     }];
 
-    @pair << [() -> (a, b) {
+    @pair[() -> (a, b) {
         a << 100;
         b << 200;
     }];
