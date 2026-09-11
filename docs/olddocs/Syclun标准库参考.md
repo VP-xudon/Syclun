@@ -178,12 +178,16 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
   `sin(x)`, `cos(x)`, `tan(x)`, `log(x)`, `log10(x)`, `exp(x)`,
   `mod(a, b)`, `min(a, b)`, `max(a, b)`; constants `pi()` `e()` `random()`.
 
-- **`async` → `Reactor`/`Task`/`Error`** — a production async runtime built
-  on `std::async`/`std::future`, covering the five dimensions of a real
-  runtime: lifecycle control, concurrency/backpressure, error isolation,
-  dynamic spawning, and non-blocking timers. / 基于 `std::async`/`std::future`
-  的生产级异步运行时，覆盖生命周期控制、并发/背压、异常隔离、动态派发、非阻塞
-  定时器五个维度。
+- **`async` → `Reactor`/`Task`/`Error`** — a production async runtime built on
+  worker threads + futures, **serialized under the interpreter GIL**
+  (industrial-audit D6): worker tasks can never race the main thread's
+  evaluation, at the cost of no true parallel CPU speedup — the same trade-off
+  CPython and Ruby MRI make. Covers the five dimensions of a real runtime:
+  lifecycle control, concurrency/backpressure, error isolation, dynamic
+  spawning, and non-blocking timers. / 基于工作线程 + future 的生产级异步运行时，
+  **全部求值在解释器 GIL 下串行化**（工业化审计 D6）：任务求值绝不与主线程竞争，
+  代价是没有真并行加速——与 CPython、Ruby MRI 同一取舍。覆盖生命周期控制、
+  并发/背压、异常隔离、动态派发、非阻塞定时器五个维度。
   - **`$Reactor`** — `set(tasks)` (store an `Array` of closures),
     `set_limit(max)` (max in-flight tasks; `0` = unlimited → backpressure),
     `set_timeout(ms)` (per-task default timeout), `cancel()` (best-effort
@@ -193,7 +197,9 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
     `async_sleep(ms)` → `Task` (non-blocking timer). Each `status` is one of
     `ok` / `error` / `timeout` / `cancelled`; a failing closure becomes an
     `error` whose `payload` is an `Error` object (fault tolerance — the
-    Reactor never crashes on a bad task).
+    Reactor never crashes on a bad task). Hard interpreter errors (missing
+    method, type violation) are NOT isolated: by design (v1.30) they take the
+    immediate fatal-diagnostic path, wherever they occur.
     / `set(tasks)` 存闭包数组；`set_limit(max)` 并发上限（0 不限，背压）；
     `set_timeout(ms)` 逐任务默认超时；`cancel()` 尽力取消；`start([timeout])`
     返回 `(status,payload)` 元组数组；`with_timeout(闭包,ms)` 单任务硬超时；
@@ -202,12 +208,27 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
     为 `Error`（容错，反应堆绝不因单个坏任务崩溃）。
   - **`$Task`** — a future-like handle: `await([timeout])` → `(status, payload)`
     (blocks until done or timeout), `result()` → `(status, payload)` (no wait),
-    `cancel() → ()`, `is_done()` → `Boolean`.
+    `cancel() → ()`, `is_done()` → `Boolean`, `dispose()` → `()`
+    (release the underlying registry entry early). `cancel` is **cooperative**:
+    it only sets a flag a task checks between/before steps — a running task is
+    never forcibly interrupted. Task handles are plain values: a
+    `-(async::Task t) << r.spawn(...)` copy keeps the identity and may be
+    awaited like the original; the registry is bounded (1024 entries) and
+    swept oldest-first once full, so `dispose()` unawaited tasks you no longer
+    need.
     / 类 future 句柄：`await([timeout])`→`(status,payload)`、`result()`→同、
-    `cancel()`、`is_done()`→Boolean。
+    `cancel()`、`is_done()`→Boolean、`dispose()`（提前释放底层注册表条目）。
+    `cancel` 是**协作式**的：只置标志供任务在步骤间检查——运行中的任务绝不会被
+    强行中断。Task 句柄是普通值：`-(async::Task t) << r.spawn(...)` 复制仍保留
+    身份、可如原件一样 await；注册表有上限（1024 条）且满后按最旧优先清扫，
+    故不再需要的未 await 任务请 `dispose()`。
   - **`$Error`** — `message()` → `String`, `kind()` → `String`
-    (`kind` is e.g. `exception`/`timeout`/`cancelled`/`unknown`).
+    (`kind` is e.g. `exception`/`timeout`/`cancelled`/`unknown`). `kind` and
+    `message` exist ONLY as methods — a same-named object attribute would
+    shadow them (member lookup is attributes-first).
     / `message()`→String、`kind()`→String（如 exception/timeout/cancelled）。
+    `kind` 与 `message` **仅以方法存在**——同名对象属性会遮蔽方法
+    （成员查找属性优先）。
 
 - **`hash` → `Hash`** — hashing on `std::String`.
   / 对 `std::String` 的哈希：

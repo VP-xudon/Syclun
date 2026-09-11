@@ -27,7 +27,7 @@ ctest --test-dir build --output-on-failure
 | 二进制 | 用途 |
 |--------|------|
 | `build/synth`（`synth.exe`） | 解释器本体 |
-| `build/assert_lexer` / `assert_parser` / `assert_runtimes` | 三套断言套件（83 / 71 / 158） |
+| `build/assert_lexer` / `assert_parser` / `assert_runtimes` | 三套断言套件（83 / 80 / 185） |
 
 ---
 

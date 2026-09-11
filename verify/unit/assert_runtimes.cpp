@@ -1553,6 +1553,87 @@ namespace {
         fs::remove(tmp, ec);
     }
 
+    // --------------------------------------------------------
+    // 19b. Standard-library industrialization fix D6 (async + GIL)
+    //      — deadlock regression gate.
+    // 19b. 标准库工业化缺陷 D6 修复（async + GIL）——死锁回归闸门。
+    //      Covers: 3 tasks + set_limit(2) backpressure (the classic
+    //      dispatcher self-deadlock), per-task error isolation with the
+    //      Error kind()/message() API, spawn handles surviving the
+    //      declaration-flow copy, and with_timeout's hard timeout.
+    //      覆盖：3 任务 + set_limit(2) 背压（经典调度器自死锁）、逐任务
+    //      错误隔离与 Error kind()/message() API、spawn 句柄经声明流复制
+    //      后仍存活、with_timeout 的硬超时。
+    //      NOTE: these snippets drive the REAL reactor with REAL threads.
+    //      A D6 deadlock regression hangs the test run rather than failing
+    //      an assertion — the hang itself is the signal.
+    //      注：脚本驱动真实反应堆与真实线程。D6 死锁复现时测试运行将
+    //      直接挂起而非断言失败——挂起本身即失败信号。
+    // --------------------------------------------------------
+    void test_stdlib_d6() {
+        section("Standard-library industrialization fix D6 (async + GIL)");
+
+        std::string src =
+            "&io; &async; &system;\n"
+            "$Program {\n"
+            "  @::[() -> () {\n"
+            "    -(io::OStream out);\n"
+            "    -(async::Reactor r);\n"
+            // ---- D6a: backpressure — 3 tasks, limit 2 (deadlock repro) ----
+            "    r.set_limit(-(std::Number n) << 2);\n"
+            "    -(std::Array jobs);\n"
+            "    jobs.push_back([() ~> (x) { x << 10; }]);\n"
+            "    jobs.push_back([() ~> (x) { x << 20; }]);\n"
+            "    jobs.push_back([() ~> (x) { x << 30; }]);\n"
+            "    r.set(jobs);\n"
+            "    -(std::Tuple rs) << r.start();\n"
+            "    out << \"D6A_COUNT=\"; out << rs.size();\n"
+            "    out << \" D6A_S0=\"; out << rs.get(0).get(0);\n"
+            "    out << \" D6A_V0=\"; out << rs.get(0).get(1).get(0);\n"
+            "    out << \" D6A_V2=\"; out << rs.get(2).get(1).get(0);\n"
+            // ---- D6b: error isolation + Error.kind()/message() ----
+            "    -(std::Array risky);\n"
+            "    risky.push_back([() ~> (x) { x << 1; }]);\n"
+            "    risky.push_back([() ~> (x) { -(async::Task t); x << t.await(); }]);\n"
+            "    r.set(risky);\n"
+            "    -(std::Tuple r2) << r.start();\n"
+            "    out << \" D6B_S1=\"; out << r2.get(1).get(0);\n"
+            "    out << \" D6B_KIND=\"; out << r2.get(1).get(1).kind();\n"
+            "    out << \" D6B_MSG=\"; out << r2.get(1).get(1).message();\n"
+            // ---- D6c: spawn handle survives the declaration-flow copy ----
+            "    -(async::Task t) << r.spawn([() ~> (x) { x << 99; }]);\n"
+            "    -(std::Tuple ta) << t.await();\n"
+            "    out << \" D6C_S=\"; out << ta.get(0);\n"
+            "    out << \" D6C_V=\"; out << ta.get(1).get(0);\n"
+            // ---- D6d: with_timeout hard timeout ----
+            "    -(std::Tuple to) << r.with_timeout(\n"
+            "        [() ~> (x) { -(system::System s); s.wait(5000); x << 1; }],\n"
+            "        -(std::Number n) << 50);\n"
+            "    out << \" D6D_S=\"; out << to.get(0);\n"
+            "  }];\n"
+            "};\n";
+
+        std::string out = run_synth(src, "d6");
+
+        check(out.find("D6A_COUNT=3") != std::string::npos,
+              "D6a: reactor batch with set_limit(2) completes all 3 tasks (no dispatcher deadlock)");
+        check(out.find("D6A_S0=ok") != std::string::npos
+              && out.find("D6A_V0=10") != std::string::npos
+              && out.find("D6A_V2=30") != std::string::npos,
+              "D6a: batch results carry per-task values in order");
+        check(out.find("D6B_S1=error") != std::string::npos,
+              "D6b: a failing task becomes an 'error' result, not a crash");
+        check(out.find("D6B_KIND=exception") != std::string::npos,
+              "D6b: Error.kind() returns the failure kind (attribute no longer shadows method)");
+        check(out.find("D6B_MSG=task has no id") != std::string::npos,
+              "D6b: Error.message() carries the failure detail");
+        check(out.find("D6C_S=ok") != std::string::npos
+              && out.find("D6C_V=99") != std::string::npos,
+              "D6c: spawned Task survives the declaration-flow copy and awaits to its value");
+        check(out.find("D6D_S=timeout") != std::string::npos,
+              "D6d: with_timeout times out a slow task without blocking the caller");
+    }
+
 } // namespace
 
 
@@ -2066,6 +2147,7 @@ int main(int argc, char** argv) {
     test_method_forms();
     test_sugar_infix();
     test_stdlib_d1_d5();
+    test_stdlib_d6();
     test_library_presets();
     test_const_consistency();
 

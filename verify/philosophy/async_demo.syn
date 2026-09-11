@@ -22,11 +22,15 @@ $Program {
         out << "task1 status: "; out << results.get(0).get(0);            // "ok"
         out << "task1 value: "; out << results.get(0).get(1).get(0);      // 10
 
-        // 2) Error isolation: a throwing closure becomes an Error, not a crash.
-        //    异常隔离：抛错的闭包变为 Error，不会令反应堆崩溃。
+        // 2) Error isolation: a failing closure becomes an Error, not a crash.
+        //    (Number division is IEEE754 — 1/0 yields inf, not an error — so
+        //    the failing task here triggers a native error instead.)
+        //    异常隔离：失败的任务变为 Error，不会令反应堆崩溃。
+        //    （Number 除法遵循 IEEE754——1/0 得 inf 而非错误——故此处
+        //    的失败任务改以原生错误触发。）
         -(std::Array risky);
         risky.push_back([() ~> (x) { x << 1; }]);
-        risky.push_back([() ~> (x) { -(std::Number z) << 1; -(std::Number o) << 0; x << z./(o); }]);
+        risky.push_back([() ~> (x) { -(async::Task t); x << t.await(); }]);
         r.set(risky);
         -(std::Tuple r2) << r.start();
         out << "risky task2 status: "; out << r2.get(1).get(0);           // "error"

@@ -216,11 +216,11 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
   `lib/cpp/` 下的哈希、正则、数据结构实现均为本项目原创。
   **Cross-platform, zero third-party deps.** Pure C++23 header-only engine; the
   only requirement is your compiler's standard library.
-- **341 条断言测试，全绿——且由 CI 强制保障。** 三套回归套件（词法 83 / 语法 80 /
-  运行时·对象 178）在**每次 push/PR** 经 `ci.yml` 运行、并在 `release.yml` 的发布门禁中
+- **348 条断言测试，全绿——且由 CI 强制保障。** 三套回归套件（词法 83 / 语法 80 /
+  运行时·对象 185）在**每次 push/PR** 经 `ci.yml` 运行、并在 `release.yml` 的发布门禁中
   复跑；任一断言失败即阻断构建/发布。
-  **341 assertion tests, all green — enforced by CI.** Three suites (lexer 83 /
-  parser 80 / runtime·object 178) run on every push/PR via `ci.yml` and again as
+  **348 assertion tests, all green — enforced by CI.** Three suites (lexer 83 /
+  parser 80 / runtime·object 185) run on every push/PR via `ci.yml` and again as
   the release gate; one failing assertion blocks the build/release.
 - **即时、可追踪的错误 + IEEE 754 语义。** 故障在源头以类 g++ 诊断浮现；失败以非 0 退出码
   结束，CI 必察觉。

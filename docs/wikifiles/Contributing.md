@@ -68,8 +68,8 @@ If a clean checkout is red, **fix your environment first**.
 | Suite            | Before | After |
 |------------------|--------|-------|
 | assert_lexer     | 83/83  |       |
-| assert_parser    | 71/71  |       |
-| assert_runtimes  | 158/158|       |
+| assert_parser    | 80/80  |       |
+| assert_runtimes  | 185/185|       |
 ## Compatibility / 兼容性影响
 - [ ] none
 ## Self-check / 提交自检

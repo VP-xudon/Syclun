@@ -301,8 +301,8 @@ All inputs are `std::String`.
 
 ## async — 异步运行时 / Async runtime
 
-基于 `std::async`/`std::future`，覆盖生命周期、并发/背压、异常隔离、动态派发、非阻塞定时器。失败的任务不会让反应堆崩溃——它变成 `error` 结果。
-Built on `std::async`/`std::future`: lifecycle, concurrency/backpressure, fault isolation, dynamic spawn, non-blocking timers. A failing task never crashes the reactor — it becomes an `error` result.
+基于工作线程 + future 实现，**全部求值在解释器 GIL 下串行化**（工业化审计 D6）：任务求值绝不与主线程竞争，代价是没有真并行加速——与 CPython、Ruby MRI 同一取舍。覆盖生命周期、并发/背压、异常隔离、动态派发、非阻塞定时器。失败的任务不会让反应堆崩溃——它变成 `error` 结果。
+Built on worker threads + futures, **serialized under the interpreter GIL** (industrial-audit D6): task evaluation can never race the main thread, at the cost of no true parallel speedup — the same trade-off CPython and Ruby MRI make. Covers lifecycle, concurrency/backpressure, fault isolation, dynamic spawn, non-blocking timers. A failing task never crashes the reactor — it becomes an `error` result.
 
 ```text
 &io; &async;
@@ -340,10 +340,10 @@ $Program {
 | `Task` | `await([timeout])` → `Tuple` `result()` `cancel()` `is_done()` `dispose()` | 取结果 / 取消 / 状态 |
 | `Error` | `message()` `kind()` | 错误信息 / 类型（`exception`/`timeout`/`cancelled`/…） |
 
-> 任务闭包通过 `x << 值` 公布结果；`start()` 的结果是 `[(status, payload), …]`，`payload` 是该任务公布的数组。
-> A task closure publishes via `x << value`; `start()` yields `[(status, payload), …]` where `payload` is the array the task published.
-> `dispose()` 会取消仍在运行的线程并立即回收注册表条目。
-> `dispose()` cancels a running thread and reclaims its registry entry immediately.
+> 任务闭包通过 `x << 值` 公布结果；`start()` 的结果是 `[(status, payload), …]`，`payload` 是该任务公布的数组。`cancel()` 是协作式的：只置标志供任务在步骤间检查，运行中的任务绝不会被强行中断。Task 句柄是普通值，`-(async::Task t) << r.spawn(...)` 复制仍保留身份；注册表有上限（1024 条）且满后按最旧优先清扫，不再需要的未 await 任务请 `dispose()` 提前释放。
+> A task closure publishes via `x << value`; `start()` yields `[(status, payload), …]` where `payload` is the array the task published. `cancel()` is cooperative: it only sets a flag a task checks between/before steps — a running task is never forcibly interrupted. Task handles are plain values: a `-(async::Task t) << r.spawn(...)` copy keeps its identity; the registry is bounded (1024 entries) and swept oldest-first once full, so `dispose()` unawaited tasks you no longer need.
+> `Error` 的 `kind` 与 `message` 仅以方法存在（`err.kind()` / `err.message()`）——同名对象属性会遮蔽方法。
+> `Error`'s `kind` and `message` exist only as methods (`err.kind()` / `err.message()`) — a same-named attribute would shadow them.
 
 ---
 
