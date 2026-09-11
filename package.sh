@@ -547,9 +547,21 @@ smoke_test() {
         echo "Library: $win_lib"
         echo "Example: $win_example"
 
+        # Invoke the packaged binary directly from the POSIX shell. The
+        # previous `cmd.exe /c "\"...\""` form embedded backslash-escaped
+        # quotes in the command line; cmd does not understand \" (that is a
+        # C-runtime convention, not a cmd one), so it looked for a program
+        # literally named `"build\...` and the smoke test always failed.
+        # MSYS passes env and arguments to the native exe unchanged, and DLL
+        # search finds the bundled runtime next to synth.exe either way.
+        # 直接从 POSIX shell 启动打包产物。原 `cmd.exe /c "\"...\""` 写法把
+        # 反斜杠转义引号原样塞进命令行；cmd 并不认识 \"（那是 C 运行时的
+        # 约定，不是 cmd 的），于是去找字面名为 `"build\...` 的程序，smoke
+        # test 必败。MSYS 传给原生 exe 的环境与参数保持原样，DLL 检索同样
+        # 能找到 synth.exe 旁的运行库。
         if test_output="$(
             SYNTH_LIB_DIR="$win_lib" \
-            cmd.exe /c "\"$win_pkg\\bin\\synth.exe\" \"$win_example\"" \
+            "$exe" "$win_example" \
             2>&1
         )"; then
 
