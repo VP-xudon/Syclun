@@ -1,0 +1,75 @@
+// lib/http.synl
+//
+// Standard library: http (Synth-OOP interface).
+// 标准库：http（Synth-OOP 接口）。
+//
+// Zero-dependency HTTP/1.1 client over raw sockets. HTTPS is out of scope
+// (would require a TLS backend and break the zero-third-party-dependency rule).
+// All calls are synchronous: one request = one connect + read.
+// 零依赖、基于裸套接字的 HTTP/1.1 客户端。HTTPS 不在范围内（需 TLS 后端，
+// 且破坏零第三方依赖原则）。所有调用均为同步：一次请求 = 一次连接 + 读取。
+//
+// Method signatures below carry their type constraints and are runtime-enforced
+// at the call boundary; the authoritative enforced signature lives in
+// lib/cpp/http.hpp's make_sign. This file is its readable mirror.
+// 下列方法签名带类型约束并在调用边界强制检查；权威签名位于 lib/cpp/http.hpp
+// 的 make_sign；本文件是其可读镜像。
+
+// A stateless HTTP client. Import with `&http;` then use the preset
+// `http::client`, or instantiate `-(http::Client c)`.
+
+$Client {
+    // GET url -> Response. / GET url -> Response。
+    @get[(url[std::String]) ~> (out[http::Response]) { }];
+    // POST url with a body string -> Response. / POST url 与请求体字符串。
+    @post[(url[std::String], body[std::String]) ~> (out[http::Response]) { }];
+    // PUT url with a body string -> Response. / PUT url 与请求体字符串。
+    @put[(url[std::String], body[std::String]) ~> (out[http::Response]) { }];
+    // DELETE url -> Response. / DELETE url -> Response。
+    @delete[(url[std::String]) ~> (out[http::Response]) { }];
+    // HEAD url -> Response (headers only). / HEAD url -> 响应（仅头）。
+    @head[(url[std::String]) ~> (out[http::Response]) { }];
+    // Download url to a local file path; returns true on success.
+    // 把 url 下载到本地文件路径；成功返回 true。
+    @download[(url[std::String], path[std::String]) ~> (out[std::Boolean]) { }];
+    // Generic request: method, url, headers (Dict), body -> Response.
+    // 通用请求：方法、url、头(Dict)、请求体 -> Response。
+    @request[(method[std::String], url[std::String], headers[std::Dict], body[std::String]) ~> (out[http::Response]) { }];
+}
+
+// A breadth-first web crawler. From a start URL it fetches each page, extracts
+// the <title> and every <a href>, and follows links up to maxDepth / maxPages.
+// Returns an Array of Dicts: { url, title, depth, links: Array<String> }.
+// 广度优先网络爬虫。从起始 URL 抓取每页、提取 <title> 与全部 <a href>，并按
+// maxDepth / maxPages 跟进链接。返回 Dict 数组：{ url, title, depth,
+// links: Array<String> }。
+$Crawler {
+    @crawl[(start[std::String], maxDepth[std::Number], maxPages[std::Number]) ~> (out[std::Array]) { }];
+}
+
+// The parsed HTTP response. Fields are read through methods (raw values live
+// in hidden # capsules so the methods are never shadowed).
+// 解析后的 HTTP 响应。字段经方法读取（原始值存于隐藏 # 胶囊，方法永不被遮蔽）。
+$Response {
+    // Numeric status code, e.g. 200. / 数值状态码，如 200。
+    @status[() ~> (out[std::Number]) { }];
+    // Reason phrase, e.g. "OK". / 原因短语，如 "OK"。
+    @reason[() ~> (out[std::String]) { }];
+    // Response headers as a Dict (case preserved from the server).
+    // 响应头，字典形式（保留服务器原始大小写）。
+    @headers[() ~> (out[std::Dict]) { }];
+    // Response body as a String. / 响应正文，字符串形式。
+    @body[() ~> (out[std::String]) { }];
+    // Alias of body(). / body() 的别名。
+    @text[() ~> (out[std::String]) { }];
+    // true iff 200 <= status < 300. / 状态码在 200–299 区间为真。
+    @ok[() ~> (out[std::Boolean]) { }];
+}
+
+// Preset client instance, arriving with the import (const global).
+// 随导入到来的预置客户端实例（常数全局）。
+// 标准库工业化评估：L3 准工业级（正确、可测、文档齐、跨平台；HTTPS 待补）。
+-(http::Client! http::client);
+// Preset crawler instance, arriving with the import (const global).
+// 随导入到来的预置爬虫实例（常数全局）。
+-(http::Crawler! http::crawler);

@@ -1,0 +1,25 @@
+// windows end-to-end (no mainloop, so it cannot hang): open a canvas, register
+// draw/key callbacks, clear, then close. Callbacks only fire inside the message
+// loop, so here we just prove the Win32 create/destroy path is crash-free.
+// windows 端到端（不调用 mainloop，故不会挂起）：开画布、注册绘制/按键回调、
+// 清屏、再关闭。回调只在消息循环内触发，此处仅证明 Win32 创建/销毁路径不崩溃。
+
+&windows;
+
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(windows::Screen s);
+        s.open("Syclun Canvas Test", 480, 320);
+        s.on_draw([() -> () {
+            s.clear(30, 30, 60);
+            s.draw_line(10, 10, 200, 150, 65280);
+            s.draw_rect(40, 40, 80, 60, 16746496);
+            s.draw_text(20, 200, "hi", 16777215);
+        }]);
+        s.on_key([(std::String k) -> () { }]);
+        s.clear(20, 20, 40);
+        s.close();
+        out << "windows open/close ok\n";
+    }];
+};

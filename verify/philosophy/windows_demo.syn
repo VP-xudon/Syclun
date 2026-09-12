@@ -1,0 +1,33 @@
+&windows;
+&io;
+// windows standard library demo (pyglet-like 2-D canvas).
+// windows 标准库示例（类 pyglet 的 2D 画布）。
+//
+// Run it on Windows with a graphical session. It opens a canvas window and draws
+// a rectangle, a line and some text on each repaint; typing prints the key to
+// standard output. Close the window to end the program.
+// 在带图形会话的 Windows 上运行。它开一个画布窗口，每次重绘画矩形、直线与
+// 文字；键入字符会向标准输出打印。关闭窗口即结束程序。
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(windows::Screen s);
+
+        s.open("Synth-OOP Canvas", 400, 300);
+
+        // All drawing happens inside on_draw, where the device context is live.
+        // 所有绘制都在 on_draw 内完成，此时设备上下文处于活动状态。
+        s.on_draw([() -> () {
+            s.clear(240, 248, 255);                       // alice blue background
+            s.draw_rect(50, 50, 120, 80, 16711680);        // red rectangle (0xFF0000)
+            s.draw_line(0, 0, 400, 300, 43520);            // green diagonal (0x00AA00)
+            s.draw_text(60, 60, "Hello Canvas", 0);         // black text (0x000000)
+        }]);
+
+        s.on_key([(std::String k) -> () {
+            out << "key: "; out << k; out << "\n";
+        }]);
+
+        s.mainloop();
+    }];
+}

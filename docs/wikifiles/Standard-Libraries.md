@@ -40,6 +40,11 @@ Lower-case module name; the interpreter resolves `lib/<module>.synl`, defines it
 | `&async;` | `Reactor`, `Task`, `Error` | 异步运行时 / async runtime |
 | `&assert;` | `Checker` | 运行期合法性校验 / runtime checks |
 | `&sugar;` | `Infix` | 算术表达式求值（`1+(2-3)*(3+5)` → `-7`） |
+| `&http;` | `Client`, `Response`, `Crawler` | HTTP/1.1 请求 + 广度优先爬虫（明文，无 TLS） / HTTP/1.1 requests + BFS crawler (cleartext) |
+| `&internet;` | `Network` | 网络接口/地址、连通性探测、Wi‑Fi 列表、端口扫描 / network info, probes, Wi‑Fi list, port scan |
+| `&bt;` | `Bluetooth` | 蓝牙设备发现/枚举/连接/断开与无线电状态 / Bluetooth discovery, pairing, connect, radio state |
+| `&gui;` | `Window` | 类 tkinter 系统窗口组件（Win32 / X11 / Cocoa 原生实现，需桌面） / tkinter-like widgets (native Win32 / X11 / Cocoa) |
+| `&windows;` | `Screen` | 类 pyglet 2-D 画布窗口（Win32 GDI / X11 / Cocoa 原生实现，需桌面） / pyglet-like canvas (native Win32 GDI / X11 / Cocoa) |
 
 ---
 
@@ -53,6 +58,10 @@ Since then, a library's `.synl` may create **ready-made const objects** at the t
 | `io` | `io::out` | `io::OStream` |
 | `io` | `io::in` | `io::IStream` |
 | `maths` | `maths::math` | `maths::Maths` |
+| `http` | `http::client` | `http::Client` |
+| `http` | `http::crawler` | `http::Crawler` |
+| `internet` | `internet::net` | `internet::Network` |
+| `bt` | `bt::radio` | `bt::Bluetooth` |
 
 ```text
 &io;

@@ -1,0 +1,45 @@
+// lib/internet.synl
+//
+// Standard library: internet (Synth-OOP interface).
+// 标准库：internet（Synth-OOP 接口）。
+//
+// Generalized network services: interface enumeration, DNS resolution,
+// reachability and connect latency. Wifi / ethernet link *information* is
+// provided; actively *managing* a wifi or cellular link (connect / disconnect
+// / scan) is OS-specific and out of scope for L3. HTTP request handling lives
+// in the `http` library.
+// 广义网络服务：接口枚举、DNS 解析、可达性、连接时延。提供 wifi/以太网链路的
+// *信息*；主动*管理*（连接/断开/扫描）wifi 或蜂窝链路是 OS 相关的，L3 不在范围。
+// HTTP 请求处理在 `http` 库。
+//
+// Signatures mirror lib/cpp/internet.hpp and are runtime-enforced.
+// 签名镜像 lib/cpp/internet.hpp，并在运行期强制。
+
+$Network {
+    // List network interfaces as an Array of Dicts (name, family, address, netmask).
+    // 列出网络接口，返回 Dict 数组（name, family, address, netmask）。
+    @interfaces[() ~> (out[std::Array]) { }];
+    // Resolve a host name to an Array of IP address Strings. / 解析主机名为 IP 字符串数组。
+    @resolve[(host[std::String]) ~> (out[std::Array]) { }];
+    // true iff a TCP connection to (host, port) succeeds. / 能连上 (host, port) 则为真。
+    @reachable[(host[std::String], port[std::Number]) ~> (out[std::Boolean]) { }];
+    // Connect latency in milliseconds to (host, port); -1 on failure.
+    // 到 (host, port) 的连接时延（毫秒）；失败为 -1。
+    @latency[(host[std::String], port[std::Number]) ~> (out[std::Number]) { }];
+    // Non-loopback local IP addresses as an Array of Strings. / 非回环本地 IP 字符串数组。
+    @local_addresses[() ~> (out[std::Array]) { }];
+    // true iff a route to the internet exists (probes well-known DNS endpoints).
+    // 存在到互联网的路由则为真（探测公认 DNS 端点）。
+    @is_online[() ~> (out[std::Boolean]) { }];
+    // Visible Wi-Fi networks as an Array of Dicts { ssid, signal, channel, security }.
+    // 可见 Wi‑Fi 网络，返回 Dict 数组 { ssid, signal, channel, security }。
+    @wifi_networks[() ~> (out[std::Array]) { }];
+    // TCP port scan over [from, to]; returns an Array of open port Numbers.
+    // [from,to] 区间 TCP 端口扫描，返回开放端口（Number）数组。
+    @scan_ports[(host[std::String], from[std::Number], to[std::Number]) ~> (out[std::Array]) { }];
+}
+
+// Preset instance, arriving with the import (const global).
+// 随导入到来的预置实例（常数全局）。
+// 标准库工业化评估：L3 准工业级（正确、可测、文档齐、跨平台；wifi/蜂窝主动管理待补）。
+-(internet::Network! internet::net);

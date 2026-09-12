@@ -1,0 +1,31 @@
+&http;
+// http standard library demo.
+// http 标准库示例。
+//
+// Spawn a local server first for a reproducible run:
+// 先起一个本地服务器以便复现：
+//     python -m http.server 8000 --bind 127.0.0.1
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+
+        // Preset client arriving with the import / 随导入到来的预置客户端
+        // -(http::Client c);  // or instantiate your own / 也可自行实例化
+        -(http::Response r) << http::client.get("http://127.0.0.1:8000/");
+
+        out << "status: "; out << r.status();
+        out << " ok: ";     out << r.ok();
+        out << " reason: "; out << r.reason();
+        out << " header count: "; out << r.headers().size();
+
+        // POST with a body / 带请求体的 POST
+        -(http::Response p) << http::client.post("http://127.0.0.1:8000/", "hello-http");
+        out << " post status: "; out << p.status();
+
+        // Generic request with custom headers / 带自定义头的通用请求
+        -(std::Dict hdr);
+        hdr.set("X-Demo", "synth-oop");
+        -(http::Response q) << http::client.request("GET", "http://127.0.0.1:8000/", hdr, "");
+        out << " request status: "; out << q.status();
+    }];
+}

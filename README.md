@@ -235,8 +235,10 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
   结束，CI 必察觉。
   **Immediate, traceable errors + IEEE 754.** Faults surface at source g++-style;
   non-zero exit makes CI notice.
-- **成体系的标准库（10 个模块）** 与 **VS Code 语法高亮插件**。
-  **A real standard library (10 modules)** and a **VS Code highlighting extension**.
+- **成体系的标准库（15 个模块，含 5 个高级库：http / internet / bt / gui / windows）** 与
+  **VS Code 语法高亮插件**。
+  **A real standard library (15 modules, incl. 5 advanced: http / internet / bt / gui / windows)**
+  and a **VS Code highlighting extension**.
 - **开放、有治理、且属于你。** GPL-3.0-or-later + DCO 签署；你写的 `.syn` 程序是独立作品。
   **Open, governed, and yours.** GPL-3.0-or-later with DCO; your `.syn` programs
   are independent works.
@@ -262,6 +264,11 @@ referenced as `module::Class` (e.g. `&maths;` → `maths::Maths`).
 | `&async;` | `Reactor`, `Task`, `Error` | 异步运行时 / async runtime |
 | `&assert;` | `Checker` | 运行期合法性校验 / runtime checks |
 | `&sugar;` | `Infix` | 算术表达式求值（`1+(2-3)*(3+5)` → `-7`） |
+| `&http;` | `Client`, `Response`, `Crawler` | HTTP/1.1 请求 + 广度优先爬虫（明文，无 TLS） / HTTP/1.1 requests + BFS crawler (cleartext) |
+| `&internet;` | `Network` | 网络接口/地址、连通性探测、Wi‑Fi 列表、端口扫描 / network info, probes, Wi‑Fi list, port scan |
+| `&bt;` | `Bluetooth` | 蓝牙设备发现/枚举/连接/断开与无线电状态 / Bluetooth discovery, pairing, connect, radio state |
+| `&gui;` | `Window` | 类 tkinter 系统窗口组件（Win32 / X11 / Cocoa 原生实现，需桌面） / tkinter-like widgets (native Win32 / X11 / Cocoa) |
+| `&windows;` | `Screen` | 类 pyglet 2-D 画布窗口（Win32 GDI / X11 / Cocoa 原生实现，需桌面） / pyglet-like canvas (native Win32 GDI / X11 / Cocoa) |
 
 详细的**方法签名**与「如何新增标准库」清单，见 Wiki 的
 [标准库总览 / Standard Libraries](https://github.com/VP-xudon/Syclun/wiki/Standard-Libraries)

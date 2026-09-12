@@ -1,0 +1,26 @@
+&http;
+&io;
+// http crawler demo (web spider).
+// http 网络爬虫示例。
+//
+// Needs a live server to crawl. From the project root:
+// 需本地服务器才能爬取。项目根目录执行：
+//     python3 -m http.server 8000 --bind 127.0.0.1
+// then run this demo. The crawler follows same-origin links up to maxDepth and
+// returns up to maxPages pages, each a Dict {url, title, depth, links}.
+// 随后运行本示例。爬虫沿同源链接向下最多 maxDepth 层，返回至多 maxPages 个页面，
+// 每页为 Dict {url, title, depth, links}。
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(http::Crawler c) << http::crawler;
+
+        -(std::Array pages) << c.crawl("http://127.0.0.1:8000/", 1, 5);
+        out << "crawled pages: "; out << pages.size(); out << "\n";
+        out << "first url : "; out << pages.get(0).get("url");  out << "\n";
+        out << "first title: "; out << pages.get(0).get("title"); out << "\n";
+        out << "first depth: "; out << pages.get(0).get("depth"); out << "\n";
+        -(std::Array links) << pages.get(0).get("links");
+        out << "first link count: "; out << links.size(); out << "\n";
+    }];
+};

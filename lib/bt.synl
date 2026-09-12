@@ -1,0 +1,37 @@
+// lib/bt.synl
+//
+// Standard library: bt (Bluetooth) — Synth-OOP interface.
+// 标准库：bt（蓝牙）—— Synth-OOP 接口。
+//
+// Device discovery, enumeration, connect / disconnect and radio state. There is
+// no single portable C API for Bluetooth, so each platform's native tooling is
+// used under the hood (see lib/cpp/bt.hpp); the methods below are the uniform
+// Synth-OOP surface over it. RFCOMM SPP byte-stream I/O is out of scope for L3.
+// 设备的发现、枚举、连接 / 断开与无线电状态。蓝牙没有统一的 C API，故底层调用各
+// 平台原生工具（见 lib/cpp/bt.hpp）；下列方法是其上的统一 Synth-OOP 界面。RFCOMM
+// SPP 字节流 I/O 在 L3 之外。
+//
+// Signatures mirror lib/cpp/bt.hpp and are runtime-enforced.
+// 签名镜像 lib/cpp/bt.hpp，并在运行期强制。
+
+$Bluetooth {
+    // Known / paired devices as an Array of Dicts { address, name, status }.
+    // 已知 / 已配对设备，返回 Dict 数组 { address, name, status }。
+    @devices[() ~> (out[std::Array]) { }];
+    // Scan for nearby devices for `timeout` seconds; Array of Dicts { address, name, status }.
+    // 扫描附近设备 `timeout` 秒；Dict 数组 { address, name, status }。
+    @scan[(timeout[std::Number]) ~> (out[std::Array]) { }];
+    // Connect to a device by address; true on success (Linux / bluez).
+    // 按地址连接设备；成功为真（Linux / bluez）。
+    @connect[(address[std::String]) ~> (out[std::Boolean]) { }];
+    // Disconnect a device by address; true on success (Linux / bluez).
+    // 按地址断开设备；成功为真（Linux / bluez）。
+    @disconnect[(address[std::String]) ~> (out[std::Boolean]) { }];
+    // Whether the Bluetooth radio is powered on. / 蓝牙无线电是否开启。
+    @enabled[() ~> (out[std::Boolean]) { }];
+}
+
+// Preset instance, arriving with the import (const global).
+// 随导入到来的预置实例（常数全局）。
+// 标准库工业化评估：L3 准工业级（正确、可测、文档齐、跨平台；RFCOMM 字节流待补）。
+-(bt::Bluetooth! bt::radio);

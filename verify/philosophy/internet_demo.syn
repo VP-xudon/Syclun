@@ -1,0 +1,36 @@
+&internet;
+// internet standard library demo.
+// internet 标准库示例。
+//
+// Generalized network services: interface enumeration, DNS, reachability,
+// latency, local addresses, and online probing. Wifi / ethernet link
+// *information* is available; actively *managing* a link is OS-specific and
+// out of scope for L3 (HTTP request handling lives in `http`).
+// 广义网络服务：接口枚举、DNS、可达性、时延、本地地址、在线探测。
+// wifi/以太网链路的*信息*可用；主动*管理*链路是 OS 相关的，L3 不在范围
+// （HTTP 请求处理在 `http`）。
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(std::Array ifaces) << internet::net.interfaces();
+
+        out << "interfaces: "; out << ifaces.size();
+        // first interface's name (a Dict carries name/family/address/netmask)
+        // 第一个接口的名字（Dict 含 name/family/address/netmask）
+        out << " first name: "; out << ifaces.get(0).get("name");
+
+        out << " local addresses: "; out << internet::net.local_addresses().size();
+        out << " online: "; out << internet::net.is_online();
+
+        out << " resolve localhost: "; out << internet::net.resolve("localhost");
+        out << " reachable 8.8.8.8:53: "; out << internet::net.reachable("8.8.8.8", 53);
+        out << " latency example.com:80: "; out << internet::net.latency("example.com", 80);
+
+        // Wi-Fi scan + local port scan (no external network required).
+        // Wi‑Fi 扫描 + 本机端口扫描（无需外网）。
+        -(std::Dict wifis) << internet::net.wifi_networks();
+        out << " wifi_networks: "; out << wifis.size();
+        -(std::Array ports) << internet::net.scan_ports("127.0.0.1", 8000, 8005);
+        out << " scan_ports(8000..8005): "; out << ports.size(); out << " open\n";
+    }];
+}

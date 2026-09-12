@@ -43,6 +43,10 @@ global objects directly; presets belong to libraries.
 | `io` | `io::out` | `io::OStream` | `-(io::OStream o);` in every program / 每个程序里的手写声明 |
 | `io` | `io::in` | `io::IStream` | `-(io::IStream i);` ditto / 同上 |
 | `maths` | `maths::math` | `maths::Maths` | instantiating the stateless `$Maths` class / 实例化无状态的 Maths 类 |
+| `http` | `http::client` | `http::Client` | stateless HTTP/1.1 request client / 无状态 HTTP/1.1 请求客户端 |
+| `http` | `http::crawler` | `http::Crawler` | BFS web crawler / 广度优先网络爬虫 |
+| `internet` | `internet::net` | `internet::Network` | network info + connectivity probe / 网络信息与连通性探测 |
+| `bt` | `bt::radio` | `bt::Bluetooth` | Bluetooth discovery / connect / radio state / 蓝牙发现 / 连接 / 无线电状态 |
 
 ---
 
@@ -294,6 +298,123 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
 
 ---
 
+## Advanced standard libraries / 高级标准库
+
+五个与「平台能力」强相关的模块——网络与图形界面——单独列为**高级标准库**层。它们由平台
+原生能力直接支撑：网络走原生 socket / `iphlpapi` / `getifaddrs` / 蓝牙原生工具；GUI 与画布走
+一套**平台中立 C 桥**（`gui_native.h` / `windows_native.h`），含 Win32 / X11 / Cocoa **三套真实
+实现**，按平台只编译对应一套并链接进同一二进制——因此**真正跨平台**：Windows / Linux /
+macOS 上均获得完整能力，CI 在三大平台构建并验证。所有方法沿用运行期签名强制（见上文），
+错误即时抛出。
+Five platform-capability modules — networking, Bluetooth and GUI — are grouped as the
+**advanced standard-library tier**. They are backed directly by each platform's native
+capabilities: networking uses raw sockets / `iphlpapi` / `getifaddrs` / the OS Bluetooth
+tooling; GUI and canvas sit on a **platform-neutral C bridge** (`gui_native.h` /
+`windows_native.h`) with **three real implementations** (Win32 / X11 / Cocoa), only the
+matching one compiled and linked per platform — so they are **genuinely cross-platform**:
+Windows / Linux / macOS all get full functionality, and CI builds and verifies on all three.
+All methods keep runtime signature enforcement (above) and raise immediate errors.
+
+- **`http` → `Client` / `Response` / `Crawler`** — HTTP/1.1 客户端（基于原生 socket，仅明文
+  HTTP，不含 TLS）。`Client` 与 `Crawler` 均为随导入到来的常数预置对象（`http::client`、
+  `http::crawler`）；`Response` 经流赋值 `<<` 携带其 `#status`/`#reason`/`#headers`/`#body`
+  字段（已加 `=:`/`=` 公布/接收方法，不会在 `<<` 后变空）。 / HTTP/1.1 client over raw sockets
+  (cleartext HTTP only, no TLS). Both `Client` and `Crawler` arrive as const presets
+  (`http::client`, `http::crawler`); `Response` carries its `#status`/`#reason`/`#headers`/
+  `#body` across a `<<` flow (publish/receive methods added so it never arrives hollow).
+  - `http::client.get(url)` / `.post(url, body)` / `.put(url, body)` / `.delete(url)`
+    / `.head(url)` → `http::Response`; `http::client.download(url, path)` → `Boolean`
+    （下载到本地文件）；`http::client.request(method, url, headers, body)` → `http::Response`。
+  - `Response.status()` → `Number`, `Response.reason()` → `String`,
+    `Response.headers()` → `Dict`, `Response.body()` / `.text()` → `String`,
+    `Response.ok()` → `Boolean` (status ∈ [200,300)).
+  - `http::crawler.crawl(start, maxDepth, maxPages)` → `Array` of `Dict`
+    `{ url, title, depth, links: Array<String> }`：从 `start` 起广度优先抓取、提取 `<title>` 与
+    全部 `<a href>`、按 `maxDepth`/`maxPages` 跟进链接。/ BFS web crawler: from `start` it fetches
+    each page, extracts `<title>` and every `<a href>`, follows links up to `maxDepth` /
+    `maxPages`; returns an `Array` of `Dict` `{ url, title, depth, links }`.
+- **`internet` → `Network`** — 广义网络服务：**接口 / 地址信息**、**连通性探测**、**Wi‑Fi 列表**
+  与**端口扫描**。`Network` 为随导入到来的常数预置对象 `internet::net`。Wi-Fi / 蜂窝的*主动*
+  连接/断开受各操作系统管控，超出 L3 范围（本库提供可见网络*列表*，不提供连接开关）；HTTP 请求
+  请走 `http`。 / Generalized networking: interface & address **info**, **connectivity probes**,
+  **Wi‑Fi listing** and **port scanning**. `Network` arrives as the const preset `internet::net`.
+  Active Wi-Fi / cellular *connect/disconnect* is OS-controlled and out of L3 scope (the library
+  lists visible networks but does not toggle them); use `http` for requests.
+  - `internet::net.interfaces()` → `Array` of `Dict` (name / family / address / netmask / loopback).
+  - `internet::net.resolve(host)` → `Array` of IP `String`.
+  - `internet::net.reachable(host, port)` → `Boolean`; `internet::net.latency(host, port)`
+    → `Number` (ms, -1 on failure).
+  - `internet::net.local_addresses()` → `Array` of non-loopback IP `String`.
+  - `internet::net.is_online()` → `Boolean` (probes 8.8.8.8:53 / 1.1.1.1:53 over TCP).
+  - `internet::net.wifi_networks()` → `Array` of `Dict` `{ ssid, signal, channel, security }`
+    （可见 Wi‑Fi 列表；Windows 解析 `netsh wlan show networks`、Linux 用 `nmcli`、macOS 用
+    `airport`）。 / visible Wi‑Fi networks (Windows `netsh` / Linux `nmcli` / macOS `airport`).
+  - `internet::net.scan_ports(host, from, to)` → `Array` of open port `Number`（TCP 端口扫描，
+    区间 `[from, to]`）。 / TCP port scan over `[from, to]`.
+- **`gui` → `Window`** — 类 tkinter 的迷你系统窗口工具包（顶层 `Window` + `label` / `button` /
+  `entry` / `checkbox` / `slider` / `listbox` / `textarea` / `message`，按钮等动作接回 Synth-OOP
+  闭包）。由平台中立 C 桥（`gui_native.h`）支撑，含 **Win32 User32 / X11 保留式控件 / Cocoa
+  AppKit** 三套真实实现，按平台只编译对应一套——故**真正跨平台**（需桌面环境）。`w.mainloop()`
+  泵消息循环，按钮点击与控件回调在其中派发。 / A small tkinter-like system-window toolkit
+  (top-level `Window` + `label` / `button` / `entry` / `checkbox` / `slider` / `listbox` /
+  `textarea` / `message`, actions wired to Synth-OOP closures). Backed by a platform-neutral C
+  bridge (`gui_native.h`) with **three real implementations** (Win32 User32 / X11 retained
+  widgets / Cocoa AppKit) — genuinely cross-platform (needs a desktop session). `w.mainloop()`
+  pumps the message loop and dispatches button clicks / control callbacks.
+  - `w.open(title, width, height)` — 创建并显示窗口。
+  - `w.label(text, x, y)`，`w.button(text, x, y, w, h, action[@])`，`w.set_title(title)`。
+  - `w.entry(x, y, w, h)` → `Number`（索引），`w.entry_text(index)` → `String`；
+    `w.checkbox(text, x, y)` → 索引，`w.checkbox_checked(index)` → `Boolean`；
+    `w.slider(x, y, w, min, max, value)` → 索引，`w.slider_value(index)` → `Number`；
+    `w.listbox(items[Array], x, y, w, h)` → 索引，`w.listbox_selection(index)` → `Number`（-1 无）；
+    `w.textarea(text, x, y, w, h)` → 索引，`w.textarea_text(index)` → `String`。
+  - `w.message(title, text, kind)` — 消息框（kind：0 信息 / 1 警告 / 2 错误）。
+  - `w.on_close(action[@])` — 窗口关闭时调用；`w.mainloop()` 泵循环至关闭；`w.close()` 销毁。
+- **`windows` → `Screen`** — 类 pyglet 的 2-D 画布窗口。由平台中立 C 桥（`windows_native.h`）
+  支撑，含 **Win32 GDI / X11 GC / Cocoa CGContext** 三套真实实现，按平台只编译对应一套——故
+  **真正跨平台**（需桌面环境）。注册 `on_draw` 回调（在其中调用 `clear` / `draw_*` 基元）、可选
+  `on_key` / `on_close` 回调，再 `mainloop()` 泵事件；绘制既可在 `on_draw` 内即时生效，也可作为
+  缓冲场景被自动重绘。 / A pyglet-like 2-D canvas window. Backed by a platform-neutral C bridge
+  (`windows_native.h`) with **three real implementations** (Win32 GDI / X11 GC / Cocoa
+  CGContext) — genuinely cross-platform (needs a desktop session). Register `on_draw` (where you
+  call `clear` / `draw_*` primitives), optionally `on_key` / `on_close`, then `mainloop()` to pump
+  events; drawing works both live inside `on_draw` and as a buffered scene that repaints.
+  - `s.open(title, width, height)` / `s.set_title(title)` — 创建 / 重命名画布窗口。
+  - `s.on_draw(action[@])`，`s.on_key(action[(key[std::String]) -> ()])`，`s.on_close(action[@])`。
+  - `s.clear(r, g, b)`（0–255；置背景色并请求重绘）。
+  - `s.draw_line(x1, y1, x2, y2, color)`；`s.draw_rect(x, y, w, h, color)` / `s.draw_outline_rect(...)`
+    （实心 / 描边）；`s.draw_circle(cx, cy, r, color)` / `s.draw_outline_circle(...)`；
+    `s.draw_ellipse(x, y, w, h, color)` / `s.draw_outline_ellipse(...)`；`s.draw_polygon(points[Array], color)`
+    / `s.draw_outline_polygon(...)`（points 为扁平 `[x0,y0,x1,y1,…]`）；`s.draw_text(x, y, text, color)`。
+    color 为 `0xRRGGBB` 的十进制 `Number`（Synth-OOP 无十六进制字面量，请传十进制值）。
+  - `s.mainloop()` — 泵消息至窗口关闭；`s.close()` — 销毁。
+
+- **`bt` → `Bluetooth`** — 蓝牙设备发现、枚举、连接 / 断开与无线电状态。蓝牙无统一 C API，故
+  底层调用各平台原生工具（Windows 经蓝牙设置 / Linux 经 `bluetoothctl` / macOS 经 `blueutil`），
+  上是统一的 Synth-OOP 界面。RFCOMM SPP 字节流 I/O 在 L3 之外。随导入到来的常数预置对象
+  `bt::radio`。 / Bluetooth device discovery, enumeration, connect / disconnect and radio state.
+  No single portable C API for Bluetooth exists, so each platform's native tooling is used under
+  the hood (Windows Bluetooth settings / Linux `bluetoothctl` / macOS `blueutil`), surfaced through
+  one uniform Synth-OOP interface. RFCOMM SPP byte-stream I/O is out of L3 scope. Arrives as the
+  const preset `bt::radio`.
+  - `bt::radio.devices()` → `Array` of `Dict` `{ address, name, status }`（已知 / 已配对设备）。
+  - `bt::radio.scan(timeout)` → `Array` of `Dict` `{ address, name, status }`（扫描附近设备 `timeout` 秒）。
+  - `bt::radio.connect(address)` / `bt::radio.disconnect(address)` → `Boolean`（Linux / bluez）。
+  - `bt::radio.enabled()` → `Boolean`（无线电是否开启）。
+
+> **L3 范围声明 / L3 scope note**: `http` 仅明文 HTTP/1.1（不含 TLS）；`internet` 提供信息 +
+> 探测 + Wi‑Fi 列表 + 端口扫描，不含 Wi‑Fi / 蜂窝的*主动连接/断开*；`bt` 提供发现 / 枚举 /
+> 连接 / 断开 + 无线电状态，RFCOMM 字节流在 L3 外。`gui` / `windows` 现已**真正跨平台**
+> （Win32 / X11 / Cocoa 三套原生实现，按平台只编译对应一套），不再降级为「不支持」错误。
+> 四库均满足 L3「正确、可测、文档齐、有安全边界」的门槛。 / `http` is cleartext HTTP/1.1 only
+> (no TLS); `internet` provides info + probes + Wi‑Fi listing + port scan, not *active*
+> Wi‑Fi/cellular connect/disconnect; `bt` provides discovery / enumeration / connect / disconnect
+> + radio state, RFCOMM byte-stream out of L3. `gui`/`windows` are now **genuinely cross-platform**
+> (Win32 / X11 / Cocoa, one per platform) and no longer degrade to a "not supported" error. All four
+> meet L3's "correct, tested, documented, with a safety boundary" bar.
+
+---
+
 ### Adding a standard library / 如何新增标准库
 
 Follow this exact checklist so the new library slots in the same way as the
@@ -307,7 +428,7 @@ existing ones (`File`/`System`/`Maths`/`Reactor`/`Hash`/`Structs`/`Re`):
      rb::make_sign("m", {{in,type}}, {{out,type}}))`; read inputs with
      `rb::para_at(paras, i)` / `rb::number_of` / `rb::string_of`; return with
      `rb::list_of({…})` or `rb::empty_result()`; on bad input call
-     `rb::poison_capsule(…)` / `rb::poisened(…)`, which now raise an immediate
+     `rb::native_error(…)`, which raises an immediate
      `RuntimeException` at the source (the value no longer propagates as poison).
      `env` *is* the object's attributes. **Declare `type` as a
      precise, namespace-qualified tag** — built-in scalars are `std::Number` /
@@ -318,8 +439,8 @@ existing ones (`File`/`System`/`Maths`/`Reactor`/`Hash`/`Structs`/`Re`):
      reference note), so wrong-typed arguments are rejected at the call boundary.
      用 `rb::native_method` 写方法，借 `rb::make_sign` 声明签名；输入经
      `rb::para_at`/`rb::number_of`/`rb::string_of` 读取，返回用
-     `rb::list_of`/`rb::empty_result`；非法输入调 `rb::poison_capsule` /
-     `rb::poisened`，现已在源头即时抛出 `RuntimeException`（不再以毒水传播）。
+     `rb::list_of`/`rb::empty_result`；非法输入调 `rb::native_error`，现已在源头
+     即时抛出 `RuntimeException`（不再以毒水传播）。
      `env` 即对象属性表。**`type` 须声明为精确的、带命名空间的类型标签**——
      内置标量用 `std::Number`/`std::String`/`std::Boolean`，容器用
      `std::Array`/`std::Dict`/`std::Tuple`，库类用其模块前缀（`re::Pattern`、

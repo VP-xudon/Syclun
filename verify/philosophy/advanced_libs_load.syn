@@ -1,0 +1,38 @@
+// Advanced standard libraries: load + register smoke test.
+// 高级标准库：加载与注册冒烟测试（无显示环境下只验证注册与实例化，不打开窗口）。
+//
+// This runs headless (no desktop) and only proves the four new libraries
+// link, register their prototypes and instantiate without crashing. Opening
+// a real window / running mainloop / drawing requires an interactive display
+// and is exercised by gui_demo.syn / windows_demo.syn on a desktop.
+// 本测试在无显示环境下运行，仅证明四个新库已链接、原型已注册且可实例化而不崩溃。
+// 打开真实窗口 / 运行主循环 / 绘制需在带显示器的桌面上由 gui_demo.syn /
+// windows_demo.syn 验证。
+
+&http;
+&internet;
+&gui;
+&windows;
+
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        // Preset objects from http / internet.
+        // http / internet 的预置对象。
+        -(http::Client c);
+        -(internet::Network n);
+        out << "http client built: ok\n";
+        out << "internet online: ";
+        out << n.is_online();
+        out << "\n";
+
+        // Instantiate gui / windows prototypes (no window opened yet).
+        // 实例化 gui / windows 原型（尚未打开窗口）。
+        -(gui::Window w);
+        -(windows::Screen s);
+        out << "gui::Window instantiated: ok\n";
+        out << "windows::Screen instantiated: ok\n";
+
+        out << "ALL ADVANCED LIBS LOADED\n";
+    }];
+};

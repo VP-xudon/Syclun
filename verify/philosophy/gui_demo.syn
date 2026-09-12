@@ -1,0 +1,33 @@
+&gui;
+&io;
+// gui standard library demo (tkinter-like system window).
+// gui 标准库示例（类 tkinter 的系统窗口）。
+//
+// Run it on Windows with a graphical session; it opens a small window with a
+// label and a button. Clicking the button prints to standard output. Close the
+// window to end the program.
+// 在带图形会话的 Windows 上运行；它会开一个小窗口，含标签与按钮。点击按钮
+// 向标准输出打印。关闭窗口即结束程序。
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(gui::Window w);
+
+        w.open("Synth-OOP GUI Demo", 320, 200);
+        w.label("Hello from Synth-OOP", 20, 20);
+
+        // The button action is a Synth-OOP closure fired on click.
+        // 按钮动作是点击时触发的 Synth-OOP 闭包。
+        w.button("Click me", 20, 60, 120, 32, [() -> () {
+            out << "button clicked!"; out << "\n";
+        }]);
+
+        w.label("Type below:", 20, 110);
+        -(std::Number idx) << w.entry(20, 140, 200, 24);
+        w.button("Echo", 240, 140, 60, 24, [() -> () {
+            out << "you typed: "; out << w.entry_text(idx); out << "\n";
+        }]);
+
+        w.mainloop();
+    }];
+}

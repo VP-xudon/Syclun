@@ -1,0 +1,26 @@
+// gui end-to-end (no mainloop, so it cannot hang): open a window, add
+// components, read an entry, then close. On a headless sandbox CreateWindowEx
+// may fail gracefully; either way the program must not crash.
+// gui 端到端（不调用 mainloop，故不会挂起）：开窗口、加组件、读文本框、再关闭。
+// 在无显示沙箱里 CreateWindowEx 可能优雅失败；无论成败程序都不应崩溃。
+
+&gui;
+
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(gui::Window w);
+        w.open("Syclun GUI Test", 420, 240);
+        w.label("Hello, Synth-OOP", 20, 20);
+        w.button("Click", 20, 60, 100, 30, [() -> () { }]);
+        -(std::Number idx) << w.entry(20, 110, 200, 24);
+        out << "entry index: ";
+        out << idx;
+        out << "\n";
+        out << "entry text: ";
+        out << w.entry_text(idx);
+        out << "\n";
+        w.close();
+        out << "gui open/close ok\n";
+    }];
+};

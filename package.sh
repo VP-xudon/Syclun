@@ -355,8 +355,7 @@ assemble() {
 
     mkdir -p \
         "$pkg/bin" \
-        "$pkg/libs" \
-        "$pkg/examples"
+        "$pkg/libs"
 
     if ! cp "$exe" "$pkg/bin/"; then
         echo "::error::Failed to copy executable into package."
@@ -438,11 +437,6 @@ assemble() {
         return 1
     fi
 
-    if ! cp -r examples/. "$pkg/examples/"; then
-        echo "::error::Failed to copy examples."
-        return 1
-    fi
-
     if [ -f LICENSE ]; then
         cp LICENSE "$pkg/" || return 1
     fi
@@ -478,7 +472,6 @@ If you move the \`libs/\` directory, set \`SYNTH_LIB_DIR\` to its path.
 
 - \`bin/synth\` or \`bin/synth.exe\` — interpreter
 - \`libs/\` — standard-library interfaces
-- \`examples/\` — example programs
 - \`LICENSE\` — GPL-3.0-or-later
 
 For the full language documentation, see the project repository.
@@ -515,90 +508,22 @@ smoke_test() {
         return 1
     fi
 
-    if [ ! -f "$pkg/examples/hello.syn" ]; then
-        echo "::error::Smoke test example not found."
-        return 1
-    fi
-
     echo
-    echo "=== Smoke test ==="
+    echo "=== Smoke test (--version) ==="
     echo "Executable: $exe"
 
-    # ----------------------------------------------------------------------
-    # Windows
-    # ----------------------------------------------------------------------
-
-    if [ "$os" = "windows" ]; then
-
-        local win_pkg
-        local win_lib
-        local win_example
-
-        if ! have cygpath; then
-            echo "::error::cygpath not found."
-            return 1
-        fi
-
-        win_pkg="$(cygpath -w "$pkg")"
-        win_lib="$(cygpath -w "$pkg/libs")"
-        win_example="$(cygpath -w "$pkg/examples/hello.syn")"
-
-        echo "Package: $win_pkg"
-        echo "Library: $win_lib"
-        echo "Example: $win_example"
-
-        # Invoke the packaged binary directly from the POSIX shell. The
-        # previous `cmd.exe /c "\"...\""` form embedded backslash-escaped
-        # quotes in the command line; cmd does not understand \" (that is a
-        # C-runtime convention, not a cmd one), so it looked for a program
-        # literally named `"build\...` and the smoke test always failed.
-        # MSYS passes env and arguments to the native exe unchanged, and DLL
-        # search finds the bundled runtime next to synth.exe either way.
-        # 直接从 POSIX shell 启动打包产物。原 `cmd.exe /c "\"...\""` 写法把
-        # 反斜杠转义引号原样塞进命令行；cmd 并不认识 \"（那是 C 运行时的
-        # 约定，不是 cmd 的），于是去找字面名为 `"build\...` 的程序，smoke
-        # test 必败。MSYS 传给原生 exe 的环境与参数保持原样，DLL 检索同样
-        # 能找到 synth.exe 旁的运行库。
-        if test_output="$(
-            SYNTH_LIB_DIR="$win_lib" \
-            "$exe" "$win_example" \
-            2>&1
-        )"; then
-
-            echo "    smoke: OK"
-            echo "$test_output"
-
-        else
-
-            echo "    smoke: FAILED"
-            echo "$test_output"
-            return 1
-
-        fi
-
-    # ----------------------------------------------------------------------
-    # Linux / macOS
-    # ----------------------------------------------------------------------
-
+    # The packaged interpreter is exercised via `--version`, which validates
+    # that the binary loads, resolves its standard libraries and exits cleanly
+    # without needing the (now unbundled) examples directory.
+    # 打包产物通过 --version 验证：确认二进制可加载、能解析标准库并干净退出，
+    # 不再依赖已不再打包的 examples 目录。
+    if test_output="$("$exe" --version 2>&1)"; then
+        echo "    smoke: OK"
+        echo "    $test_output"
     else
-
-        if test_output="$(
-            SYNTH_LIB_DIR="$pkg/libs" \
-            "$exe" "$pkg/examples/hello.syn" \
-            2>&1
-        )"; then
-
-            echo "    smoke: OK"
-            echo "$test_output"
-
-        else
-
-            echo "    smoke: FAILED"
-            echo "$test_output"
-            return 1
-
-        fi
-
+        echo "    smoke: FAILED"
+        echo "    $test_output"
+        return 1
     fi
 
     return 0

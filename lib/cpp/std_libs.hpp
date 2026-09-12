@@ -29,3 +29,8 @@
 #include "io.hpp"
 #include "assert.hpp"
 #include "sugar.hpp"
+#include "http.hpp"
+#include "internet.hpp"
+#include "bt.hpp"
+#include "gui.hpp"
+#include "windows.hpp"

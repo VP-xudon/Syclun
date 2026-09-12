@@ -757,11 +757,30 @@ namespace interp {
                 flow_into(gf, obj, v);
             }
             // A library preset is const by principle (the '!' marker makes it
-            // explicit); the const-globals set enforces it at runtime.
-            // 库预置依原则即为常数（'!' 标记使其显式）；const-globals 集合
-            // 在运行期落实这一点。
+            // explicit). Two guards enforce it at runtime:
+            //   - const_globals() blocks reassigning the *binding*
+            //     (`io::out = x`), and
+            //   - set_const_state() freezes the *object itself* so runtime
+            //     injection (`io::out:@new[...]`, `io::out:-(T v) << ...`) is
+            //     rejected with ConstException. An unfrozen preset used to
+            //     silently accept member injection, contradicting its '!'.
+            // 库预置依原则即为常数（'!' 标记使其显式）。运行期有两道守卫：
+            //   - const_globals() 拦截对*绑定*的重赋（`io::out = x`）；
+            //   - set_const_state() 冻结*对象自身*，使运行期注入
+            //     （`io::out:@new[...]`、`io::out:-(T v) << ...`）以
+            //     ConstException 被拒。未冻结的预置曾静默接受成员注入，
+            //     与其 '!' 自相矛盾。
             ::stdRT.defobj(d->name, obj);
             const_globals().insert(d->name);
+            if (d->isConst) {
+                // Freeze the object itself so runtime injection is rejected
+                // (mirrors the '!' marker). Library objects are always class
+                // instances, so the cast is safe.
+                // 冻结对象自身，使运行期注入被拒（与 '!' 一致）。库对象恒为类
+                // 实例，转型安全。
+                auto cls = std::dynamic_pointer_cast<RuntimeClass>(obj);
+                if (cls) cls->set_const_state();
+            }
         }
     }
 
@@ -2304,7 +2323,23 @@ namespace interp {
         std::string path = rb::stdlib_dir() + "/" + name + ".synl";
         std::ifstream fin(path);
         if (!fin) {
-            return;   // native-only lib, or a builtin-backed name (e.g. io)
+            // Neither a registered native library nor a .synl face exists:
+            // the import names a library that is simply not installed. Report
+            // this clearly instead of silently doing nothing — a silent skip
+            // used to let a downstream "method not found" error mask the real
+            // cause ("maths methods not found" etc. with no hint why).
+            // 既非已注册的原生库、也无 .synl 形态：该导入指向一个根本未安装
+            // 的库。明确报错，而不是静默跳过——静默跳过曾让下游的「找不到方法」
+            // 错误掩盖了真正原因（例如「maths 方法找不到」却毫无提示）。
+            if (rb::native_lib_registry().count(name) == 0) {
+                diag::set_locus(diag::source_file(), 0, 0);
+                interp_error(
+                    "InterException",
+                    "cannot import library '" + name + "' (no such standard "
+                    "library; check the name, or install the library)"
+                );
+            }
+            return;   // native-only lib (e.g. a builtin-backed name with no .synl)
         }
         std::stringstream ss;
         ss << fin.rdbuf();

@@ -120,11 +120,68 @@ function(synthoop_add_executable target source)
         else()   # MinGW / GNU ld
             target_link_options(${target} PRIVATE -Wl,--stack,33554432)
         endif()
+        # Winsock2 + IPHLPAPI back the http / internet standard libraries.
+        # `#pragma comment(lib, ...)` is MSVC-only, so link explicitly for MinGW.
+        # Winsock2 与 IPHLPAPI 是 http / internet 标准库的底层；
+        # `#pragma comment(lib, ...)` 仅 MSVC 生效，故 MinGW 下显式链接。
+        target_link_libraries(${target} PRIVATE ws2_32 iphlpapi)
+        # User32 + GDI32 back the Win32 gui / windows native backends. Linked
+        # for every Windows target. User32 与 GDI32 是 gui / windows 的 Win32
+        # 原生后端底层；对所有 Windows 目标链接。
+        target_link_libraries(${target} PRIVATE user32 gdi32)
+        # The platform-specific native GUI/Canvas backends (a static lib).
+        # 平台相关的原生 GUI/画布后端（静态库）。
+        target_link_libraries(${target} PRIVATE synth_native)
     elseif(APPLE)
         # ld64 takes a hexadecimal stack size / ld64 的栈大小用十六进制。
         target_link_options(${target} PRIVATE -Wl,-stack_size,0x2000000)
+        target_link_libraries(${target} PRIVATE synth_native)
+    else()
+        target_link_libraries(${target} PRIVATE synth_native)
     endif()
 endfunction()
+
+# ---- Platform-native GUI / Canvas backends --------------------------------
+# The gui / windows standard libraries talk to a C bridge (gui_native.h /
+# windows_native.h) that has three real, platform-specific implementations.
+# Only the matching one is compiled per platform, so a binary links exactly one.
+# gui / windows 标准库经由 C 桥（gui_native.h / windows_native.h）调用三套真实、
+# 平台相关的实现；按平台只编译其中对应的一套，故每个二进制恰好链接一份。
+set(SYNTH_NATIVE_SOURCES "")
+if(WIN32)
+    list(APPEND SYNTH_NATIVE_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/gui_native_win32.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/windows_native_win32.cpp")
+elseif(APPLE)
+    list(APPEND SYNTH_NATIVE_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/gui_native_cocoa.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/windows_native_cocoa.mm")
+    set_source_files_properties(
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/gui_native_cocoa.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/windows_native_cocoa.mm"
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    list(APPEND SYNTH_NATIVE_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/gui_native_x11.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp/windows_native_x11.cpp")
+    find_package(X11 REQUIRED)
+endif()
+
+add_library(synth_native STATIC ${SYNTH_NATIVE_SOURCES})
+target_include_directories(synth_native PRIVATE ${SYNTHOOP_INCLUDE_DIRS})
+if(APPLE)
+    target_link_libraries(synth_native PRIVATE "-framework Cocoa")
+elseif(UNIX AND NOT APPLE)
+    target_link_libraries(synth_native PRIVATE X11::X11)
+elseif(WIN32)
+    # ComCtl32 backs the common controls the GUI backend uses (slider, listbox,
+    # ... via InitCommonControlsEx). Listed on synth_native so it is placed
+    # AFTER the static archive on the link line; MinGW does not append it by
+    # default like user32/gdi32. ComCtl32 提供 GUI 后端使用的公共控件
+    # （滑块、列表框等，经 InitCommonControlsEx）。列出在 synth_native 上，
+    # 使链接器把它排在静态归档之后——MinGW 不像 user32/gdi32 那样默认附带它。
+    target_link_libraries(synth_native PRIVATE comctl32)
+endif()
 
 
 # ---- Targets ------------------------------------------------------------
