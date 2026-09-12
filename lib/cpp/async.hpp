@@ -73,6 +73,7 @@ namespace rt_lib_async {
     struct TaskHandle {
         std::shared_future<rt_basic::InstanceListPtr> fut;
         std::shared_ptr<std::atomic<bool>> cancelled;
+        std::shared_ptr<std::atomic<bool>> started;
     };
     static std::recursive_mutex        g_task_mux;
     static std::unordered_map<long long, TaskHandle> g_tasks;
@@ -242,7 +243,7 @@ namespace rt_lib_async {
     // survives publish/receive. Returns nullopt when there is no id.
     // 解析 Task 的注册表 id，回退到经公布/接收存活的 #value 胶囊；
     // 无 id 时返回 nullopt。
-    inline std::optional<long long> task_id(rt_basic::InstanceMap& env) {
+    inline std::optional<long long> task_id(const rt_basic::InstanceMap& env) {
         long long id = 0;
         auto it = env.find("id");
         if (it != env.end()) {
@@ -268,9 +269,13 @@ namespace rt_lib_async {
         long long id = 0;
         std::shared_ptr<std::atomic<bool>> cancelled =
             std::make_shared<std::atomic<bool>>(false);
+        std::shared_ptr<std::atomic<bool>> started =
+            std::make_shared<std::atomic<bool>>(false);
         auto cancelledCp = cancelled;
+        auto startedCp = started;
         auto fut = launch_detached(
-            [fn, cancelledCp]() -> rt_basic::InstanceListPtr {
+            [fn, cancelledCp, startedCp]() -> rt_basic::InstanceListPtr {
+                startedCp->store(true);
                 if (cancelledCp->load()) {
                     return rb::list_of({make_error("cancelled", "task cancelled before start")});
                 }
@@ -306,7 +311,7 @@ namespace rt_lib_async {
                 }
             }
             id = ++g_task_id;
-            g_tasks[id] = TaskHandle{fut, cancelled};
+            g_tasks[id] = TaskHandle{fut, cancelled, started};
         }
         return make_task(id);
     }
@@ -677,6 +682,127 @@ namespace rt_lib_async {
         );
     }
 
+    // reactor.await_all(tasks) ~> (results) —— await every Task in the Array and
+    // return an Array of (status, payload) tuples, in input order. Never rejects;
+    // failures surface as status="error" entries.
+    // reactor.await_all(tasks) ~> (results) —— 依次 await 数组中每个 Task，按输入
+    // 顺序返回 (status, payload) 元组数组。永不拒绝；失败以 status="error" 呈现。
+    inline rt_basic::Callable method_reactor_await_all() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto arr = rb::para_at(paras, 0);
+                auto* src = rb::attributes_of(arr);
+                std::vector<long long> ids;
+                if (src) {
+                    std::size_t n = rb::container_size(*src);
+                    for (std::size_t i = 0; i < n; ++i) {
+                        auto it = src->find(rb::elem_key(i));
+                        if (it != src->end() && it->second) {
+                            auto aid = task_id(*(rb::attributes_of(it->second)));
+                            if (aid) ids.push_back(*aid);
+                        }
+                    }
+                }
+                std::vector<RuntimeObjectPtr> results(ids.size(), make_result("ok", rb::make_tuple({})));
+                // await_task releases+reacquires the GIL itself, so we must NOT
+                // release it here (double-unlock corrupts the mutex and deadlocks
+                // the worker threads). / await_task 自身已释放+重取 GIL，此处
+                // 不可再释放（双重解锁会损坏互斥量并死锁工作线程）。
+                for (std::size_t i = 0; i < ids.size(); ++i)
+                    results[i] = await_task(ids[i], 0, false);
+                return rb::list_of({rb::make_tuple(results)});
+            },
+            rb::make_sign("await_all", {{"tasks", "std::Array"}}, {{"results", "std::Tuple"}})
+        );
+    }
+
+    // reactor.race(tasks) ~> (result) —— resolve with the FIRST Task to settle
+    // (whichever finishes first wins; the rest keep running).
+    // reactor.race(tasks) ~> (result) —— 以最先 settle 的 Task 的结果返回
+    // （谁先完成谁赢；其余继续运行）。
+    inline rt_basic::Callable method_reactor_race() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto arr = rb::para_at(paras, 0);
+                auto* src = rb::attributes_of(arr);
+                std::vector<std::shared_future<rt_basic::InstanceListPtr>> futs;
+                std::vector<long long> ids;
+                if (src) {
+                    std::size_t n = rb::container_size(*src);
+                    for (std::size_t i = 0; i < n; ++i) {
+                        auto it = src->find(rb::elem_key(i));
+                        if (it != src->end() && it->second) {
+                            auto aid = task_id(*(rb::attributes_of(it->second)));
+                            if (aid) {
+                                std::lock_guard<std::recursive_mutex> lk(g_task_mux);
+                                auto git = g_tasks.find(*aid);
+                                if (git != g_tasks.end()) {
+                                    futs.push_back(git->second.fut);
+                                    ids.push_back(*aid);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (futs.empty()) return rb::list_of({rb::native_error(
+                    "race requires at least one task")});
+                gil_release_for_wait();
+                std::size_t winner = 0; bool found = false;
+                while (!found) {
+                    for (std::size_t i = 0; i < futs.size(); ++i) {
+                        if (futs[i].wait_for(std::chrono::milliseconds(1)) ==
+                            std::future_status::ready) {
+                            winner = i; found = true; break;
+                        }
+                    }
+                    if (!found) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                // Reacquire before await_task (which releases once) so the GIL is
+                // not double-unlocked. / 在 await_task（仅释放一次）之前重取，
+                // 避免双重解锁。
+                gil_reacquire_after_wait();
+                auto res = await_task(ids[winner], 0, false);
+                return rb::list_of({res});
+            },
+            rb::make_sign("race", {{"tasks", "std::Array"}}, {{"result", "std::Tuple"}})
+        );
+    }
+
+    // reactor.all_settled(tasks) ~> (results) —— await every Task and return an
+    // Array of (status, payload) tuples. Like await_all, but its contract is
+    // explicit: it NEVER rejects for a task error (status is always present).
+    // reactor.all_settled(tasks) ~> (results) —— await 全部 Task 并返回
+    // (status, payload) 元组数组。同 await_all，但其契约明确：绝不会因某个
+    // 任务错误而拒绝（status 始终给出）。
+    inline rt_basic::Callable method_reactor_all_settled() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto arr = rb::para_at(paras, 0);
+                auto* src = rb::attributes_of(arr);
+                std::vector<long long> ids;
+                if (src) {
+                    std::size_t n = rb::container_size(*src);
+                    for (std::size_t i = 0; i < n; ++i) {
+                        auto it = src->find(rb::elem_key(i));
+                        if (it != src->end() && it->second) {
+                            auto aid = task_id(*(rb::attributes_of(it->second)));
+                            if (aid) ids.push_back(*aid);
+                        }
+                    }
+                }
+                std::vector<RuntimeObjectPtr> results(ids.size(), make_result("ok", rb::make_tuple({})));
+                // await_task releases+reacquires the GIL itself, so we must NOT
+                // release it here (double-unlock corrupts the mutex and deadlocks
+                // the worker threads). / await_task 自身已释放+重取 GIL，此处
+                // 不可再释放（双重解锁会损坏互斥量并死锁工作线程）。
+                for (std::size_t i = 0; i < ids.size(); ++i)
+                    results[i] = await_task(ids[i], 0, false);
+                return rb::list_of({rb::make_tuple(results)});
+            },
+            rb::make_sign("all_settled", {{"tasks", "std::Array"}}, {{"results", "std::Tuple"}})
+        );
+    }
+
     // ========================================================
     // $Task — future-like handle / 类 future 句柄
     // ========================================================
@@ -759,6 +885,39 @@ namespace rt_lib_async {
             rb::make_sign("dispose", {}, {})
         );
     }
+    inline rt_basic::Callable method_task_state() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                // State machine: pending | running | done | failed | cancelled.
+                // 状态机：pending | running | done | failed | cancelled。
+                std::string state = "done";   // settled / consumed (not in registry)
+                auto id = task_id(env);
+                if (id) {
+                    std::lock_guard<std::recursive_mutex> lk(g_task_mux);
+                    auto it = g_tasks.find(*id);
+                    if (it != g_tasks.end()) {
+                        auto& h = it->second;
+                        if (h.cancelled && h.cancelled->load()) {
+                            state = "cancelled";
+                        } else if (h.fut.wait_for(std::chrono::seconds(0)) ==
+                                   std::future_status::ready) {
+                            auto out = h.fut.get();   // shared_future: safe to re-get
+                            if (out && !out->empty() && rb::is_error((*out)[0]))
+                                state = "failed";
+                            else
+                                state = "done";
+                        } else if (h.started && h.started->load()) {
+                            state = "running";
+                        } else {
+                            state = "pending";
+                        }
+                    }
+                }
+                return rb::list_of({rb::make_string(state)});
+            },
+            rb::make_sign("state", {}, {{"name", "std::String"}})
+        );
+    }
 
     // ========================================================
     // $Error — failure carrier / 失败载体
@@ -800,6 +959,9 @@ namespace rt_lib_async {
             proto->set_method("spawn",       method_reactor_spawn());
             proto->set_method("submit",      method_reactor_spawn());
             proto->set_method("async_sleep", method_reactor_async_sleep());
+            proto->set_method("await_all",   method_reactor_await_all());
+            proto->set_method("race",        method_reactor_race());
+            proto->set_method("all_settled", method_reactor_all_settled());
             runtime::Prototypes p; p.regcls("Reactor", proto); ::stdRT.add_protos(p);
         }
         // Task / 任务句柄
@@ -811,6 +973,7 @@ namespace rt_lib_async {
             proto->set_method("result",  method_task_result());
             proto->set_method("cancel",  method_task_cancel());
             proto->set_method("is_done", method_task_is_done());
+            proto->set_method("state",   method_task_state());
             proto->set_method("dispose", method_task_dispose());
             // D5/D6: NO destructive on_release here. Task handles are
             // value-copied ids (`-(async::Task t) << r.spawn(...)` keeps only

@@ -27,8 +27,41 @@
 //   -(Counter c);
 //   chk.has_method(c, "inc");   -> std::Boolean  (true if c.inc exists)
 //   chk.has_changed(c);         -> std::Boolean  (true after c.inc.=(beh))
+//   -(assert::Assert a);
+//   a.equal(1, 1);             -> std::Boolean
+//   a.is_true(cond);            -> std::Boolean
+//   a.near(x, y, tol);          -> std::Boolean
+//   -(assert::Suite s) << a.suite("math");
+//   a.test(s, "adds", [(x) ~> (...){ }]);
+//   -(std::Array r) << a.run(s);        -> Array of {name, ok, message}
+//   a.tap(s);                          -> TAP text
+//   a.json(s);                         -> TAP-JSON text
 
 $Checker {
     @has_method[(target[std::Object], name[std::String]) ~> (result[std::Boolean]) { }];
     @has_changed[(target[std::Object]) ~> (result[std::Boolean]) { }];
+}
+
+$Assert {
+    @equal[(actual[std::Object], expected[std::Object]) ~> (result[std::Boolean]) { }];
+    @is_true[(cond[std::Object]) ~> (result[std::Boolean]) { }];
+    @is_false[(cond[std::Object]) ~> (result[std::Boolean]) { }];
+    @near[(actual[std::Number], expected[std::Number], tol[std::Number]) ~> (result[std::Boolean]) { }];
+    @throws[(fn[@]) ~> (result[std::Boolean]) { }];
+    // Suite facade: the suite object is the data container; the Assert
+    // instance owns the orchestration API. / Suite 门面：suite 对象为数据
+    // 容器，Assert 实例持有编排 API。
+    @suite[(name[std::String]) ~> (suite[assert::Suite]) { }];
+    @test[(suite[assert::Suite], name[std::String], fn[@]) -> () { }];
+    @run[(suite[assert::Suite]) ~> (results[std::Array]) { }];
+    @tap[(suite[assert::Suite]) ~> (text[std::String]) { }];
+    @json[(suite[assert::Suite]) ~> (text[std::String]) { }];
+}
+
+$Suite {
+    @suite[(name[std::String]) ~> (suite[assert::Suite]) { }];
+    @test[(suite[assert::Suite], name[std::String], fn[@]) ~> () { }];
+    @run[(suite[assert::Suite]) ~> (results[std::Array]) { }];
+    @tap[(suite[assert::Suite]) ~> (text[std::String]) { }];
+    @json[(suite[assert::Suite]) ~> (text[std::String]) { }];
 }

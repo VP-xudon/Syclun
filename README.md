@@ -49,6 +49,15 @@ is **enforced by the interpreter**:
   give it a private attribute only its own methods can touch, then `box.#()` to
   freeze it **forever** — a one-way switch, never thawable.
 
+- **没有标量值的对象也能被「看见」。** 把一个没有标量值的自建类实例 `p` 写进 `out`，它
+  不会消失在空白里，而会显示成 `<Point "p">`——类型写在前面，持有它的变量名写在引号里。
+  若对象定义了零参 `@to_string`，则显示其返回元组的第一项，于是你可以让它打印成
+  `"Point@(1, 2)"` 这样的样子。
+  **Objects with no scalar value are still "seen".** Flow a valueless custom object
+  `p` into `out` and it won't vanish into blank — it prints as `<Point "p">` (type
+  first, holding variable name in quotes). Define a zero-arg `@to_string` and it
+  prints that tuple's first item instead, so you can make it say `"Point@(1, 2)"`.
+
 - **库交付的是「能用的对象」，不是类。** `&io;` 一导入，`io::out` 就**存在**、生而为常数。
   没有工厂、没有仪式。而且你的 `.syn` 程序**禁止**声明全局对象——预置对象属于库。
   **Libraries ship working objects, not classes.** Import `&io;` and `io::out`
@@ -205,8 +214,8 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
 - 📦 **打包与发布 / Packaging** — <https://github.com/VP-xudon/Syclun/wiki/Packaging>
 - ❓ **常见问题 / FAQ** — <https://github.com/VP-xudon/Syclun/wiki/FAQ>
 
-> 权威语言规范（v1.32）仍以 `docs/olddocs/Synth-OOP语言文档-修正版.md` 为准；本 Wiki 是其通俗、分层的导读。
-> The authoritative spec (v1.32) remains `docs/olddocs/Synth-OOP语言文档-修正版.md`; the Wiki is its plain-spoken, layered companion.
+> 权威语言规范（`docs/olddocs/Synth-OOP语言文档-修正版.md`）与参考实现 Syclun 持续保持同步，并经运行期认证（最近认证：2026-09-12）；本文档不维持独立版本号。Wiki 是其通俗、分层的导读。
+> The authoritative spec (`docs/olddocs/Synth-OOP语言文档-修正版.md`) is kept in sync with the Syclun reference implementation and is runtime-certified (last certified: 2026-09-12); it carries no standalone version number. The Wiki is its plain-spoken, layered companion.
 
 ---
 

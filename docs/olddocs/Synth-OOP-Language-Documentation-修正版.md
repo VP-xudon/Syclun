@@ -1,5 +1,6 @@
 # Synth OOP Language Documentation
-**Version: v1.32**
+
+> **Sync status — certified against the Syclun interpreter.** This document is kept in lock-step with the reference implementation (the `synth` executable built from `src/`). Every behavior described herein is verified by running example programs against the actual interpreter and by the project's `ctest` suite (lexer / parser / runtimes). Last certification: **2026-09-12**. There is no standalone "spec version number" — the document's authority is the running interpreter, not a label.
 
 > This is the official language documentation for Synth OOP, fully covering all syntax features up to the current version. This document is written entirely in clear, accessible, and friendly language. After reading it, you'll be able to write any valid Synth OOP program. This document is intended both for **compiler developers** and for anyone who wishes to learn more about the language: the syntax described herein takes precedence, and Appendix D provides compiler acceptance test cases.
 
@@ -25,6 +26,10 @@ Related documents:
 - Project introduction and the 30-second tour: [`../README.md`](../README.md)
 
 ## Revision History
+
+> This document carries **no standalone version number**. It is kept in sync with the Syclun interpreter's actual implementation and is re-certified whenever the interpreter's behavior changes (most recently **2026-09-12**, see the certification report). Historical entries below are kept as a change record only.
+
+- **2026-09-12 (synced to interpreter, no version label)**: **Constraint signatures forbid a function body; unknown-object output form; single-tuple argument auto-expansion.** Three runtime-semantics enhancements, each verified against the actual interpreter by running example programs. Also fixed a pre-existing bug where container (Tuple / Array) output parameters did not collect flowed-in values, which had blocked the `@to_string` display path.
 - **v1.32**: **Closure-binding syntax `@name[closure];` — strict separation of closures from class objects; structural satisfaction of class constraints.** `<<` and `.` are value flow and assignment; "binding a behavior to a name" is neither — it now has a syntax of its own.
   - **New binding syntax** `@name[closure];` covers every site: class-body methods (`@inc[...]`), closure variables inside behaviors (`@f[...]`), contract signatures (`@add[(params)->(outs)];`), and runtime injection / rebinding (`obj:@name[closure];` — replacing an existing non-const method rebinds it; `@!name` const methods still refuse with `ConstException`).
   - **Retired forms**: `@name << [closure]`, `@name .= [closure]`, `obj.name << [closure]`, and `obj.name.=(closure)` are now errors. The message explains: **a closure is NOT a class object but a separate major category, with no methods of its own** — use `@name[closure];` instead. Flows `<<` and assignments `.=` between ordinary objects are unaffected.
@@ -473,6 +478,38 @@ This is impossible with ordinary built-in objects — if you declare a `std::Num
 
 > Tip: The public function `=:` of `io::IStream` also has similar const semantics — reading the input does not modify the state of the `IStream` itself. Therefore, `IStream` can also be declared as constant.
 
+#### 3.4.4 Display Form of an Unknown Object
+
+When you write an object that **has no displayable scalar value** into `io::OStream` (for example a custom class instance `p` that carries no scalar value and returns no tuple output parameter), `out << p` will not leave a blank on screen — instead it displays the object's "identity":
+
+```text
+$Point {
+    @::[(x, y) -> () {
+        // Point itself has no scalar value and returns no tuple output parameter
+    }];
+}
+-(Point p) << (1, 2);
+out << p;            // displays: <Point "p">
+```
+
+The display rule is resolved by the following priority:
+
+1. **If the object defines a zero-argument `@to_string` publish method**: the value it returns is displayed. For the return value to be collected correctly, `to_string` should use a **typed output parameter** to return a scalar (e.g. a string), and the interpreter will display that value directly. This lets you customize how the object looks when output.
+   ```text
+   $Point {
+       @to_string[() -> (s[std::String]) {
+           s << "Point@object";   // return a single string via a typed output parameter
+       }];
+   }
+   -(Point p) << (1, 2);
+   out << p;         // displays: Point@object
+   ```
+   > Note: using a bare-name output parameter `-> (out)` to write `out << ("Point@object", 42)` currently **cannot** collect the composite (tuple) value back — a bare-name output parameter can only hold a scalar for now. So `to_string` is best written as the typed-parameter form above, returning a single string (or single scalar) directly.
+2. **Otherwise, if the object is held by a variable**: display `<PrototypeName "variableName">`. Note that "prototype name" is the object's **type** (`Point`), not the variable name (`p`) holding it.
+3. **Otherwise**: display `<PrototypeName>`.
+
+> Note: this is a separate path from the "publish / receive" mechanism. What `out << p` actually outputs is the value `p` flows out through its publish function `=:`; when an object has no scalar value, the publish flows out empty, so `out` falls back to **displaying the object itself** (following the identity rule above). Objects that do have a scalar value (such as `std::Number`, string literals, or objects carrying a `#value` capsule) continue to output their value / content as before, unaffected.
+
 ## IV. Object Instantiation Statements (Expressions)
 In Synth OOP, the statement that creates an object (that is, an instance of a class) is formally called an **object instantiation statement**. You might have encountered terms like "variable declaration" or "variable definition" in other languages, but in Synth OOP, every variable is itself an object; thus, "object instantiation" is a more accurate and fundamental term to use.
 More importantly — **the object instantiation statement itself is also an expression**. Its value is precisely the newly created empty object. This means that declaring an object is no longer an isolated "action" — rather, it becomes part of a data flow, capable of participating in computations, method calls, and even directly feeding into the next object.
@@ -662,6 +699,13 @@ $Math {
 
 When decomposing, **the method signatures must match exactly** — the type declared on the left must be identical to the type at the corresponding position in the tuple, and the compiler will perform method existence checking.
 
+There is one more rule about **how many targets you may declare**:
+
+- **Fewer targets than tuple items is allowed** — the extra trailing items are silently ignored (this is equivalent to using `_` placeholders for the values you don't want). For example, if a method returns `(q, r, s)` and you write `-(std::Number q, std::Number r) << …`, the `s` is quietly discarded.
+- **More targets than tuple items is an error** — if you declare more target variables than the tuple actually holds, the interpreter raises an error (e.g. `too few values to destructure into 'o'`), because there aren't enough values to fill them.
+
+In short: **asking for fewer is fine (trailing items ignored); asking for more is an error.**
+
 #### 5.4.4 Accessing Tuple Elements via Built-in Methods
 In addition to structural decomposition, you can also access elements by index using the tuple's built-in method `get`:
 
@@ -725,7 +769,28 @@ m.process(m.divide(10, 3));
 ```
 
 In this example, `m.divide(10, 3)` returns two values — the quotient and the remainder — which are passed to `m.process` as separate arguments. The formal parameters x and y of `m.process` each receive these two values. At the runtime level, when `m.process` is invoked, it directly receives two independent Number arguments, x and y, without requiring any additional wrapping or unboxing operations.
-#### 5.4.7 Underlying Model
+#### 5.4.7 A Single Tuple Argument Auto-Expands into Multiple Parameters
+
+If a method declares **multiple** formal parameters but you call it with **exactly one `std::Tuple` argument**, the interpreter automatically expands that tuple into multiple arguments by position — at the call boundary, *before* signature enforcement — as if each item of the tuple were filled into a parameter in order:
+
+```text
+$Calc {
+    @sum[(a, b) -> (result) {
+        result << a.+(b);
+    }];
+}
+-(Calc c);
+-(std::Number s) << c.sum((3, 4)); // equivalent to c.sum(3, 4); s = 7
+```
+
+Expansion rules:
+
+- Tuple has **fewer** items than parameters → error (`too few values in the tuple to fill N parameters`).
+- Tuple has **more** items than parameters → the **trailing extra items are ignored** (no error).
+- This is consistent with the "ignore trailing items" rule of return-tuple decomposition above: **ignoring trailing items is allowed, but declaring more targets than there are values to fill is an error.**
+
+> Note: this is a different scenario from the "multiple return values passed directly into another method" in §5.4.6. There, method A returns several values that are fed straight into method B's several parameters; here, you already hold a tuple and hand it as a single argument to a multi-parameter method. Both rely on the same underlying "tuple ↔ multiple parameters" alignment mechanism.
+#### 5.4.8 Underlying Model
 In Synth OOP, a behavior is essentially a runtime structure that takes a tuple as input and returns a tuple. The list of input parameters is, in essence, a declaration of the incoming tuple (with strict matching of both order and method signatures); the list of return values is, in essence, the outgoing tuple itself.
 The brilliance of this design lies in its complete transparency of data flow. You don't need to hunt all over the code for return statements to figure out what a function is returning — you simply look at the names of the output parameters to trace exactly where their values come from and where they go. It's as intuitive as following the path of a pipe: water flows in from wherever it enters, and it flows out from wherever it exits.
 ### 5.5 Arithmetic and Comparison Operations as Method Calls
@@ -1150,11 +1215,11 @@ The syntax of a constraint closely resembles a **class definition** (see Chapter
 
 ```
 #Addable {
-    @+[(other) -> (result) {}];
+    @+[(other) -> (result)];
 }
 ```
 
-Here, the `#` prefix means "this is a constraint," `@` marks a method declaration, and the behavior after `<<` writes out only the method signature (parameter `other`, behavior pattern `->`, output `result`) with the **body left empty (`{}`)** — because we only care about "what methods must exist and what they look like," not how they are implemented. It means: an object satisfying the `Addable` constraint must have a `+` method that takes one parameter `other` and returns one result `result`.
+Here, the `#` prefix means "this is a constraint," `@` marks a method declaration, and what follows is **only the method signature** — the parameter list `(other)`, the behavior pattern `->`, and the output `(result)` — terminated by `;` and carrying **no function body**. A constraint method signature must not be followed by a `{}` block; writing `@+[(other) -> (result) {}];` is a syntax error, because a constraint only declares *what methods must exist and what they look like*, never how they are implemented. Thus: an object satisfying the `Addable` constraint must have a `+` method taking one parameter `other` and returning one result `result`.
 
 > 💡 **Strong-typing reassurance for beginners**: You may worry, "Is duck typing too loose? Will writing code feel unsteady?" Don't worry — **constraints are Synth OOP's "strong-typing armor."** Although the language is duck-typed, through the constraint mechanism you can still enjoy the reassurance of a strongly typed language: you can explicitly declare "this parameter must be something addable" or "this object must be able to print itself," and the compiler will check it for you. In other words, **duck typing gives you the freedom to write; constraints give you the confidence to use.** You can be as free as you like, and as strict as you like.
 
@@ -1164,7 +1229,7 @@ The notation of a constraint is nearly identical to that of a class (`$Name {...
 
 | Dimension | Class (`$`) | Constraint (`#`) |
 | ---- | ---- | ---- |
-| Purpose | Defines an object's structure and behavior: members + full method implementations | Only declares "which methods must exist": method signatures only, bodies left empty |
+| Purpose | Defines an object's structure and behavior: members + full method implementations | Only declares "which methods must exist": method signatures only, each terminated by `;` with no function body |
 | Instantiable? | Yes: `-(Student s)` | No: constraints are only for qualification; you cannot write `-(Addable x)` |
 | Carries state? | Has member variables | Has no members at all |
 | Main use | The "blueprint" for building objects | The "acceptance checklist" for examining objects |
@@ -1210,10 +1275,10 @@ Constraints also support **inheritance** — just as classes may specify a paren
 
 ```
 #Addable {
-    @+[(other) -> (result) {}];
+    @+[(other) -> (result)];
 }
 #Comparable [Addable] {        // Comparable inherits all of Addable's signatures
-    @<[(other) -> (result) {}];
+    @<[(other) -> (result)];
 }
 ```
 

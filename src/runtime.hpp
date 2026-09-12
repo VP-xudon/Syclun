@@ -344,6 +344,14 @@ namespace runtime {
         public:
         std::string selfname = "<Unknown>";
 
+        // The name of the variable that currently *holds* this object, when it
+        // was bound through a named declaration (`-(Type name)` / `-(Type name)
+        // << value`). Used only for display fallback of objects without a value
+        // (`<TypeName "name">`), so an unknown object still names itself.
+        // 当前*持有*本对象的变量名（经命名声明绑定时记录）。仅用于无值对象的
+        // 显示回退（`<类型名 "变量名">`），使未知对象也能自报家门。
+        std::string bound_name;
+
         RuntimeObject() = default;
         virtual ~RuntimeObject() = default;
 

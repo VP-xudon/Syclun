@@ -41,6 +41,30 @@ $Maths {
     @pi[() ~> (r[std::Number]) { }];
     @e[() ~> (r[std::Number]) { }];
     @random[() ~> (r[std::Number]) { }];
+
+    // ---- reproducible RNG + random primitives (thread-safe) ----
+    // 可复现 RNG + 随机原语（线程安全）----
+    @seed[(n[std::Number]) ~> () { }];
+    @random_int[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @choice[(arr[std::Array]) ~> (item[std::Object]) { }];
+    @shuffle[(arr[std::Array]) ~> (arr[std::Array]) { }];
+    @gauss[(mu[std::Number], sigma[std::Number]) ~> (r[std::Number]) { }];
+
+    // ---- scalar utilities / 标量工具 ----
+    @clamp[(v[std::Number], lo[std::Number], hi[std::Number]) ~> (r[std::Number]) { }];
+    @lerp[(a[std::Number], b[std::Number], t[std::Number]) ~> (r[std::Number]) { }];
+    @sign[(x[std::Number]) ~> (r[std::Number]) { }];
+    @trunc[(x[std::Number]) ~> (r[std::Number]) { }];
+    @hypot[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @is_nan[(x[std::Number]) ~> (b[std::Boolean]) { }];
+    @is_infinite[(x[std::Number]) ~> (b[std::Boolean]) { }];
+    @is_finite[(x[std::Number]) ~> (b[std::Boolean]) { }];
+    @degrees[(r[std::Number]) ~> (d[std::Number]) { }];
+    @radians[(d[std::Number]) ~> (r[std::Number]) { }];
+    @gcd[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @lcm[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
+    @factorial[(n[std::Number]) ~> (r[std::Number]) { }];
+    @comb[(n[std::Number], k[std::Number]) ~> (r[std::Number]) { }];
 }
 
 // ------------------------------------------------------------

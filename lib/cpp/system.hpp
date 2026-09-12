@@ -21,8 +21,10 @@
 #include <vector>
 #include <memory>
 #include <sstream>
+#include <fstream>
 #include <cstdio>
 #include <cstdlib>
+#include <cwchar>
 #include <ctime>
 #include <filesystem>
 #include <thread>
@@ -32,8 +34,11 @@
 
 #if defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
-#  define NOMINMAX
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
+#  include <shellapi.h>
 #else
 #  include <unistd.h>
 #  include <sys/wait.h>
@@ -493,6 +498,248 @@ namespace rt_lib_system {
         );
     }
 
+    // system.monotonic() ~> (ms) —— milliseconds of a monotonic clock, immune to
+    // wall-clock adjustments (so it is the right clock for benchmarking).
+    // system.monotonic() ~> (ms) —— 单调时钟毫秒数，不受墙上时钟调整影响
+    // （故是基准测试应使用的时钟）。
+    inline rt_basic::Callable method_system_monotonic() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()
+                ).count();
+                return rb::list_of({rb::make_number(static_cast<double>(ms))});
+            },
+            rb::make_sign("monotonic", {}, {{"ms", "std::Number"}})
+        );
+    }
+
+    // system.os_name() ~> (name) —— "windows" | "linux" | "macos" | "unknown".
+    // system.os_name() ~> (name) —— 编译期确定的操作系统名。
+    inline rt_basic::Callable method_system_os_name() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(_WIN32)
+                std::string n = "windows";
+#elif defined(__APPLE__)
+                std::string n = "macos";
+#elif defined(__linux__)
+                std::string n = "linux";
+#else
+                std::string n = "unknown";
+#endif
+                return rb::list_of({rb::make_string(n)});
+            },
+            rb::make_sign("os_name", {}, {{"name", "std::String"}})
+        );
+    }
+
+    // system.arch() ~> (name) —— "x86_64" | "arm64" | "x86" | "arm" | "unknown",
+    // resolved at compile time.
+    // system.arch() ~> (name) —— 编译期确定的 CPU 架构名。
+    inline rt_basic::Callable method_system_arch() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(_M_X64) || defined(__x86_64__)
+                std::string a = "x86_64";
+#elif defined(_M_ARM64) || defined(__aarch64__)
+                std::string a = "arm64";
+#elif defined(_M_IX86) || defined(__i386__)
+                std::string a = "x86";
+#elif defined(_M_ARM) || defined(__arm__)
+                std::string a = "arm";
+#else
+                std::string a = "unknown";
+#endif
+                return rb::list_of({rb::make_string(a)});
+            },
+            rb::make_sign("arch", {}, {{"name", "std::String"}})
+        );
+    }
+
+    // system.setenv(name, value) -> (void) —— set an environment variable for the
+    // current process (and any child process spawned afterwards). `name` must be
+    // non-empty.
+    // system.setenv(name, value) -> (void) —— 为当前进程（及之后派生的子进程）
+    // 设置环境变量。name 必须非空。
+    inline rt_basic::Callable method_system_setenv() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto name = rb::string_of(rb::para_at(paras, 0));
+                auto val  = rb::string_of(rb::para_at(paras, 1));
+                if (!name || name->empty() || !val) {
+                    return rb::list_of({rb::native_error(
+                        "system.setenv requires a non-empty name and a value")});
+                }
+#if defined(_WIN32)
+                std::wstring wn = utf8_to_wide(*name);
+                std::wstring wv = utf8_to_wide(*val);
+                _wputenv_s(wn.c_str(), wv.c_str());
+#else
+                setenv(name->c_str(), val->c_str(), 1);
+#endif
+                return rb::empty_result();
+            },
+            rb::make_sign(
+                "setenv", {{"name", "std::String"}, {"value", "std::String"}}, {}
+            )
+        );
+    }
+
+    // system.unsetenv(name) -> (void) —— remove an environment variable.
+    // system.unsetenv(name) -> (void) —— 移除一个环境变量。
+    inline rt_basic::Callable method_system_unsetenv() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto name = rb::string_of(rb::para_at(paras, 0));
+                if (!name || name->empty()) {
+                    return rb::list_of({rb::native_error(
+                        "system.unsetenv requires a non-empty name")});
+                }
+#if defined(_WIN32)
+                std::wstring wn = utf8_to_wide(*name);
+                _wputenv_s(wn.c_str(), L"");
+#else
+                unsetenv(name->c_str());
+#endif
+                return rb::empty_result();
+            },
+            rb::make_sign("unsetenv", {{"name", "std::String"}}, {})
+        );
+    }
+
+    // system.environ() ~> (vars) —— Array of "KEY=VALUE" strings for the current
+    // process environment (the leading-'=' service entries are skipped on
+    // Windows).
+    // system.environ() ~> (vars) —— 当前进程环境的 "KEY=VALUE" 字符串数组。
+    inline rt_basic::Callable method_system_environ() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                auto arr = ::stdRT.make("Array");
+                auto* cls = dynamic_cast<runtime::RuntimeClass*>(arr.get());
+                auto& aenv = cls->get_attributes();
+                std::size_t i = 0;
+#if defined(_WIN32)
+                wchar_t* env = GetEnvironmentStringsW();
+                if (env) {
+                    for (wchar_t* p = env; *p; ) {
+                        std::wstring w(p);
+                        // Skip the leading-'=' service entries (e.g. "=::=...").
+                        // 跳过以 '=' 开头的服务条目（如 "=::=..."）。
+                        if (!w.empty() && w[0] != L'=') {
+                            int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(),
+                                (int)w.size(), nullptr, 0, nullptr, nullptr);
+                            std::string s(n, '\0');
+                            WideCharToMultiByte(CP_UTF8, 0, w.c_str(),
+                                (int)w.size(), s.data(), n, nullptr, nullptr);
+                            aenv[rb::elem_key(i++)] = rb::make_string(s);
+                        }
+                        p += std::wcslen(p) + 1;
+                    }
+                    FreeEnvironmentStringsW(env);
+                }
+#else
+                extern char** environ;
+                for (char** e = environ; e && *e; ++e) {
+                    aenv[rb::elem_key(i++)] = rb::make_string(std::string(*e));
+                }
+#endif
+                rb::set_container_size(aenv, i);
+                return rb::list_of({arr});
+            },
+            rb::make_sign("environ", {}, {{"vars", "std::Array"}})
+        );
+    }
+
+    // Process command line, captured once. On POSIX we read /proc/self/cmdline;
+    // on Windows we use GetCommandLineW + CommandLineToArgvW.
+    // 进程命令行，仅捕获一次。POSIX 读取 /proc/self/cmdline；Windows 用
+    // GetCommandLineW + CommandLineToArgvW。
+    inline const std::vector<std::string>& proc_argv() {
+        static std::vector<std::string> cached;
+        static bool done = false;
+        if (done) return cached;
+        done = true;
+#if defined(_WIN32)
+        int argc = 0;
+        wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (wargv) {
+            for (int i = 0; i < argc; ++i) {
+                int n = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1,
+                    nullptr, 0, nullptr, nullptr);
+                std::string s(n, '\0');
+                WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, s.data(), n,
+                    nullptr, nullptr);
+                if (!s.empty() && s.back() == '\0') s.pop_back();
+                cached.push_back(s);
+            }
+            LocalFree(wargv);
+        }
+#else
+        std::ifstream f("/proc/self/cmdline");
+        if (f) {
+            std::string buf((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+            std::string cur;
+            for (char c : buf) {
+                if (c == '\0') {
+                    if (!cur.empty()) cached.push_back(cur);
+                    cur.clear();
+                } else cur.push_back(c);
+            }
+            if (!cur.empty()) cached.push_back(cur);
+        }
+#endif
+        return cached;
+    }
+
+    // system.argv() ~> (args) —— Array of the interpreter's command-line args.
+    // system.argv() ~> (args) —— 解释器命令行参数数组。
+    inline rt_basic::Callable method_system_argv() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                const auto& a = proc_argv();
+                auto arr = ::stdRT.make("Array");
+                auto* cls = dynamic_cast<runtime::RuntimeClass*>(arr.get());
+                auto& aenv = cls->get_attributes();
+                for (std::size_t i = 0; i < a.size(); ++i)
+                    aenv[rb::elem_key(i)] = rb::make_string(a[i]);
+                rb::set_container_size(aenv, a.size());
+                return rb::list_of({arr});
+            },
+            rb::make_sign("argv", {}, {{"args", "std::Array"}})
+        );
+    }
+
+    // system.argc() ~> (count) —— number of command-line args.
+    // system.argc() ~> (count) —— 命令行参数个数。
+    inline rt_basic::Callable method_system_argc() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                return rb::list_of({rb::make_number(
+                    static_cast<double>(proc_argv().size()))});
+            },
+            rb::make_sign("argc", {}, {{"count", "std::Number"}})
+        );
+    }
+
+    // system.exit(code) -> (noreturn) —— terminate the interpreter process with
+    // the given status. Intended for scripts that must stop early with a specific
+    // code; it ends the whole process (including any pending output flush).
+    // system.exit(code) -> (noreturn) —— 以给定状态码终止解释器进程。用于需要
+    // 提前以特定状态码退出的脚本；会结束整个进程（含待刷新的输出）。
+    inline rt_basic::Callable method_system_exit() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto code = rb::number_of(rb::para_at(paras, 0));
+                int c = code ? static_cast<int>(*code) : 0;
+                std::exit(c);
+                return rb::empty_result();   // unreachable / 不可达
+            },
+            rb::make_sign("exit", {{"code", "std::Number"}}, {})
+        );
+    }
+
     // ---- registration / 登记 ----
     inline void init_system_stdlib() {
         auto proto = std::make_shared<rt_basic::ClsProto>(
@@ -508,6 +755,15 @@ namespace rt_lib_system {
         proto->set_method("time",      method_system_time());
         proto->set_method("date",      method_system_date());
         proto->set_method("datetime",  method_system_datetime());
+        proto->set_method("monotonic", method_system_monotonic());
+        proto->set_method("os_name",   method_system_os_name());
+        proto->set_method("arch",      method_system_arch());
+        proto->set_method("setenv",    method_system_setenv());
+        proto->set_method("unsetenv",  method_system_unsetenv());
+        proto->set_method("environ",   method_system_environ());
+        proto->set_method("argv",      method_system_argv());
+        proto->set_method("argc",      method_system_argc());
+        proto->set_method("exit",      method_system_exit());
 
         runtime::Prototypes p;
         p.regcls("System", proto);

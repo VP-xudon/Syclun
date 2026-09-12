@@ -37,4 +37,13 @@ $System {
     @time[() ~> (hhmmss[std::String]) { }];
     @date[() ~> (yyyymmdd[std::String]) { }];
     @datetime[() ~> (stamp[std::String]) { }];
+    @monotonic[() ~> (ms[std::Number]) { }];
+    @os_name[() ~> (name[std::String]) { }];
+    @arch[() ~> (name[std::String]) { }];
+    @setenv[(name[std::String], value[std::String]) ~> () { }];
+    @unsetenv[(name[std::String]) ~> () { }];
+    @environ[() ~> (vars[std::Array]) { }];
+    @argv[() ~> (args[std::Array]) { }];
+    @argc[() ~> (count[std::Number]) { }];
+    @exit[(code[std::Number]) ~> () { }];
 }

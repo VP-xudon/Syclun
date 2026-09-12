@@ -37,6 +37,7 @@
 #include <sstream>
 #include <limits>
 #include <cstdio>
+#include <functional>
 
 #include "../../src/builtin.hpp"   // reuse the shared runtime + helper API
 
@@ -66,11 +67,28 @@ namespace rt_lib_structs {
     struct MapState {
         std::map<std::string, RuntimeObjectPtr> entries;   // serialized key -> value
         std::map<std::string, RuntimeObjectPtr> keyobjs;   // serialized key -> original key object
+        std::vector<std::string> order;                    // insertion order of serialized keys
     };
     struct GraphState {
         std::unordered_set<std::string> nodes;
         std::unordered_map<std::string, std::vector<std::pair<std::string, double>>> adj;
         std::size_t edges = 0;
+        bool directed = false;
+        // Rooted-tree decomposition (populated by root_tree). Powers the
+        // algorithmic-competition style API: get_father / get_kid / lca /
+        // tree_depth / subtree_size / heavy_child / chain_top / tree_path /
+        // tree_diameter. Built over the BFS-spanning tree of the graph.
+        // 有根树分解（由 root_tree 构建）。支撑算法竞赛风格 API：get_father /
+        // get_kid / lca / tree_depth / subtree_size / heavy_child / chain_top /
+        // tree_path / tree_diameter。基于图的 BFS 生成树。
+        bool rooted = false;
+        std::string root_id;
+        std::unordered_map<std::string, std::string> parent;
+        std::unordered_map<std::string, std::vector<std::string>> children;
+        std::unordered_map<std::string, int> depth;
+        std::unordered_map<std::string, int> subsize;
+        std::unordered_map<std::string, std::string> heavy;
+        std::unordered_map<std::string, std::string> chain_top;
     };
 
     static std::recursive_mutex g_st_mux;
@@ -706,6 +724,7 @@ namespace rt_lib_structs {
                 std::lock_guard<std::recursive_mutex> lk(g_st_mux);
                 auto& st = g_maps[instance_id(env)];
                 std::string k = map_key(key);
+                if (st.entries.find(k) == st.entries.end()) st.order.push_back(k);
                 st.entries[k] = val;
                 st.keyobjs[k] = key;
                 return rb::empty_result();
@@ -754,10 +773,14 @@ namespace rt_lib_structs {
                     return rb::list_of({rb::native_error("map.remove requires a key")});
                 }
                 std::lock_guard<std::recursive_mutex> lk(g_st_mux);
-                auto& e = g_maps[instance_id(env)].entries;
+                auto& st = g_maps[instance_id(env)];
+                auto& e = st.entries;
                 std::string k = map_key(key);
                 bool ok = e.erase(k) > 0;
-                g_maps[instance_id(env)].keyobjs.erase(k);
+                st.keyobjs.erase(k);
+                st.order.erase(
+                    std::remove(st.order.begin(), st.order.end(), k),
+                    st.order.end());
                 return rb::list_of({rb::make_boolean(ok)});
             },
             rb::make_sign("remove", {{"key", "std::Object"}}, {{"ok", "std::Boolean"}})
@@ -769,8 +792,9 @@ namespace rt_lib_structs {
                 std::vector<RuntimeObjectPtr> out;
                 {
                     std::lock_guard<std::recursive_mutex> lk(g_st_mux);
-                    for (auto& kv : g_maps[instance_id(env)].keyobjs) {
-                        out.push_back(kv.second);
+                    auto& st = g_maps[instance_id(env)];
+                    for (auto& k : st.order) {
+                        out.push_back(st.keyobjs[k]);
                     }
                 }
                 return rb::list_of({build_array(out)});
@@ -784,8 +808,9 @@ namespace rt_lib_structs {
                 std::vector<RuntimeObjectPtr> out;
                 {
                     std::lock_guard<std::recursive_mutex> lk(g_st_mux);
-                    for (auto& kv : g_maps[instance_id(env)].entries) {
-                        out.push_back(kv.second);
+                    auto& st = g_maps[instance_id(env)];
+                    for (auto& k : st.order) {
+                        out.push_back(st.entries[k]);
                     }
                 }
                 return rb::list_of({build_array(out)});
@@ -820,6 +845,7 @@ namespace rt_lib_structs {
                 auto& st = g_maps[instance_id(env)];
                 st.entries.clear();
                 st.keyobjs.clear();
+                st.order.clear();
                 return rb::empty_result();
             },
             rb::make_sign("clear", {}, {})
@@ -1137,6 +1163,693 @@ namespace rt_lib_structs {
         );
     }
 
+    // ========================================================
+    // Extra methods (industrialization audit §4.6 + algorithmic-competition
+    // data structures requested by the user: get_father / get_kid / LCA /
+    // heavy-light decomposition / tree diameter on Graph).
+    // 追加方法（工业化审计 §4.6 + 用户要求的算法竞赛数据结构：
+    // Graph 上的 get_father / get_kid / LCA / 重链剖分 / 树的直径）。
+    // ========================================================
+
+    // Value-equality for containers (scalar-aware; objects compared by identity).
+    // 容器等值比较（感知标量；对象按身份比较）。
+    inline bool obj_eq(const RuntimeObjectPtr& a, const RuntimeObjectPtr& b) {
+        if (a.get() == b.get()) return true;
+        auto na = rb::number_of(a), nb = rb::number_of(b);
+        if (na && nb) return *na == *nb;
+        auto sa = rb::string_of(a), sb = rb::string_of(b);
+        if (sa && sb) return *sa == *sb;
+        return false;
+    }
+
+    // Compact numeric formatting for graph edge weights.
+    // 边权紧凑格式化。
+    inline std::string fmt_num(double v) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.12g", v);
+        return std::string(buf);
+    }
+
+    // ---- rooted-tree decomposition over a graph (BFS spanning tree) ----
+    // 基于图的有根树分解（BFS 生成树）。
+    inline void graph_build_tree(GraphState& g, const std::string& root) {
+        g.rooted = false;
+        g.parent.clear(); g.children.clear();
+        g.depth.clear(); g.subsize.clear();
+        g.heavy.clear(); g.chain_top.clear();
+        if (g.nodes.find(root) == g.nodes.end()) return;
+        g.root_id = root;
+        std::unordered_set<std::string> seen;
+        std::queue<std::string> q;
+        q.push(root); seen.insert(root);
+        g.parent[root] = "";
+        g.depth[root] = 0;
+        while (!q.empty()) {
+            auto u = q.front(); q.pop();
+            auto it = g.adj.find(u);
+            if (it != g.adj.end()) {
+                for (auto& e : it->second) {
+                    if (seen.insert(e.first).second) {
+                        g.parent[e.first] = u;
+                        g.children[u].push_back(e.first);
+                        g.depth[e.first] = g.depth[u] + 1;
+                        q.push(e.first);
+                    }
+                }
+            }
+        }
+        // post-order: subtree sizes + heavy child
+        std::function<int(const std::string&)> dfs = [&](const std::string& u) {
+            int sz = 1;
+            int best = -1; std::string hc;
+            auto cit = g.children.find(u);
+            if (cit != g.children.end()) {
+                for (auto& v : cit->second) {
+                    int csz = dfs(v);
+                    sz += csz;
+                    if (csz > best) { best = csz; hc = v; }
+                }
+            }
+            g.subsize[u] = sz;
+            g.heavy[u] = hc;   // "" when leaf
+            return sz;
+        };
+        dfs(root);
+        // heavy-light decomposition: assign chain tops
+        std::function<void(const std::string&, const std::string&)> hld =
+            [&](const std::string& u, const std::string& top) {
+                g.chain_top[u] = top;
+                auto cit = g.children.find(u);
+                if (cit == g.children.end()) return;
+                if (!g.heavy[u].empty()) hld(g.heavy[u], top);
+                for (auto& v : cit->second) {
+                    if (v != g.heavy[u]) hld(v, v);
+                }
+            };
+        hld(root, root);
+        g.rooted = true;
+    }
+
+    inline std::string graph_lca(GraphState& g, std::string a, std::string b) {
+        while (g.chain_top[a] != g.chain_top[b]) {
+            if (g.depth[g.chain_top[a]] < g.depth[g.chain_top[b]]) std::swap(a, b);
+            a = g.parent[g.chain_top[a]];
+        }
+        return g.depth[a] < g.depth[b] ? a : b;
+    }
+
+    inline std::vector<std::string> graph_path(GraphState& g, std::string a, std::string b) {
+        std::string l = graph_lca(g, a, b);
+        std::vector<std::string> up, down;
+        for (std::string x = a; x != l; x = g.parent[x]) up.push_back(x);
+        up.push_back(l);
+        for (std::string x = b; x != l; x = g.parent[x]) down.push_back(x);
+        std::reverse(down.begin(), down.end());
+        up.insert(up.end(), down.begin(), down.end());
+        return up;
+    }
+
+    inline std::vector<std::string> graph_diameter(GraphState& g) {
+        if (g.nodes.empty()) return {};
+        auto bfs_far = [&](const std::string& s) {
+            std::unordered_map<std::string, std::string> par;
+            std::unordered_set<std::string> seen;
+            std::queue<std::string> q; q.push(s); seen.insert(s);
+            std::string farthest = s; int bestd = 0;
+            std::unordered_map<std::string, int> d; d[s] = 0;
+            while (!q.empty()) {
+                auto u = q.front(); q.pop();
+                auto it = g.adj.find(u);
+                if (it != g.adj.end()) {
+                    for (auto& e : it->second) {
+                        if (seen.insert(e.first).second) {
+                            par[e.first] = u;
+                            d[e.first] = d[u] + 1;
+                            if (d[e.first] > bestd) { bestd = d[e.first]; farthest = e.first; }
+                            q.push(e.first);
+                        }
+                    }
+                }
+            }
+            return std::make_pair(farthest, par);
+        };
+        auto [a, pa] = bfs_far(*g.nodes.begin());
+        auto [b, pb] = bfs_far(a);
+        std::vector<std::string> path;
+        for (std::string x = b; ; x = pb[x]) { path.push_back(x); if (x == a) break; }
+        std::reverse(path.begin(), path.end());
+        return path;
+    }
+
+    inline bool graph_has_cycle(GraphState& g) {
+        std::unordered_map<std::string, int> color;   // 0 white, 1 gray, 2 black
+        bool found = false;
+        std::function<void(const std::string&, const std::string&)> dfs =
+            [&](const std::string& u, const std::string& p) {
+                color[u] = 1;
+                auto it = g.adj.find(u);
+                if (it != g.adj.end()) {
+                    for (auto& e : it->second) {
+                        const std::string& v = e.first;
+                        if (g.directed) {
+                            if (color[v] == 1) found = true;
+                            else if (color[v] == 0) dfs(v, u);
+                        } else {
+                            if (v == p) continue;
+                            if (color[v] == 1) found = true;
+                            else if (color[v] == 0) dfs(v, u);
+                        }
+                    }
+                }
+                color[u] = 2;
+            };
+        for (auto& n : g.nodes) if (color[n] == 0) dfs(n, "");
+        return found;
+    }
+
+    inline std::vector<std::string> graph_topo(GraphState& g) {
+        std::unordered_map<std::string, int> indeg;
+        for (auto& n : g.nodes) indeg[n] = 0;
+        for (auto& n : g.nodes) {
+            auto it = g.adj.find(n);
+            if (it != g.adj.end()) {
+                for (auto& e : it->second) {
+                    if (g.directed) indeg[e.first] += 1;
+                }
+            }
+        }
+        std::queue<std::string> q;
+        for (auto& n : g.nodes) if (indeg[n] == 0) q.push(n);
+        std::vector<std::string> out;
+        while (!q.empty()) {
+            auto u = q.front(); q.pop();
+            out.push_back(u);
+            auto it = g.adj.find(u);
+            if (it != g.adj.end()) {
+                for (auto& e : it->second) {
+                    if (g.directed && --indeg[e.first] == 0) q.push(e.first);
+                }
+            }
+        }
+        return out;   // out.size() < nodes ⇒ cycle, caller reports
+    }
+
+    inline std::vector<std::vector<std::string>> graph_components(GraphState& g) {
+        std::unordered_set<std::string> seen;
+        std::vector<std::vector<std::string>> comps;
+        for (auto& n : g.nodes) {
+            if (seen.count(n)) continue;
+            std::vector<std::string> comp;
+            std::queue<std::string> q; q.push(n); seen.insert(n);
+            while (!q.empty()) {
+                auto u = q.front(); q.pop();
+                comp.push_back(u);
+                auto it = g.adj.find(u);
+                if (it != g.adj.end()) {
+                    for (auto& e : it->second) {
+                        if (seen.insert(e.first).second) q.push(e.first);
+                    }
+                }
+            }
+            comps.push_back(comp);
+        }
+        return comps;
+    }
+
+    inline std::vector<std::vector<std::string>> graph_mst(GraphState& g) {
+        struct E { std::string u, v; double w; };
+        std::vector<E> edges;
+        std::unordered_set<std::string> seen;
+        for (auto& n : g.nodes) {
+            auto it = g.adj.find(n);
+            if (it != g.adj.end()) {
+                for (auto& e : it->second) {
+                    std::string key = (n < e.first) ? (n + "\x01" + e.first)
+                                                   : (e.first + "\x01" + n);
+                    if (seen.insert(key).second) edges.push_back({n, e.first, e.second});
+                }
+            }
+        }
+        std::sort(edges.begin(), edges.end(),
+                  [](const E& a, const E& b) { return a.w < b.w; });
+        std::unordered_map<std::string, std::string> dsu;
+        for (auto& n : g.nodes) dsu[n] = n;
+        std::function<std::string(const std::string&)> find =
+            [&](const std::string& x) {
+                return dsu[x] == x ? x : (dsu[x] = find(dsu[x]));
+            };
+        std::vector<std::vector<std::string>> mst;
+        for (auto& e : edges) {
+            std::string ru = find(e.u), rv = find(e.v);
+            if (ru != rv) {
+                dsu[ru] = rv;
+                mst.push_back({e.u, e.v, fmt_num(e.w)});
+            }
+        }
+        return mst;
+    }
+
+    // ---- Queue / 队列 ----
+    inline rt_basic::Callable method_queue_contains() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto item = rb::para_at(paras, 0);
+                if (!item) {
+                    return rb::list_of({rb::native_error("queue.contains requires an item")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                bool found = false;
+                for (auto& e : g_queues[instance_id(env)].items) {
+                    if (obj_eq(e, item)) { found = true; break; }
+                }
+                return rb::list_of({rb::make_boolean(found)});
+            },
+            rb::make_sign("contains", {{"item", "std::Object"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_queue_to_string() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::ostringstream os;
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                os << "[";
+                const auto& items = g_queues[instance_id(env)].items;
+                for (std::size_t i = 0; i < items.size(); ++i) {
+                    if (i) os << ", ";
+                    os << rb::display(items[i], 0);
+                }
+                os << "]";
+                return rb::list_of({rb::make_string(os.str())});
+            },
+            rb::make_sign("to_string", {}, {{"s", "std::String"}})
+        );
+    }
+
+    // ---- Stack / 栈 ----
+    inline rt_basic::Callable method_stack_contains() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto item = rb::para_at(paras, 0);
+                if (!item) {
+                    return rb::list_of({rb::native_error("stack.contains requires an item")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                bool found = false;
+                for (auto& e : g_stacks[instance_id(env)].items) {
+                    if (obj_eq(e, item)) { found = true; break; }
+                }
+                return rb::list_of({rb::make_boolean(found)});
+            },
+            rb::make_sign("contains", {{"item", "std::Object"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_stack_to_string() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::ostringstream os;
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                os << "[";
+                const auto& items = g_stacks[instance_id(env)].items;
+                for (std::size_t i = 0; i < items.size(); ++i) {
+                    if (i) os << ", ";
+                    os << rb::display(items[i], 0);
+                }
+                os << "]";
+                return rb::list_of({rb::make_string(os.str())});
+            },
+            rb::make_sign("to_string", {}, {{"s", "std::String"}})
+        );
+    }
+
+    // ---- Map entries / merge / 条目 / 合并 ----
+    inline rt_basic::Callable method_map_entries() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    auto& st = g_maps[instance_id(env)];
+                    for (auto& k : st.order) {
+                        std::vector<RuntimeObjectPtr> pair = {st.keyobjs[k], st.entries[k]};
+                        out.push_back(build_array(pair));
+                    }
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("entries", {}, {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_map_merge() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto other = rb::para_at(paras, 0);
+                if (!other) {
+                    return rb::list_of({rb::native_error("map.merge requires a Map")});
+                }
+                auto* oam = rb::attributes_of(other);
+                long long oid = oam ? id_from(*oam) : 0;
+                if (oid <= 0) {
+                    return rb::list_of({rb::native_error("map.merge: argument is not a Map")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& dst = g_maps[instance_id(env)];
+                auto& src = g_maps[oid];
+                for (auto& kv : src.entries) {
+                    if (dst.entries.find(kv.first) == dst.entries.end()) {
+                        dst.order.push_back(kv.first);
+                    }
+                    dst.entries[kv.first] = kv.second;
+                    dst.keyobjs[kv.first] = src.keyobjs[kv.first];
+                }
+                return rb::empty_result();
+            },
+            rb::make_sign("merge", {{"other", "std::Object"}}, {})
+        );
+    }
+
+    // ---- Graph directed flag / 有向标志 ----
+    inline rt_basic::Callable method_graph_directed() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                auto b = rb::boolean_of(rb::para_at(paras, 0));
+                if (b) g.directed = *b;
+                return rb::list_of({rb::make_boolean(g.directed)});
+            },
+            rb::make_sign("directed", {{"value", "std::Boolean"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_has_cycle() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                bool cyc = false;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    cyc = graph_has_cycle(g_graphs[instance_id(env)]);
+                }
+                return rb::list_of({rb::make_boolean(cyc)});
+            },
+            rb::make_sign("has_cycle", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_topological_sort() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    auto& g = g_graphs[instance_id(env)];
+                    if (!g.directed) {
+                        return rb::list_of({rb::native_error(
+                            "graph.topological_sort requires a directed graph (call directed(true))")});
+                    }
+                    auto order = graph_topo(g);
+                    if (order.size() != g.nodes.size()) {
+                        return rb::list_of({rb::native_error(
+                            "graph.topological_sort: graph has a cycle")});
+                    }
+                    for (auto& s : order) out.push_back(rb::make_string(s));
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("topological_sort", {}, {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_connected_components() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    for (auto& comp : graph_components(g_graphs[instance_id(env)])) {
+                        std::vector<RuntimeObjectPtr> cs;
+                        for (auto& s : comp) cs.push_back(rb::make_string(s));
+                        out.push_back(build_array(cs));
+                    }
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("connected_components", {}, {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_mst() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    for (auto& e : graph_mst(g_graphs[instance_id(env)])) {
+                        out.push_back(build_array({
+                            rb::make_string(e[0]),
+                            rb::make_string(e[1]),
+                            rb::make_string(e[2])}));
+                    }
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("mst", {}, {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_is_tree() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                bool ok = false;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    auto& g = g_graphs[instance_id(env)];
+                    if (!g.directed && g.nodes.size() > 0 &&
+                        g.edges == g.nodes.size() - 1 &&
+                        graph_components(g).size() == 1 &&
+                        !graph_has_cycle(g)) {
+                        ok = true;
+                    }
+                }
+                return rb::list_of({rb::make_boolean(ok)});
+            },
+            rb::make_sign("is_tree", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_root_tree() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.root_tree requires a root id")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                std::string root = key_text(id);
+                if (g.nodes.find(root) == g.nodes.end()) {
+                    return rb::list_of({rb::native_error("graph.root_tree: root not in graph")});
+                }
+                graph_build_tree(g, root);
+                return rb::empty_result();
+            },
+            rb::make_sign("root_tree", {{"root", "std::Object"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_graph_get_father() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.get_father requires a node id")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                std::string n = key_text(id);
+                if (!g.rooted) {
+                    return rb::list_of({rb::native_error("graph.get_father: call root_tree first")});
+                }
+                auto it = g.parent.find(n);
+                if (it == g.parent.end() || it->second.empty()) {
+                    return rb::list_of({rb::make_boolean(false)});
+                }
+                return rb::list_of({rb::make_string(it->second)});
+            },
+            rb::make_sign("get_father", {{"node", "std::Object"}}, {{"father", "std::Object"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_get_kid() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.get_kid requires a node id")});
+                }
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    auto& g = g_graphs[instance_id(env)];
+                    std::string n = key_text(id);
+                    if (!g.rooted) {
+                        return rb::list_of({rb::native_error("graph.get_kid: call root_tree first")});
+                    }
+                    auto it = g.children.find(n);
+                    if (it != g.children.end()) {
+                        for (auto& c : it->second) out.push_back(rb::make_string(c));
+                    }
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("get_kid", {{"node", "std::Object"}}, {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_lca() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto a = rb::para_at(paras, 0), b = rb::para_at(paras, 1);
+                if (!a || !b) {
+                    return rb::list_of({rb::native_error("graph.lca requires two node ids")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                if (!g.rooted) {
+                    return rb::list_of({rb::native_error("graph.lca: call root_tree first")});
+                }
+                std::string sa = key_text(a), sb = key_text(b);
+                if (g.nodes.find(sa) == g.nodes.end() ||
+                    g.nodes.find(sb) == g.nodes.end()) {
+                    return rb::list_of({rb::native_error("graph.lca: node not in graph")});
+                }
+                return rb::list_of({rb::make_string(graph_lca(g, sa, sb))});
+            },
+            rb::make_sign("lca", {{"a", "std::Object"}, {"b", "std::Object"}},
+                          {{"node", "std::Object"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_tree_depth() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.tree_depth requires a node id")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                std::string n = key_text(id);
+                if (!g.rooted) {
+                    return rb::list_of({rb::native_error("graph.tree_depth: call root_tree first")});
+                }
+                auto it = g.depth.find(n);
+                if (it == g.depth.end()) {
+                    return rb::list_of({rb::native_error("graph.tree_depth: node not in graph")});
+                }
+                return rb::list_of({rb::make_number(static_cast<double>(it->second))});
+            },
+            rb::make_sign("tree_depth", {{"node", "std::Object"}}, {{"d", "std::Number"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_subtree_size() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.subtree_size requires a node id")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                std::string n = key_text(id);
+                if (!g.rooted) {
+                    return rb::list_of({rb::native_error("graph.subtree_size: call root_tree first")});
+                }
+                auto it = g.subsize.find(n);
+                if (it == g.subsize.end()) {
+                    return rb::list_of({rb::native_error("graph.subtree_size: node not in graph")});
+                }
+                return rb::list_of({rb::make_number(static_cast<double>(it->second))});
+            },
+            rb::make_sign("subtree_size", {{"node", "std::Object"}}, {{"n", "std::Number"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_heavy_child() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.heavy_child requires a node id")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                std::string n = key_text(id);
+                if (!g.rooted) {
+                    return rb::list_of({rb::native_error("graph.heavy_child: call root_tree first")});
+                }
+                auto it = g.heavy.find(n);
+                if (it == g.heavy.end() || it->second.empty()) {
+                    return rb::list_of({rb::make_boolean(false)});
+                }
+                return rb::list_of({rb::make_string(it->second)});
+            },
+            rb::make_sign("heavy_child", {{"node", "std::Object"}}, {{"child", "std::Object"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_chain_top() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                if (!id) {
+                    return rb::list_of({rb::native_error("graph.chain_top requires a node id")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                auto& g = g_graphs[instance_id(env)];
+                std::string n = key_text(id);
+                if (!g.rooted) {
+                    return rb::list_of({rb::native_error("graph.chain_top: call root_tree first")});
+                }
+                auto it = g.chain_top.find(n);
+                if (it == g.chain_top.end()) {
+                    return rb::list_of({rb::native_error("graph.chain_top: node not in graph")});
+                }
+                return rb::list_of({rb::make_string(it->second)});
+            },
+            rb::make_sign("chain_top", {{"node", "std::Object"}}, {{"top", "std::Object"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_tree_path() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto a = rb::para_at(paras, 0), b = rb::para_at(paras, 1);
+                if (!a || !b) {
+                    return rb::list_of({rb::native_error("graph.tree_path requires two node ids")});
+                }
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    auto& g = g_graphs[instance_id(env)];
+                    if (!g.rooted) {
+                        return rb::list_of({rb::native_error("graph.tree_path: call root_tree first")});
+                    }
+                    std::string sa = key_text(a), sb = key_text(b);
+                    if (g.nodes.find(sa) == g.nodes.end() ||
+                        g.nodes.find(sb) == g.nodes.end()) {
+                        return rb::list_of({rb::native_error("graph.tree_path: node not in graph")});
+                    }
+                    for (auto& s : graph_path(g, sa, sb)) out.push_back(rb::make_string(s));
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("tree_path", {{"a", "std::Object"}, {"b", "std::Object"}},
+                          {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_graph_tree_diameter() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    for (auto& s : graph_diameter(g_graphs[instance_id(env)])) {
+                        out.push_back(rb::make_string(s));
+                    }
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("tree_diameter", {}, {{"arr", "std::Array"}})
+        );
+    }
+
     // ---- registration / 登记 ----
     inline void init_structs_stdlib() {
         // Queue / 队列
@@ -1149,6 +1862,8 @@ namespace rt_lib_structs {
             proto->set_method("empty",    method_queue_empty());
             proto->set_method("clear",    method_queue_clear());
             proto->set_method("to_array", method_queue_to_array());
+            proto->set_method("contains",  method_queue_contains());
+            proto->set_method("to_string", method_queue_to_string());
             proto->set_method("dispose",  method_queue_dispose());
             proto->on_release = [](rt_basic::InstanceMap& env) { erase_queue(id_from(env)); };
             runtime::Prototypes p; p.regcls("Queue", proto); ::stdRT.add_protos(p);
@@ -1163,6 +1878,8 @@ namespace rt_lib_structs {
             proto->set_method("empty",    method_stack_empty());
             proto->set_method("clear",    method_stack_clear());
             proto->set_method("to_array", method_stack_to_array());
+            proto->set_method("contains",  method_stack_contains());
+            proto->set_method("to_string", method_stack_to_string());
             proto->set_method("dispose",  method_stack_dispose());
             proto->on_release = [](rt_basic::InstanceMap& env) { erase_stack(id_from(env)); };
             runtime::Prototypes p; p.regcls("Stack", proto); ::stdRT.add_protos(p);
@@ -1201,6 +1918,8 @@ namespace rt_lib_structs {
             proto->set_method("size",     method_map_size());
             proto->set_method("empty",    method_map_empty());
             proto->set_method("clear",    method_map_clear());
+            proto->set_method("entries",  method_map_entries());
+            proto->set_method("merge",    method_map_merge());
             proto->set_method("dispose",  method_map_dispose());
             proto->on_release = [](rt_basic::InstanceMap& env) { erase_map(id_from(env)); };
             runtime::Prototypes p; p.regcls("Map", proto); ::stdRT.add_protos(p);
@@ -1217,6 +1936,22 @@ namespace rt_lib_structs {
             proto->set_method("bfs",           method_graph_bfs());
             proto->set_method("shortest_path", method_graph_shortest_path());
             proto->set_method("shortest_distance", method_graph_shortest_distance());
+            proto->set_method("directed",          method_graph_directed());
+            proto->set_method("has_cycle",         method_graph_has_cycle());
+            proto->set_method("topological_sort",  method_graph_topological_sort());
+            proto->set_method("connected_components", method_graph_connected_components());
+            proto->set_method("mst",               method_graph_mst());
+            proto->set_method("is_tree",           method_graph_is_tree());
+            proto->set_method("root_tree",         method_graph_root_tree());
+            proto->set_method("get_father",        method_graph_get_father());
+            proto->set_method("get_kid",           method_graph_get_kid());
+            proto->set_method("lca",               method_graph_lca());
+            proto->set_method("tree_depth",        method_graph_tree_depth());
+            proto->set_method("subtree_size",      method_graph_subtree_size());
+            proto->set_method("heavy_child",       method_graph_heavy_child());
+            proto->set_method("chain_top",         method_graph_chain_top());
+            proto->set_method("tree_path",         method_graph_tree_path());
+            proto->set_method("tree_diameter",     method_graph_tree_diameter());
             proto->set_method("dispose",  method_graph_dispose());
             proto->on_release = [](rt_basic::InstanceMap& env) { erase_graph(id_from(env)); };
             runtime::Prototypes p; p.regcls("Graph", proto); ::stdRT.add_protos(p);

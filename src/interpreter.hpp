@@ -487,6 +487,41 @@ namespace interp {
         }
     }
 
+    // Expand a single std::Tuple argument into the parameter list when the
+    // callee takes more than one parameter — so a multi-arg function can be
+    // called directly with a tuple `f((a, b))`. Trailing tuple elements beyond
+    // the parameter count are ignored; a tuple with too few elements is a hard
+    // error (mirrors destructuring). Returns the (possibly unchanged) argument
+    // list. 把单个 std::Tuple 实参在形参多于一个时展开为各形参——使多参函数
+    // 可直接以元组调用 `f((a, b))`。超出参数个数的元组尾部被忽略；元组元素
+    // 不足则报硬错误（与解构一致）。
+    inline rt_basic::InstanceListPtr expand_tuple_arg(
+        rt_basic::InstanceListPtr args, std::size_t paramCount
+    ) {
+        if (!args || args->size() != 1 || paramCount <= 1) return args;
+        auto& only = (*args)[0];
+        auto tcls = std::dynamic_pointer_cast<runtime::RuntimeClass>(only);
+        if (!tcls || !tcls->get_prototype()
+                || tcls->get_prototype()->name != "Tuple") {
+            return args;
+        }
+        auto* tattrs = rb::attributes_of(only);
+        if (!tattrs) return args;
+        auto expanded = std::make_shared<std::vector<RuntimeObjectPtr>>();
+        std::size_t n = rb::container_size(*tattrs);
+        for (std::size_t i = 0; i < n; ++i) {
+            auto fnd = tattrs->find(rb::elem_key(i));
+            if (fnd != tattrs->end()) expanded->push_back(fnd->second);
+        }
+        if (expanded->size() < paramCount) {
+            interp_error(
+                "InterException",
+                "too few values in the tuple to fill "
+                    + std::to_string(paramCount) + " parameters");
+        }
+        return expanded; // trailing elements ignored
+    }
+
     inline InstanceListPtr invoke(
         RuntimeObjectPtr object, const std::string& name, InstanceListPtr args
     ) {
@@ -531,6 +566,21 @@ namespace interp {
                     }
                 }
                 return res;
+            }
+        }
+        // Expand a single std::Tuple argument into multiple parameters when the
+        // callee takes more than one — so a multi-arg call can be written
+        // directly as `f((a, b))`. This MUST happen at the interpreter's call
+        // boundary, BEFORE RuntimeClass::call_method's signature enforcement,
+        // or the enforcer would reject the lone tuple as a type mismatch.
+        // 在调用边界（call_method 的签名约束之前）把单个 std::Tuple 实参展开
+        // 为多形参，使多参调用可直接以元组 `f((a, b))` 写出。须在运行时签名
+        // 约束之前完成，否则约束器会把孤元组当作类型不符拒绝。
+        {
+            auto mit = cls->get_methods().find(name);
+            if (mit != cls->get_methods().end()) {
+                std::size_t paramCount = mit->second.get_sign().inpara.size();
+                args = expand_tuple_arg(args, paramCount);
             }
         }
         return cls->call_method(name, args);
@@ -591,6 +641,14 @@ namespace interp {
     // receiver. Both spellings share this path (the parser normalized `>>`).
     // 执行 `receiver << sender`：公布发送方，接收进接收方。两种写法共用
     // 此通路（parser 已将 `>>` 归一化）。
+    // True when `obj` is an io::OStream instance (its prototype is "OStream").
+    // 判断 obj 是否为 io::OStream 实例（原型名为 "OStream"）。
+    inline bool is_output_stream(RuntimeObjectPtr obj) {
+        auto* rc = dynamic_cast<runtime::RuntimeClass*>(obj.get());
+        return rc && rc->get_prototype()
+            && rc->get_prototype()->name == "OStream";
+    }
+
     inline void flow_into(
         Frame& f, RuntimeObjectPtr receiver, RuntimeObjectPtr sender
     ) {
@@ -598,6 +656,21 @@ namespace interp {
             interp_error("InterException", "flow with a null endpoint");
         }
         auto published = invoke(sender, "=:", rb::empty_result());
+        // A value-less object (e.g. a custom class instance with no scalar
+        // `#value`) publishes nothing, so streaming it prints an empty string.
+        // The user expects a representation instead: the object's `<Type "name">`
+        // form, or the first item of its `to_string` tuple. When the receiver is
+        // an output stream and the published value is empty, fall back to
+        // publishing the object itself — `out`'s receive then displays it via
+        // display() (which already implements the <Type "name"> / to_string
+        // first-item fallback). 无标量值的对象（如没有 #value 的自定义类实例）
+        // 公布空，流式输出会变成空串。用户期望显示其表示：`<类型 "名">` 形式或
+        // to_string 元组首项。当接收方为输出流且公布值为空时，回退为公布对象
+        // 自身——out 的接收端于是经由 display() 显示它（display 已实现该回退）。
+        if ((!published || published->empty())
+                && is_output_stream(receiver)) {
+            published = rb::list_of({sender});
+        }
         invoke(receiver, ":=", published);
     }
 
@@ -1674,12 +1747,50 @@ namespace interp {
 
         // Bind input parameters (by position).
         // 按位置绑定输入参数。
+        // A single argument that is a std::Tuple is expanded into the parameter
+        // list when the callee takes more than one parameter — so a multi-arg
+        // function can be called directly with a tuple `f((a, b))`. Trailing
+        // tuple elements beyond the parameter count are ignored; a tuple with
+        // too few elements is a hard error (mirrors destructuring).
+        // 单个 std::Tuple 实参在形参多于一个时展开为各形参——使多参函数可直接
+        // 以元组调用 `f((a, b))`。超出参数个数的元组尾部被忽略；元组元素不足
+        // 则报硬错误（与解构一致）。
+        std::size_t paramCount = (signNode->kids.size() >= 1)
+            ? signNode->kids[0]->kids.size() : 0;
+        InstanceListPtr effParas = paras;
+        if (paras && paras->size() == 1 && paramCount > 1) {
+            auto& only = (*paras)[0];
+            auto tcls = std::dynamic_pointer_cast<runtime::RuntimeClass>(only);
+            if (tcls && tcls->get_prototype()
+                    && tcls->get_prototype()->name == "Tuple") {
+                auto* tattrs = rb::attributes_of(only);
+                if (tattrs) {
+                    auto expanded =
+                        std::make_shared<std::vector<RuntimeObjectPtr>>();
+                    std::size_t n = rb::container_size(*tattrs);
+                    for (std::size_t i = 0; i < n; ++i) {
+                        auto fnd = tattrs->find(rb::elem_key(i));
+                        if (fnd != tattrs->end()) {
+                            expanded->push_back(fnd->second);
+                        }
+                    }
+                    if (expanded->size() < paramCount) {
+                        interp_error(
+                            "InterException",
+                            "too few values in the tuple to fill "
+                                + std::to_string(paramCount)
+                                + " parameters");
+                    }
+                    effParas = expanded;   // trailing elements ignored
+                }
+            }
+        }
         if (signNode->kids.size() >= 1) {
             auto& params = signNode->kids[0]->kids;
             for (std::size_t i = 0; i < params.size(); ++i) {
                 auto& p = params[i];
                 if (p->isPlaceholder) continue;
-                f.locals[p->name] = rb::para_at(paras, i);
+                f.locals[p->name] = rb::para_at(effParas, i);
                 // A parameter declared with '!' is constant inside the body.
                 // Binding it here IS its initialization, so any later write to
                 // it (a flow or '.=') is rejected by the const-local guard —
@@ -1702,7 +1813,22 @@ namespace interp {
             auto& outputs = signNode->kids[1]->kids;
             for (auto& o : outputs) {
                 if (o->isPlaceholder) continue;
-                std::string type = (o->mode == "type") ? o->value : "Object";
+                // The output parameter's concrete type: the two-name form
+                // `Type var` sets mode "type"; the bracket form `var[Type]`
+                // sets mode "constraint" with the type name in `value`. For an
+                // OUTPUT parameter the bracket names the concrete type to
+                // instantiate (e.g. `t[std::Tuple]` -> a real Tuple), so it
+                // must be used as the creation type — otherwise containers fall
+                // back to a bare Object and cannot hold their elements.
+                // 输出参数的具体类型：双名形式 `类型 名` 令 mode="type"；
+                // 方括号形式 `名[类型]` 令 mode="constraint" 且类型名在
+                // value。对输出参数，方括号内即待实例化的具体类型（如
+                // `t[std::Tuple]` → 真 Tuple），必须用其作为创建类型——否则
+                // 容器会回落到裸 Object，无法承载其元素。
+                std::string type = "Object";
+                if (o->mode == "type" || o->mode == "constraint") {
+                    type = o->value;
+                }
                 auto z = ::stdRT.make(type);
                 if (!z) z = ::stdRT.make("Object");
                 z->give_name(o->name);
@@ -1892,6 +2018,7 @@ namespace interp {
                 );
             }
             zero->give_name(d->name);
+            zero->bound_name = d->name;
             f.locals[d->name] = zero;
             f.constFlag[d->name] = d->isConst;
             // Constructor init: `-(Type(args) name)` builds the object from

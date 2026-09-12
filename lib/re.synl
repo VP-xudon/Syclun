@@ -4,13 +4,16 @@
 // 标准库：re（Synth-OOP 接口）。
 //
 // The behavioral face of the `re` (regular-expression) library. The C++
-// backend in lib/re.hpp does the matching (std::regex, ECMAScript grammar).
+// backend in lib/re.hpp does the matching with its OWN linear-time Pike VM
+// (a Thompson NFA compiled to byte-code), which is immune to catastrophic
+// backtracking (ReDoS) — a bounded step counter adds a final safety ceiling.
 // `re` exposes static convenience methods that compile a pattern on the fly;
 // `Pattern` is a precompiled, reusable matcher; `Match` is a result object.
 // A `$Program` class in a library is ignored.
-// `re`（正则）库的行为形态，真实匹配由 lib/re.hpp 的 C++ 底层完成
-// （std::regex，ECMAScript 文法）。`re` 提供即时编译的静态便捷方法；
-// `Pattern` 为预编译可复用匹配器；`Match` 为结果对象。库中 `$Program` 被忽略。
+// `re`（正则）库的行为形态，真实匹配由 lib/re.hpp 的内置线性时间 Pike 虚拟机
+// （Thompson NFA 编译为字节码）完成，对灾难性回溯（ReDoS）免疫；有界步数计数器
+// 再加最后一道安全上限。`re` 提供即时编译的静态便捷方法；`Pattern` 为预编译可复用
+// 匹配器；`Match` 为结果对象。库中 `$Program` 被忽略。
 //
 // Method signatures below carry their type constraints; the interpreter
 // enforces them at the call boundary (a wrong-typed argument yields a
@@ -19,15 +22,19 @@
 // 产生 "Argument type mismatch" 毒水，而非在 C++ 方法体深处崩溃）。
 
 $Re {
-    // Compile a pattern source string into a reusable Pattern.
-    // 把模式源字符串编译为可复用的 Pattern。
-    @compile[(pattern[std::String]) ~> (pat[re::Pattern]) { }];
-    @match[(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
-    @search[(pattern[std::String], text[std::String]) ~> (result[re::Match]) { }];
-    @findall[(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
-    @replace[(pattern[std::String], text[std::String], repl[std::String]) ~> (out[std::String]) { }];
-    @split[(pattern[std::String], text[std::String]) ~> (arr[std::Array]) { }];
-    @test[(pattern[std::String], text[std::String]) ~> (ok[std::Boolean]) { }];
+    // Compile a pattern source string into a reusable Pattern. An optional flags
+    // string ("i" case-insensitive, "m" multiline, "s" dotall) may be passed.
+    // 把模式源字符串编译为可复用的 Pattern。可传入可选 flags 串
+    // （"i" 忽略大小写、"m" 多行、"s" 点匹配换行）。
+    @compile[(pattern[std::String], flags[std::String]) ~> (pat[re::Pattern]) { }];
+    @escape[(s[std::String]) ~> (out[std::String]) { }];
+    @match[(pattern[std::String], text[std::String], flags[std::String]) ~> (result[re::Match]) { }];
+    @search[(pattern[std::String], text[std::String], flags[std::String]) ~> (result[re::Match]) { }];
+    @findall[(pattern[std::String], text[std::String], flags[std::String]) ~> (arr[std::Array]) { }];
+    @replace[(pattern[std::String], text[std::String], repl[std::String], flags[std::String]) ~> (out[std::String]) { }];
+    @replace_fn[(pattern[std::String], text[std::String], callback[behavior], flags[std::String]) ~> (out[std::String]) { }];
+    @split[(pattern[std::String], text[std::String], flags[std::String]) ~> (arr[std::Array]) { }];
+    @test[(pattern[std::String], text[std::String], flags[std::String]) ~> (ok[std::Boolean]) { }];
 }
 
 $Pattern {
@@ -37,6 +44,7 @@ $Pattern {
     @search[(text[std::String]) ~> (result[re::Match]) { }];
     @findall[(text[std::String]) ~> (arr[std::Array]) { }];
     @replace[(text[std::String], repl[std::String]) ~> (out[std::String]) { }];
+    @replace_fn[(text[std::String], callback[behavior]) ~> (out[std::String]) { }];
     @split[(text[std::String]) ~> (arr[std::Array]) { }];
     @test[(text[std::String]) ~> (ok[std::Boolean]) { }];
     // Reclaim the compiled pattern state immediately. / 立即回收已编译模式状态。

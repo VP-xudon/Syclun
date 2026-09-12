@@ -23,6 +23,18 @@
 
 $Hash {
     @sha256[(text[std::String]) ~> (digest[std::String]) { }];
+    @sha512[(text[std::String]) ~> (digest[std::String]) { }];
+    @sha1[(text[std::String]) ~> (digest[std::String]) { }];
+    // md5 is INSECURE — kept only for legacy interoperability. Prefer sha256.
+    // md5 不安全——仅保留以兼容旧系统。优先用 sha256。
+    @md5[(text[std::String]) ~> (digest[std::String]) { }];
+    @blake2b[(text[std::String]) ~> (digest[std::String]) { }];
     @crc32[(text[std::String]) ~> (checksum[std::Number]) { }];
     @fnv1a[(text[std::String]) ~> (digest[std::String]) { }];
+    @hmac[(algo[std::String], key[std::String], text[std::String]) ~> (digest[std::String]) { }];
+    @constant_time_equal[(a[std::String], b[std::String]) ~> (ok[std::Boolean]) { }];
+    @pbkdf2[(password[std::String], salt[std::String], iterations[std::Number], keylen[std::Number]) ~> (key[std::String]) { }];
+    @uuid_v4[() ~> (id[std::String]) { }];
+    @random_bytes[(n[std::Number]) ~> (bytes[std::String]) { }];
+    @hash_stream[(path[std::String]) ~> (digest[std::String]) { }];
 }

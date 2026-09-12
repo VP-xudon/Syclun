@@ -1,0 +1,96 @@
+&io;
+&structs;
+&file;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+
+        // ---- Queue / Stack contains + to_string ----
+        -(structs::Queue q);
+        q.push(-(std::Number n) << 10);
+        q.push(-(std::Number n) << 20);
+        q.push(-(std::Number n) << 30);
+        out << "Q contains 20? "; out << q.contains(-(std::Number n) << 20); out << "\n";   // true
+        out << "Q contains 99? "; out << q.contains(-(std::Number n) << 99); out << "\n";   // false
+        out << "Q to_string: "; out << q.to_string(); out << "\n";                          // [10, 20, 30]
+
+        -(structs::Stack s);
+        s.push(-(std::String k) << "a");
+        s.push(-(std::String k) << "b");
+        out << "S contains b? "; out << s.contains(-(std::String k) << "b"); out << "\n";    // true
+        out << "S to_string: "; out << s.to_string(); out << "\n";                           // [a, b]
+
+        // ---- Map entries + merge ----
+        -(structs::Map m);
+        m.put(-(std::String k) << "a", -(std::Number n) << 1);
+        m.put(-(std::String k) << "b", -(std::Number n) << 2);
+        out << "M entries: "; out << m.entries(); out << "\n";                              // [[a,1],[b,2]]
+        -(structs::Map m2);
+        m2.put(-(std::String k) << "c", -(std::Number n) << 3);
+        m.merge(m2);
+        out << "M after merge keys: "; out << m.keys(); out << "\n";                         // [a,b,c]
+
+        // ---- Graph tree decomposition ----
+        -(structs::Graph g);
+        g.add_node(-(std::Number n) << 1);
+        g.add_node(-(std::Number n) << 2);
+        g.add_node(-(std::Number n) << 3);
+        g.add_node(-(std::Number n) << 4);
+        g.add_edge(-(std::Number n) << 1, -(std::Number n) << 2);
+        g.add_edge(-(std::Number n) << 1, -(std::Number n) << 3);
+        g.add_edge(-(std::Number n) << 2, -(std::Number n) << 4);
+        out << "G is_tree? "; out << g.is_tree(); out << "\n";                              // true
+        g.root_tree(-(std::Number n) << 1);
+        out << "father of 2: "; out << g.get_father(-(std::Number n) << 2); out << "\n";    // 1
+        out << "kids of 1: "; out << g.get_kid(-(std::Number n) << 1); out << "\n";         // [2,3]
+        out << "lca(4,3): "; out << g.lca(-(std::Number n) << 4, -(std::Number n) << 3); out << "\n";  // 1
+        out << "depth of 4: "; out << g.tree_depth(-(std::Number n) << 4); out << "\n";     // 2
+        out << "subtree_size 1: "; out << g.subtree_size(-(std::Number n) << 1); out << "\n"; // 4
+        out << "heavy_child 1: "; out << g.heavy_child(-(std::Number n) << 1); out << "\n";  // 2
+        out << "tree_path(4,3): "; out << g.tree_path(-(std::Number n) << 4, -(std::Number n) << 3); out << "\n"; // [4,2,1,3]
+        out << "diameter: "; out << g.tree_diameter(); out << "\n";                          // [4,2,1,3]
+
+        // ---- Graph cycle / components / mst ----
+        -(structs::Graph cg);
+        cg.add_edge(-(std::Number n) << 1, -(std::Number n) << 2);
+        cg.add_edge(-(std::Number n) << 2, -(std::Number n) << 3);
+        cg.add_edge(-(std::Number n) << 3, -(std::Number n) << 1);   // cycle 1-2-3-1
+        out << "has_cycle? "; out << cg.has_cycle(); out << "\n";                         // true
+
+        -(structs::Graph mg);
+        mg.add_node(-(std::String k) << "x");
+        mg.add_node(-(std::String k) << "y");
+        mg.add_node(-(std::String k) << "z");
+        mg.add_edge(-(std::String k) << "x", -(std::String k) << "y", -(std::Number n) << 2);
+        mg.add_edge(-(std::String k) << "y", -(std::String k) << "z", -(std::Number n) << 1);
+        out << "MST: "; out << mg.mst(); out << "\n";   // [[z,y,1],[y,x,2]]
+
+        // disjoint components
+        -(structs::Graph comp);
+        comp.add_edge(-(std::Number n) << 1, -(std::Number n) << 2);
+        comp.add_edge(-(std::Number n) << 5, -(std::Number n) << 6);
+        out << "components: "; out << comp.connected_components(); out << "\n";  // [[1,2],[5,6]]
+
+        // ---- io format + write_bytes + ErrStream ----
+        -(std::Array args);
+        args.push_back(-(std::String s) << "Bob");
+        args.push_back(-(std::Number n) << 30);
+        out.format("FMT Hello {} age {}\n", args);
+        io::err << "ERRSTREAM_LINE_TO_STDERR\n";
+
+        // ---- file path helpers + atomic write + stat ----
+        -(file::File f);
+        f.open("smoke_test_out.txt");
+        out << "join: "; out << f.join("a", "b/c.txt"); out << "\n";
+        out << "basename: "; out << f.basename("/x/y.z"); out << "\n";   // y.z
+        out << "extname: "; out << f.extname("/x/y.z"); out << "\n";     // .z
+        out << "dirname: "; out << f.dirname("/x/y.z"); out << "\n";     // /x
+        f.write("hello");
+        out << "size after write: "; out << f.size(); out << "\n";       // 5
+        out << "exists? "; out << f.exists(); out << "\n";               // true
+        out << "is_file? "; out << f.is_file("smoke_test_out.txt"); out << "\n";  // true
+        out << "stat: "; out << f.stat(); out << "\n";
+        f.write_atomic("world!");
+        out << "read after atomic: "; out << f.read(); out << "\n";      // world!
+    }];
+}

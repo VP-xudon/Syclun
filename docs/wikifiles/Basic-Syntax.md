@@ -57,6 +57,7 @@ B << A;     # 与上式完全等价 / exactly equal to the above
 - `<<` 左向流、`>>` 右向流，语义相同。
 - 发送方先「公布」(`=:`)，接收方再「接收」(`:=`)；同类型间 `a << b` 就是赋值。
 - 向 `io::OStream` 写入（`out << v`）是输出动作，**不修改 `out` 自身**，所以 `out` 可声明为常数。
+- 没有标量值的对象（`out << p`）会显示其身份 `<类型 "变量名">`（如 `<Point "p">`）；若定义了零参 `@to_string`，则显示其返回内容。
 
 ---
 
@@ -152,20 +153,58 @@ A constraint is a checklist of "which methods an object must have". Declared wit
 
 ```text
 #Addable {
-    @+[(other) -> (result) {}];     # 只写签名，函数体留空 / signature only
+    @+[(other) -> (result)];     # 只写签名，以 ; 结束，不能带 {} 函数体 / signature only, ends with ;
 }
 
 [(a[Addable]) -> (r) { r << a.+(1); }]  # 参数必须满足 Addable / param must satisfy Addable
 ```
 
+- 约束方法签名**不能**带 `{}` 函数体——写 `@+[(other) -> (result) {}];` 是语法错误。约束只是一张「方法签名清单」，方法体对它没有意义。
 - `#Name [父约束]` 支持约束继承（`#Comparable [Addable] { … }`）。
-- 直接填类名当约束：`[(s[std::String]) -> () {}]` 要求方法签名与 `std::String` 一致。
-- `@` 表示「必须是行为」：`[(h[@]) -> () {}]`；`@` 后可跟行为签名做精确匹配。
+- 直接填类名当约束：`[(s[std::String]) -> ()]` 要求方法签名与 `std::String` 一致。
+- `@` 表示「必须是行为」：`[(h[@]) -> ()]`；`@` 后可跟行为签名做精确匹配。
 - 约束在**运行期**核对（按方法签名集合比对，不看参数名）。不满足立即抛 `ConstraintException`。
 
 ---
 
-## 9. 运行期注入（v1.31）/ Runtime injection
+## 9. 元组（Tuple）/ Tuples
+
+元组是语言内建的不可变值序列（`std::Tuple`），常用来承载多返回值。
+A tuple is the language's built-in immutable value sequence; it commonly carries multiple return values.
+
+**结构化解耦（接收多返回值）**：方法返回多个值时，可一次性拆给多个变量，按位置对应。
+**Structural decomposition (receiving multiple returns)**: unpack a multi-value return into several variables by position.
+
+```text
+$Math {
+    @divide[(a, b) -> (q, r) { q << a./(b); r << a.%(b); }];
+}
+-(Math m);
+-(std::Number q, std::Number r) << m.divide(10, 3);  # 全要 / take both
+-(std::Number q, _)        << m.divide(10, 3);         # 只要第一个 / first only
+```
+
+- 目标**少于**返回值项：尾部多余项被忽略（`-(q, _) << …` 等价于忽略后面的项）。
+- 目标**多于**返回值项：**报错**（`too few values to destructure into 'x'`）——值不够填。
+- Fewer targets than items → trailing items silently ignored. More targets than items → an error.
+
+**单元组实参自动展开**：多参数方法若只收到一个 `std::Tuple` 实参，解释器会在调用边界把它按位置展开成多个实参。
+**A single tuple argument auto-expands**: if a multi-parameter method is called with exactly one `std::Tuple`, it is expanded into several arguments by position.
+
+```text
+$Calc {
+    @sum[(a, b) -> (result) { result << a.+(b); }];
+}
+-(Calc c);
+-(std::Number s) << c.sum((3, 4));   # 等价于 c.sum(3, 4)，s = 7
+```
+
+- 元组项**少于**形参 → 报错；**多于**形参 → 尾部忽略。与解构的「忽略尾部、多则报错」一致。
+- Fewer tuple items than parameters → error; more → trailing items ignored.
+
+---
+
+## 10. 运行期注入 / Runtime injection
 
 对象构造后仍是活的：
 Objects stay alive after construction:
@@ -181,7 +220,7 @@ obj.#();                # 永久冻结 / freeze forever
 
 ---
 
-## 10. 错误 / Errors
+## 11. 错误 / Errors
 
 - 故障在**源头**抛出，以类 g++ 格式报告：`文件:行:列: error: 类型: 消息` + `^~~~` 插入符 + 完整执行栈。
 - 致命错误退出码为 `1`，所以 `synth bad.syn && cmd` 绝不会执行 `cmd`。

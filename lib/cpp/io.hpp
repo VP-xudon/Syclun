@@ -212,6 +212,152 @@ namespace rt_lib_io {
         );
     }
 
+    // ========================================================
+    // Extra I/O methods (industrialization audit §4.3).
+    // 追加 I/O 方法（工业化审计 §4.3）。
+    // ========================================================
+
+    // Format `fmt` substituting `{}` placeholders with display() of args[i].
+    // 把 fmt 中的 `{}` 依次替换为 args[i] 的 display()。
+    inline std::string format_str(
+        const std::string& fmt, const RuntimeObjectPtr& args
+    ) {
+        auto* aam = args ? rb::attributes_of(args) : nullptr;
+        std::size_t asz = aam ? rb::container_size(*aam) : 0;
+        std::size_t idx = 0;
+        std::string out;
+        for (std::size_t i = 0; i < fmt.size(); ++i) {
+            if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                if (idx < asz) {
+                    auto it = aam->find(rb::elem_key(idx));
+                    if (it != aam->end()) out += rb::display(it->second, 0);
+                }
+                ++idx; ++i;   // skip the '}'
+            } else {
+                out += fmt[i];
+            }
+        }
+        return out;
+    }
+
+    // Factory: a `push`-style sink writing to the given stream.
+    // 工厂：写向指定流的 push 式汇聚点。
+    inline rt_basic::Callable make_ostream_sink(
+        const std::string& mname, std::ostream& os, bool newline
+    ) {
+        return rb::native_method(
+            [&os, newline](
+                rt_basic::InstanceMap& /*env*/,
+                rt_basic::InstanceListPtr paras
+            ) {
+                if (paras) {
+                    for (const auto& item : *paras) os << rb::display(item);
+                }
+                if (newline) os << "\n";
+                return rb::empty_result();
+            },
+            rb::make_sign(mname, {{"value", "std::Object"}}, {}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+
+    inline rt_basic::Callable make_ostream_flush(std::ostream& os) {
+        return rb::native_method(
+            [&os](
+                rt_basic::InstanceMap& /*env*/,
+                rt_basic::InstanceListPtr /*paras*/
+            ) { os.flush(); return rb::empty_result(); },
+            rb::make_sign("flush", {}, {}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+
+    inline rt_basic::Callable make_ostream_format(std::ostream& os) {
+        return rb::native_method(
+            [&os](
+                rt_basic::InstanceMap& /*env*/,
+                rt_basic::InstanceListPtr paras
+            ) {
+                auto fmt = rb::string_of(rb::para_at(paras, 0));
+                if (!fmt) {
+                    return rb::list_of({rb::native_error(
+                        "format requires a format string")});
+                }
+                os << format_str(*fmt, rb::para_at(paras, 1));
+                return rb::empty_result();
+            },
+            rb::make_sign(
+                "format",
+                {{"fmt", "std::String"}, {"args", "std::Array"}}, {}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+
+    inline rt_basic::Callable make_ostream_write_bytes(std::ostream& os) {
+        return rb::native_method(
+            [&os](
+                rt_basic::InstanceMap& /*env*/,
+                rt_basic::InstanceListPtr paras
+            ) {
+                auto s = rb::string_of(rb::para_at(paras, 0));
+                if (!s) {
+                    return rb::list_of({rb::native_error(
+                        "write_bytes requires a String")});
+                }
+                os.write(s->data(), static_cast<std::streamsize>(s->size()));
+                return rb::empty_result();
+            },
+            rb::make_sign("write_bytes", {{"data", "std::String"}}, {}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+
+    // IStream.eof() ~> (ok) —— EOF predicate (no exception control flow).
+    // IStream.eof() ~> (ok) —— EOF 谓词（无需异常控制流）。
+    inline rt_basic::Callable method_IStream_eof() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                return rb::list_of({rb::make_boolean(std::cin.eof())});
+            },
+            rb::make_sign("eof", {}, {{"ok", "std::Boolean"}}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+    // IStream.read_all() ~> (text) —— slurp the rest of stdin.
+    // IStream.read_all() ~> (text) —— 读尽剩余标准输入。
+    inline rt_basic::Callable method_IStream_read_all() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                std::string all((
+                    std::istreambuf_iterator<char>(std::cin)),
+                    std::istreambuf_iterator<char>());
+                return rb::list_of({rb::make_string(all)});
+            },
+            rb::make_sign("read_all", {}, {{"text", "std::String"}}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+    // IStream.read(n) ~> (text) —— read up to n bytes.
+    // IStream.read(n) ~> (text) —— 读取至多 n 字节。
+    inline rt_basic::Callable method_IStream_read() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto n = rb::number_of(rb::para_at(paras, 0));
+                if (!n || *n < 0) {
+                    return rb::list_of({rb::native_error(
+                        "read requires a non-negative count")});
+                }
+                std::size_t count = static_cast<std::size_t>(*n);
+                std::string buf(count, '\0');
+                std::cin.read(&buf[0], static_cast<std::streamsize>(count));
+                buf.resize(static_cast<std::size_t>(std::cin.gcount()));
+                return rb::list_of({rb::make_string(buf)});
+            },
+            rb::make_sign("read", {{"n", "std::Number"}}, {{"text", "std::String"}}),
+            {true, false}, rt_basic::kConstBehavior
+        );
+    }
+
     inline void init_io_stdlib() {
         auto proto_o = std::make_shared<rt_basic::ClsProto>(
             ::stdRT.getcls("Object")
@@ -219,6 +365,13 @@ namespace rt_lib_io {
         proto_o->set_method(":=", method_OStream_receive());
         proto_o->set_method("push", method_OStream_push());
         proto_o->set_method("push_line", method_OStream_push_line());
+        // Diagnostics still land on stderr even when called on the stdout stream.
+        // 即便在 stdout 流上调用，诊断信息仍落到 stderr。
+        proto_o->set_method("err",       make_ostream_sink("err", std::cerr, false));
+        proto_o->set_method("err_line",  make_ostream_sink("err_line", std::cerr, true));
+        proto_o->set_method("flush",      make_ostream_flush(std::cout));
+        proto_o->set_method("format",     make_ostream_format(std::cout));
+        proto_o->set_method("write_bytes", make_ostream_write_bytes(std::cout));
 
         auto proto_i = std::make_shared<rt_basic::ClsProto>(
             ::stdRT.getcls("Object")
@@ -226,17 +379,34 @@ namespace rt_lib_io {
         proto_i->set_method("=:", method_IStream_publish());
         proto_i->set_method("get", method_IStream_get());
         proto_i->set_method("get_line", method_IStream_get_line());
+        proto_i->set_method("eof",      method_IStream_eof());
+        proto_i->set_method("read_all", method_IStream_read_all());
+        proto_i->set_method("read",     method_IStream_read());
+
+        // ErrStream — every method writes to stderr.
+        // ErrStream —— 所有方法均写向 stderr。
+        auto proto_err = std::make_shared<rt_basic::ClsProto>(
+            ::stdRT.getcls("Object")
+        );
+        proto_err->set_method("err",        make_ostream_sink("err", std::cerr, false));
+        proto_err->set_method("err_line",   make_ostream_sink("err_line", std::cerr, true));
+        proto_err->set_method("push",       make_ostream_sink("push", std::cerr, false));
+        proto_err->set_method("push_line",  make_ostream_sink("push_line", std::cerr, true));
+        proto_err->set_method("flush",      make_ostream_flush(std::cerr));
+        proto_err->set_method("format",     make_ostream_format(std::cerr));
+        proto_err->set_method("write_bytes", make_ostream_write_bytes(std::cerr));
 
         runtime::Prototypes p;
         // Register under the unqualified name; Prototypes::regcls stamps the
-        // authoritative type name "OStream" / "IStream" onto each prototype.
-        // Source written as io::OStream / io::IStream still resolves via the
-        // getcls "::" fallback.
+        // authoritative type name "OStream" / "IStream" / "ErrStream" onto each
+        // prototype. Source written as io::OStream / io::IStream / io::ErrStream
+        // still resolves via the getcls "::" fallback.
         // 以非限定名登记；Prototypes::regcls 把权威类型名 "OStream" /
-        // "IStream" 烙印到原型上。源码写 io::OStream / io::IStream 仍经
-        // getcls 的 "::" 回退解析。
+        // "IStream" / "ErrStream" 烙印到原型上。源码写 io::OStream /
+        // io::IStream / io::ErrStream 仍经 getcls 的 "::" 回退解析。
         p.regcls("OStream", proto_o);
         p.regcls("IStream", proto_i);
+        p.regcls("ErrStream", proto_err);
         ::stdRT.add_protos(p);
     }
 

@@ -19,10 +19,15 @@
 // 每个方向都支持两种调用风格：
 //   output:  io::out << value;  (flow -> `:=` receive)  OR  io::out.push(value);
 //            io::out.push_line(value);  // appends a newline / 自带换行
+//            io::out.format("hi {}", [name]);  // positional `{}` substitution
+//            io::out.write_bytes(raw);  // raw bytes, no encoding
 //   input:   x << io::in;  i.e.  x =: io::in;  (flow -> `=:` publish)
 //            OR  x << io::in.get();
 //            io::in.get();      // one whitespace-delimited word / 一个词
 //            io::in.get_line(); // one whole line / 一整行
+//            io::in.read_all(); // the rest of stdin / 剩余全部
+//            io::in.read(n);    // up to n bytes / 至多 n 字节
+//            io::in.eof();      // predicate, no exception control flow
 
 $OStream {
     // Receive (publish) a value of any type and write it to standard output
@@ -36,6 +41,21 @@ $OStream {
 
     // Method-form output that appends a newline. 方法式输出并换行。
     @push_line[(value[std::Object]) ~> () { }];
+
+    // Diagnostics: write to stderr even when called on the stdout stream.
+    // 诊断：即便在 stdout 流上调用也写向 stderr。
+    @err[(value[std::Object]) ~> () { }];
+    @err_line[(value[std::Object]) ~> () { }];
+
+    // Flush the underlying stream. / 冲刷底层流。
+    @flush[() ~> () { }];
+
+    // printf-style positional substitution of `{}` with display(args[i]).
+    // `{}` 按位置替换为 display(args[i]) 的 printf 式格式化。
+    @format[(fmt[std::String], args[std::Array]) ~> () { }];
+
+    // Write raw bytes without encoding conversion. / 写原始字节，不做编码转换。
+    @write_bytes[(data[std::String]) ~> () { }];
 }
 
 $IStream {
@@ -50,6 +70,27 @@ $IStream {
 
     // Method-form input: read a whole line. 方法式输入：读取一整行。
     @get_line[() ~> (result[std::String]) { }];
+
+    // EOF predicate — avoids exception-based control flow. / EOF 谓词。
+    @eof[() ~> (ok[std::Boolean]) { }];
+
+    // Slurp the rest of stdin. / 读尽剩余标准输入。
+    @read_all[() ~> (text[std::String]) { }];
+
+    // Read up to n bytes. / 读取至多 n 字节。
+    @read[(n[std::Number]) ~> (text[std::String]) { }];
+}
+
+// ErrStream — every method writes to stderr (mirror of OStream).
+// ErrStream —— 所有方法均写向 stderr（OStream 的镜像）。
+$ErrStream {
+    @err[(value[std::Object]) ~> () { }];
+    @err_line[(value[std::Object]) ~> () { }];
+    @push[(value[std::Object]) ~> () { }];
+    @push_line[(value[std::Object]) ~> () { }];
+    @flush[() ~> () { }];
+    @format[(fmt[std::String], args[std::Array]) ~> () { }];
+    @write_bytes[(data[std::String]) ~> () { }];
 }
 
 // ------------------------------------------------------------
@@ -69,3 +110,4 @@ $IStream {
 // ------------------------------------------------------------
 -(io::OStream! io::out);
 -(io::IStream! io::in);
+-(io::ErrStream! io::err);

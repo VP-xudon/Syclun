@@ -26,6 +26,11 @@ $Reactor {
     @spawn[(task[@]) ~> (handle[async::Task]) { }];
     @submit[(task[@]) ~> (handle[async::Task]) { }];
     @async_sleep[(ms[std::Number]) ~> (handle[async::Task]) { }];
+    // tasks: an Array of async::Task handles.
+    // tasks：async::Task 句柄的数组。
+    @await_all[(tasks[std::Array]) ~> (results[std::Tuple]) { }];
+    @race[(tasks[std::Array]) ~> (result[std::Tuple]) { }];
+    @all_settled[(tasks[std::Array]) ~> (results[std::Tuple]) { }];
 }
 
 $Task {
@@ -33,6 +38,9 @@ $Task {
     @result[() ~> (result[std::Tuple]) { }];
     @cancel[() -> () { }];
     @is_done[() ~> (ok[std::Boolean]) { }];
+    // State: one of pending|running|done|failed|cancelled.
+    // 状态：pending|running|done|failed|cancelled 之一。
+    @state[() ~> (name[std::String]) { }];
     // Reclaim the task registry entry immediately (cancels a running thread).
     // 立即回收任务注册表条目（会取消仍在运行的线程）。
     @dispose[() ~> () { }];

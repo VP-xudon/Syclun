@@ -1,0 +1,109 @@
+&io;
+&maths;
+&hash;
+&system;
+&re;
+&async;
+&assert;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        out << "===== maths =====\n";
+        out << "clamp(5,0,3) = "; out << maths::math.clamp(5.0, 0.0, 3.0); out << "\n";          // 3
+        out << "lerp(0,10,0.5) = "; out << maths::math.lerp(0.0, 10.0, 0.5); out << "\n";        // 5
+        out << "sign(-3) = "; out << maths::math.sign(-3.0); out << "\n";                         // -1
+        out << "gcd(12,18) = "; out << maths::math.gcd(12.0, 18.0); out << "\n";                  // 6
+        out << "lcm(4,6) = "; out << maths::math.lcm(4.0, 6.0); out << "\n";                     // 12
+        out << "factorial(5) = "; out << maths::math.factorial(5.0); out << "\n";                 // 120
+        out << "comb(5,2) = "; out << maths::math.comb(5.0, 2.0); out << "\n";                   // 10
+        out << "is_nan(sqrt(-1)) = "; out << maths::math.is_nan(maths::math.sqrt(-1.0)); out << "\n";  // true
+        out << "is_finite(1.0) = "; out << maths::math.is_finite(1.0); out << "\n";               // true
+        out << "degrees(pi) = "; out << maths::math.degrees(maths::math.pi()); out << "\n";       // 180
+        out << "radians(180) = "; out << maths::math.radians(180.0); out << "\n";                 // ~pi
+        // choice / shuffle (random) — just exercise them
+        -(std::Array arr);
+        arr.push_back(-(std::Number n) << 1);
+        arr.push_back(-(std::Number n) << 2);
+        arr.push_back(-(std::Number n) << 3);
+        out << "choice = "; out << maths::math.choice(arr); out << "\n";
+        out << "shuffle = "; out << maths::math.shuffle(arr); out << "\n";
+
+        out << "===== hash =====\n";
+        -(hash::Hash h);
+        out << "sha256(abc) = "; out << h.sha256("abc"); out << "\n";   // ba7816bf...0015ad
+        out << "sha1(abc) = "; out << h.sha1("abc"); out << "\n";       // a9993e36...0d89d
+        out << "sha512(abc) = "; out << h.sha512("abc"); out << "\n";
+        out << "md5(abc) = "; out << h.md5("abc"); out << "\n";          // 900150983cd24fb0d6963f7d28e17f72
+        out << "blake2b(abc) len = "; out << h.blake2b("abc").length(); out << "\n";  // 128 hex
+        out << "crc32(abc) = "; out << h.crc32("abc"); out << "\n";
+        out << "fnv1a(abc) = "; out << h.fnv1a("abc"); out << "\n";
+        out << "hmac(sha256,'key','msg') = "; out << h.hmac("sha256", "key", "msg"); out << "\n";
+        out << "constant_time_equal('a','a') = "; out << h.constant_time_equal("a", "a"); out << "\n";  // true
+        out << "pbkdf2 len = "; out << h.pbkdf2("pw", "salt", 1000.0, 32.0).length(); out << "\n";  // 64 hex
+        out << "uuid_v4 = "; out << h.uuid_v4(); out << "\n";
+
+        out << "===== system =====\n";
+        -(system::System sys);
+        out << "os_name = "; out << sys.os_name(); out << "\n";
+        out << "arch = "; out << sys.arch(); out << "\n";
+        out << "monotonic = "; out << sys.monotonic(); out << "\n";
+        out << "environ size = "; out << sys.environ().size(); out << "\n";
+        out << "argv size = "; out << sys.argv().size(); out << "\n";
+        sys.setenv("SMOKE_TEST", "1");
+        out << "getenv(SMOKE_TEST) = "; out << sys.getenv("SMOKE_TEST"); out << "\n";  // 1
+        sys.unsetenv("SMOKE_TEST");
+
+        out << "===== re =====\n";
+        -(re::Re r);
+        out << "escape('a.b') = "; out << r.escape("a.b"); out << "\n";   // a\.b
+        -(re::Match m) << r.match("(a)(b)", "ab");
+        out << "match.matched = "; out << m.matched; out << "\n";          // true
+        out << "match.text = "; out << m.text; out << "\n";                // ab
+        out << "match.groups = "; out << m.groups; out << "\n";            // [a,b]
+        out << "findall('(.)','abc') = "; out << r.findall("(.)", "abc"); out << "\n";  // [a,b,c]
+        out << "replace = "; out << r.replace("(.)", "abc", "X"); out << "\n";          // XXX
+        out << "replace_fn = "; out << r.replace_fn("(.)", "abc",
+            [(mt) ~> (x) { x << mt.text; }]); out << "\n";                  // abc
+
+        out << "===== async =====\n";
+        -(async::Reactor r2);
+        -(async::Task t) << r2.spawn([() ~> (x) { x << 7; }]);
+        out << "spawn done? "; out << t.is_done(); out << "\n";            // likely false
+        -(std::Tuple ta) << t.await();
+        out << "spawn value = "; out << ta.get(1).get(0); out << "\n";     // 7
+        out << "task state = "; out << t.state(); out << "\n";             // done
+        // await_all
+        -(std::Array tasks);
+        tasks.push_back(r2.spawn([() ~> (x) { x << 1; }]));
+        tasks.push_back(r2.spawn([() ~> (x) { x << 2; }]));
+        -(std::Tuple all) << r2.await_all(tasks);
+        out << "await_all size = "; out << all.size(); out << "\n";        // 2
+        out << "await_all[0] val = "; out << all.get(0).get(1).get(0); out << "\n";  // 1
+        // race
+        -(std::Array tasks2);
+        tasks2.push_back(r2.spawn([() ~> (x) { x << 10; }]));
+        tasks2.push_back(r2.spawn([() ~> (x) { x << 20; }]));
+        -(std::Tuple rac) << r2.race(tasks2);
+        out << "race status = "; out << rac.get(0); out << "\n";           // ok
+        out << "race val = "; out << rac.get(1).get(0); out << "\n";       // 10 or 20
+        // all_settled
+        -(std::Array tasks3);
+        tasks3.push_back(r2.spawn([() ~> (x) { x << 100; }]));
+        tasks3.push_back(r2.spawn([() ~> (x) { x << 200; }]));
+        -(std::Tuple as) << r2.all_settled(tasks3);
+        out << "all_settled size = "; out << as.size(); out << "\n";       // 2
+
+        out << "===== assert =====\n";
+        -(assert::Assert a);
+        out << "equal(1,1) = "; out << a.equal(-(std::Number n) << 1, -(std::Number n) << 1); out << "\n";   // true
+        out << "is_true(true) = "; out << a.is_true(-(std::Boolean b) << true); out << "\n";                  // true
+        out << "near(1.0,1.01,0.1) = "; out << a.near(1.0, 1.01, 0.1); out << "\n";                        // true
+        -(assert::Suite s) << a.suite("demo");
+        a.test(s, "adds", [() ~> () { -(std::Number x) << 1; -(std::Number y) << 2; }]);
+        a.test(s, "always", [() ~> () { }]);
+        -(std::Array results) << a.run(s);
+        out << "suite results size = "; out << results.size(); out << "\n";   // 2
+        out << "TAP:\n"; out << a.tap(s); out << "\n";
+        out << "JSON: "; out << a.json(s); out << "\n";
+    }];
+}

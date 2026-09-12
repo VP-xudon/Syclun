@@ -38,7 +38,47 @@ $File {
     // Write many lines: elements joined by '\n' and written in one shot.
     // 写入多行：元素以 '\n' 连接后一次性写入。
     @write_lines[(lines[std::Array]) ~> () { }];
+    // exists() uses fs::exists — distinct from "readable".
+    // exists() 使用 fs::exists——与"可读"区分开来。
     @exists[() ~> (ok[std::Boolean]) { }];
     @remove[() ~> (ok[std::Boolean]) { }];
     @size[() ~> (sz[std::Number]) { }];
+
+    // ---- path helpers (take a path string, return a result string) ----
+    // 路径助手（取路径字符串，返回结果字符串）
+    @join[(base[std::String], part[std::String]) ~> (p[std::String]) { }];
+    @basename[(path[std::String]) ~> (name[std::String]) { }];
+    @dirname[(path[std::String]) ~> (dir[std::String]) { }];
+    @extname[(path[std::String]) ~> (ext[std::String]) { }];
+    @absolute[(path[std::String]) ~> (p[std::String]) { }];
+    @normalize[(path[std::String]) ~> (p[std::String]) { }];
+
+    // ---- type / access predicates ----
+    // 类型与访问谓词
+    @is_file[(path[std::String]) ~> (ok[std::Boolean]) { }];
+    @is_dir[(path[std::String]) ~> (ok[std::Boolean]) { }];
+    @is_readable[(path[std::String]) ~> (ok[std::Boolean]) { }];
+    @is_writable[(path[std::String]) ~> (ok[std::Boolean]) { }];
+
+    // ---- directory operations ----
+    // 目录操作
+    @mkdir[(path[std::String]) ~> (ok[std::Boolean]) { }];
+    @rmdir[(path[std::String]) ~> (ok[std::Boolean]) { }];
+    @list_dir[(path[std::String]) ~> (arr[std::Array]) { }];
+    @walk[(path[std::String]) ~> (arr[std::Array]) { }];
+
+    // ---- file operations ----
+    // 文件操作
+    @copy_to[(dst[std::String]) ~> (ok[std::Boolean]) { }];
+    @move_to[(dst[std::String]) ~> (ok[std::Boolean]) { }];
+    @rename[(dst[std::String]) ~> (ok[std::Boolean]) { }];
+
+    // ---- metadata + safe write ----
+    // 元数据与原子写
+    // stat() returns a Dict with size / mtime / mode / is_dir.
+    // stat() 返回含 size / mtime / mode / is_dir 的 Dict。
+    @stat[() ~> (info[std::Dict]) { }];
+    // write_atomic: temp file + rename, so a crash leaves the original intact.
+    // write_atomic：临时文件 + rename，崩溃时不损坏原文件。
+    @write_atomic[(text[std::String]) ~> (ok[std::Boolean]) { }];
 }

@@ -926,9 +926,67 @@ namespace rt_builtin {
                 return display_sequence(*attributes, depth);
             }
             auto found = attributes->find(VALUE_KEY);
-            return found != attributes->end()
-                ? display(found->second, depth + 1)
-                : "<object " + object->selfname + ">";
+            if (found != attributes->end()) {
+                return display(found->second, depth + 1);
+            }
+            // Object with no scalar value: prefer a user-provided display method
+            // (`to_string`) whose published value is a std::Tuple — its first
+            // element is shown (the "published tuple's first item"). Otherwise
+            // fall back to `<TypeName "varName">` so the object still names
+            // itself by the variable that holds it. 无标量值的对象：优先采用
+            // 用户提供的显示方法 `to_string`（公布的元组首项被展示）；否则回退到
+            // `<类型名 "变量名">`，使对象仍以持有它的变量自报家门。
+            if (auto* cls = dynamic_cast<runtime::RuntimeClass*>(object.get())) {
+                auto& methods = cls->get_methods();
+                auto it = methods.find("to_string");
+                if (it != methods.end()
+                        && it->second.get_sign().inpara.empty()) {
+                    auto res = cls->call_method(
+                        "to_string", empty_result());
+                    if (res && !res->empty() && (*res)[0]) {
+                        // Only use the to_string result when it actually carries
+                        // a displayable value. A 0-arg to_string whose output
+                        // parameter failed to capture a composite value (e.g. a
+                        // bare `-> (out)` output that cannot hold a Tuple)
+                        // returns an empty Object — in that case fall through to
+                        // the `<Type "name">` fallback instead of printing
+                        // "<Object>". 仅当 to_string 确实给出了可显示值时才采用；
+                        // 若其输出参数未能承载复合值（例如裸名 `-> (out)` 无法装下
+                        // 元组）而返回一个空对象，则回落到 `<类型 "名">`，避免误显
+                        // "<Object>"。
+                        bool usable = true;
+                        if (auto* rc = dynamic_cast<runtime::RuntimeClass*>(
+                                (*res)[0].get())) {
+                            auto* ra = attributes_of((*res)[0]);
+                            bool hasContent = ra
+                                && (ra->count(VALUE_KEY)
+                                       || ra->count(SIZE_KEY));
+                            bool hasOwnToString = ra
+                                && ra->find("to_string") != ra->end();
+                            if (!hasContent && !hasOwnToString) {
+                                usable = false;
+                            }
+                        }
+                        if (usable) {
+                            return display((*res)[0], depth + 1);
+                        }
+                    }
+                }
+            }
+            // The type name shown should be the object's prototype name
+            // (e.g. "Point"), never the variable name that vardef may have
+            // clobbered into selfname. 显示所用的类型名取原型名（如 "Point"），
+            // 而非 vardef 可能写入 selfname 的变量名。
+            std::string typeName = object->selfname;
+            if (auto* cls2 = dynamic_cast<runtime::RuntimeClass*>(object.get())) {
+                if (cls2->get_prototype()) {
+                    typeName = cls2->get_prototype()->name;
+                }
+            }
+            if (!object->bound_name.empty()) {
+                return "<" + typeName + " \"" + object->bound_name + "\">";
+            }
+            return "<" + typeName + ">";
         }
         const std::string tag = capsule_tag(object);
         if (tag == "num") {

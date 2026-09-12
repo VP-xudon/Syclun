@@ -29,6 +29,9 @@ $Queue {
     @empty[() ~> (ok[std::Boolean]) { }];
     @clear[() ~> () { }];
     @to_array[() ~> (arr[std::Array]) { }];
+    // Membership test + display string ("[a, b, c]"). / 成员判定 + 显示串。
+    @contains[(item[std::Object]) ~> (ok[std::Boolean]) { }];
+    @to_string[() ~> (s[std::String]) { }];
     // Reclaim the native queue state immediately (otherwise it lingers until
     // the object is collected). / 立即回收原生队列状态（否则滞留至对象被回收）。
     @dispose[() ~> () { }];
@@ -42,6 +45,9 @@ $Stack {
     @empty[() ~> (ok[std::Boolean]) { }];
     @clear[() ~> () { }];
     @to_array[() ~> (arr[std::Array]) { }];
+    // Membership test + display string ("[a, b, c]"). / 成员判定 + 显示串。
+    @contains[(item[std::Object]) ~> (ok[std::Boolean]) { }];
+    @to_string[() ~> (s[std::String]) { }];
     // Reclaim the native stack state immediately. / 立即回收原生栈状态。
     @dispose[() ~> () { }];
 }
@@ -80,6 +86,12 @@ $Map {
     // 对象实例均不碰撞；`keys` 返回【原始】键对象（保持类型）。
     @keys[() ~> (arr[std::Array]) { }];
     @values[() ~> (arr[std::Array]) { }];
+    // Insertion-ordered key→value pairs as Array of [key, value].
+    // 插入序的键值对（Array of [key, value]）。
+    @entries[() ~> (arr[std::Array]) { }];
+    // Merge another Map's entries into this one (existing keys kept).
+    // 将另一 Map 的条目并入本表（已存在的键保留）。
+    @merge[(other[std::Object]) ~> () { }];
     @size[() ~> (n[std::Number]) { }];
     @empty[() ~> (ok[std::Boolean]) { }];
     @clear[() ~> () { }];
@@ -100,6 +112,30 @@ $Graph {
     @shortest_path[(start[std::Object], goal[std::Object]) ~> (arr[std::Array]) { }];
     // Total weight along the shortest path. / 最短路径的总权重。
     @shortest_distance[(start[std::Object], goal[std::Object]) ~> (w[std::Number]) { }];
+    // Directed/undirected toggle (default undirected). / 有向/无向开关（默认无向）。
+    @directed[(value[std::Boolean]) ~> (ok[std::Boolean]) { }];
+    // Cycle detection (honours the directed flag). / 环检测（遵循有向标志）。
+    @has_cycle[() ~> (ok[std::Boolean]) { }];
+    // Kahn topological order (requires directed=true). / 拓扑序（需有向图）。
+    @topological_sort[() ~> (arr[std::Array]) { }];
+    // Connected components as Array of Arrays of node ids. / 连通分量。
+    @connected_components[() ~> (arr[std::Array]) { }];
+    // Kruskal minimum spanning tree (Array of [u, v, w]). / Kruskal 最小生成树。
+    @mst[() ~> (arr[std::Array]) { }];
+    // True when undirected, connected, edges == nodes-1, acyclic. / 是否为树。
+    @is_tree[() ~> (ok[std::Boolean]) { }];
+    // --- algorithmic-competition tree API (build over the BFS spanning tree) ---
+    // 算法竞赛风格树 API（基于 BFS 生成树构建）：
+    @root_tree[(root[std::Object]) ~> () { }];
+    @get_father[(node[std::Object]) ~> (father[std::Object]) { }];
+    @get_kid[(node[std::Object]) ~> (arr[std::Array]) { }];
+    @lca[(a[std::Object], b[std::Object]) ~> (node[std::Object]) { }];
+    @tree_depth[(node[std::Object]) ~> (d[std::Number]) { }];
+    @subtree_size[(node[std::Object]) ~> (n[std::Number]) { }];
+    @heavy_child[(node[std::Object]) ~> (child[std::Object]) { }];
+    @chain_top[(node[std::Object]) ~> (top[std::Object]) { }];
+    @tree_path[(a[std::Object], b[std::Object]) ~> (arr[std::Array]) { }];
+    @tree_diameter[() ~> (arr[std::Array]) { }];
     // Reclaim the native graph state immediately. / 立即回收原生图状态。
     @dispose[() ~> () { }];
 }

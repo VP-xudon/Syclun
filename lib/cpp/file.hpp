@@ -34,8 +34,12 @@
 #include <fstream>
 #include <sstream>
 #include <cstdio>
+#include <filesystem>
+#include <chrono>
 
 #include "../../src/builtin.hpp"   // reuse the shared runtime + helper API
+
+namespace fs = std::filesystem;
 
 namespace rt_lib_file {
 
@@ -43,6 +47,19 @@ namespace rt_lib_file {
     using runtime::RuntimeObjectPtr;
     using runtime::RuntimeClass;
     namespace rb = rt_builtin;
+
+    // Build an Array runtime object from a vector.
+    // 由 vector 构造 Array 运行时对象。
+    inline RuntimeObjectPtr build_array(const std::vector<RuntimeObjectPtr>& items) {
+        auto arr = ::stdRT.make("Array");
+        auto* cls = dynamic_cast<RuntimeClass*>(arr.get());
+        auto& am = cls->get_attributes();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            am[rb::elem_key(i)] = items[i];
+        }
+        rb::set_container_size(am, items.size());
+        return arr;
+    }
 
     // ---- native methods / 原生方法 ----
 
@@ -231,17 +248,354 @@ namespace rt_lib_file {
         );
     }
 
-    // file.exists() ~> (ok) —— true when the recorded path is readable.
-    // file.exists() ~> (ok) —— 记录路径可读时为 true。
+    // file.exists() ~> (ok) —— true when the recorded path exists on disk.
+    // Distinct from "readable": a file can exist yet be unreadable, or a
+    // directory can exist. Uses fs::exists (D4-adjacent fix).
+    // file.exists() ~> (ok) —— 记录路径在磁盘上存在时为 true。
+    // 与"可读"不同：文件可能存在却不可读，目录也可能存在。使用 fs::exists。
     inline rt_basic::Callable method_file_exists() {
         return rb::native_method(
             [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
                 auto path = rb::string_of(env["path"]);
-                bool ok = path && !path->empty()
-                       && static_cast<bool>(std::ifstream(*path));
+                bool ok = path && !path->empty() && fs::exists(*path);
                 return rb::list_of({rb::make_boolean(ok)});
             },
             rb::make_sign("exists", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // ========================================================
+    // Extra file methods (industrialization audit §4.4).
+    // 追加文件方法（工业化审计 §4.4）。
+    // ========================================================
+
+    // ---- pure path helpers / 纯路径助手（取 path 字符串，返回结果字符串）----
+    inline rt_basic::Callable method_file_join() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto a = rb::string_of(rb::para_at(paras, 0));
+                auto b = rb::string_of(rb::para_at(paras, 1));
+                if (!a || !b) {
+                    return rb::list_of({rb::native_error("join requires two path strings")});
+                }
+                return rb::list_of({rb::make_string(
+                    (fs::path(*a) / *b).generic_string())});
+            },
+            rb::make_sign("join",
+                {{"base", "std::String"}, {"part", "std::String"}},
+                {{"p", "std::String"}})
+        );
+    }
+    inline rt_basic::Callable method_file_basename() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("basename requires a path")});
+                return rb::list_of({rb::make_string(
+                    fs::path(*p).filename().generic_string())});
+            },
+            rb::make_sign("basename", {{"path", "std::String"}}, {{"name", "std::String"}})
+        );
+    }
+    inline rt_basic::Callable method_file_dirname() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("dirname requires a path")});
+                return rb::list_of({rb::make_string(
+                    fs::path(*p).parent_path().generic_string())});
+            },
+            rb::make_sign("dirname", {{"path", "std::String"}}, {{"dir", "std::String"}})
+        );
+    }
+    inline rt_basic::Callable method_file_extname() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("extname requires a path")});
+                return rb::list_of({rb::make_string(
+                    fs::path(*p).extension().generic_string())});
+            },
+            rb::make_sign("extname", {{"path", "std::String"}}, {{"ext", "std::String"}})
+        );
+    }
+    inline rt_basic::Callable method_file_absolute() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("absolute requires a path")});
+                std::error_code ec;
+                auto ap = fs::absolute(*p, ec);
+                return rb::list_of({rb::make_string(ap.generic_string())});
+            },
+            rb::make_sign("absolute", {{"path", "std::String"}}, {{"p", "std::String"}})
+        );
+    }
+    inline rt_basic::Callable method_file_normalize() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("normalize requires a path")});
+                std::error_code ec;
+                auto np = fs::weakly_canonical(*p, ec);
+                if (ec) np = fs::path(*p).lexically_normal();
+                return rb::list_of({rb::make_string(np.generic_string())});
+            },
+            rb::make_sign("normalize", {{"path", "std::String"}}, {{"p", "std::String"}})
+        );
+    }
+
+    // ---- existence / type predicates / 存在性与类型谓词 ----
+    inline rt_basic::Callable method_file_is_file() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("is_file requires a path")});
+                std::error_code ec;
+                bool ok = fs::is_regular_file(*p, ec);
+                return rb::list_of({rb::make_boolean(ok)});
+            },
+            rb::make_sign("is_file", {{"path", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_is_dir() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("is_dir requires a path")});
+                std::error_code ec;
+                bool ok = fs::is_directory(*p, ec);
+                return rb::list_of({rb::make_boolean(ok)});
+            },
+            rb::make_sign("is_dir", {{"path", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_is_readable() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("is_readable requires a path")});
+                std::ifstream fin(*p);
+                return rb::list_of({rb::make_boolean(static_cast<bool>(fin))});
+            },
+            rb::make_sign("is_readable", {{"path", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_is_writable() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("is_writable requires a path")});
+                std::error_code ec;
+                auto s = fs::status(*p, ec);
+                if (ec || !fs::exists(s)) {
+                    // Non-existent: test the parent directory's writability.
+                    // 不存在：测父目录是否可写。
+                    auto ps = fs::status(fs::path(*p).parent_path(), ec);
+                    bool ok = !ec && ((ps.permissions() & fs::perms::owner_write)
+                                      != fs::perms::none);
+                    return rb::list_of({rb::make_boolean(ok)});
+                }
+                bool ok = (s.permissions() & fs::perms::owner_write) != fs::perms::none;
+                return rb::list_of({rb::make_boolean(ok)});
+            },
+            rb::make_sign("is_writable", {{"path", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // ---- directory operations / 目录操作 ----
+    inline rt_basic::Callable method_file_mkdir() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("mkdir requires a path")});
+                std::error_code ec;
+                bool ok = fs::create_directories(*p, ec);
+                return rb::list_of({rb::make_boolean(!ec && ok)});
+            },
+            rb::make_sign("mkdir", {{"path", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_rmdir() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("rmdir requires a path")});
+                std::error_code ec;
+                bool ok = fs::remove(*p, ec);   // single entry; fails on non-empty
+                return rb::list_of({rb::make_boolean(!ec && ok)});
+            },
+            rb::make_sign("rmdir", {{"path", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_list_dir() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("list_dir requires a path")});
+                std::vector<RuntimeObjectPtr> out;
+                std::error_code ec;
+                for (auto& e : fs::directory_iterator(*p, ec)) {
+                    out.push_back(rb::make_string(e.path().filename().generic_string()));
+                }
+                if (ec) return rb::list_of({rb::native_error(
+                    "list_dir: " + ec.message())});
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("list_dir", {{"path", "std::String"}}, {{"arr", "std::Array"}})
+        );
+    }
+    inline rt_basic::Callable method_file_walk() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(rb::para_at(paras, 0));
+                if (!p) return rb::list_of({rb::native_error("walk requires a path")});
+                std::vector<RuntimeObjectPtr> out;
+                std::error_code ec;
+                for (auto& e : fs::recursive_directory_iterator(*p, ec)) {
+                    out.push_back(rb::make_string(e.path().generic_string()));
+                }
+                if (ec) return rb::list_of({rb::native_error(
+                    "walk: " + ec.message())});
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("walk", {{"path", "std::String"}}, {{"arr", "std::Array"}})
+        );
+    }
+
+    // ---- file operations / 文件操作 ----
+    inline rt_basic::Callable method_file_copy_to() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto dst = rb::string_of(rb::para_at(paras, 0));
+                auto src = rb::string_of(env["path"]);
+                if (!dst) return rb::list_of({rb::native_error("copy_to requires a destination")});
+                if (!src || src->empty()) {
+                    return rb::list_of({rb::native_error("copy_to: no source path set")});
+                }
+                std::error_code ec;
+                fs::copy_file(*src, *dst, fs::copy_options::overwrite_existing, ec);
+                return rb::list_of({rb::make_boolean(!ec)});
+            },
+            rb::make_sign("copy_to", {{"dst", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_move_to() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto dst = rb::string_of(rb::para_at(paras, 0));
+                auto src = rb::string_of(env["path"]);
+                if (!dst) return rb::list_of({rb::native_error("move_to requires a destination")});
+                if (!src || src->empty()) {
+                    return rb::list_of({rb::native_error("move_to: no source path set")});
+                }
+                std::error_code ec;
+                fs::rename(*src, *dst, ec);
+                return rb::list_of({rb::make_boolean(!ec)});
+            },
+            rb::make_sign("move_to", {{"dst", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+    inline rt_basic::Callable method_file_rename() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto dst = rb::string_of(rb::para_at(paras, 0));
+                auto src = rb::string_of(env["path"]);
+                if (!dst) return rb::list_of({rb::native_error("rename requires a destination")});
+                if (!src || src->empty()) {
+                    return rb::list_of({rb::native_error("rename: no source path set")});
+                }
+                std::error_code ec;
+                fs::rename(*src, *dst, ec);
+                return rb::list_of({rb::make_boolean(!ec)});
+            },
+            rb::make_sign("rename", {{"dst", "std::String"}}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // file.stat() ~> (Dict) —— size / mtime / mode / is_dir.
+    // file.stat() ~> (Dict) —— 大小 / 修改时间 / 权限模式 / 是否目录。
+    inline rt_basic::Callable method_file_stat() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                auto p = rb::string_of(env["path"]);
+                if (!p || p->empty()) {
+                    return rb::list_of({rb::native_error("file.stat: no path set")});
+                }
+                std::error_code ec;
+                auto s = fs::status(*p, ec);
+                if (ec) return rb::list_of({rb::native_error(
+                    "file.stat: " + ec.message())});
+                auto d = rb::make_dict();
+                auto* cls = dynamic_cast<runtime::RuntimeClass*>(d.get());
+                auto& a = cls->get_attributes();
+                auto put = [&](const std::string& k, RuntimeObjectPtr v) {
+                    auto keyObj = rb::make_string(k);
+                    std::string slot = rb::DICT_VALPRE + rb::encode_key(keyObj);
+                    a[rb::DICT_KEYPRE + slot.substr(3)] = keyObj;
+                    a[slot] = v;
+                };
+                std::int64_t sz = 0;
+                if (fs::is_regular_file(s)) {
+                    sz = static_cast<std::int64_t>(fs::file_size(*p, ec));
+                    if (ec) sz = 0;
+                }
+                auto ftime = fs::last_write_time(*p, ec);
+                double mtime = 0.0;
+                if (!ec) {
+                    auto dur = ftime.time_since_epoch();
+                    mtime = static_cast<double>(
+                        std::chrono::duration_cast<std::chrono::seconds>(dur).count());
+                }
+                std::uintmax_t mode = static_cast<std::uintmax_t>(s.permissions());
+                put("size",   rb::make_int(sz));
+                put("mtime",  rb::make_number(mtime));
+                put("mode",   rb::make_int(static_cast<std::int64_t>(mode)));
+                put("is_dir", rb::make_boolean(fs::is_directory(s)));
+                return rb::list_of({d});
+            },
+            rb::make_sign("stat", {}, {{"info", "std::Dict"}})
+        );
+    }
+
+    // file.write_atomic(text) -> (ok) —— write to a temp file then rename,
+    // so a crash mid-write leaves the original intact (industrial pattern).
+    // file.write_atomic(text) -> (ok) —— 写临时文件再 rename，崩溃时不留损坏文件。
+    inline rt_basic::Callable method_file_write_atomic() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto p = rb::string_of(env["path"]);
+                if (!p || p->empty()) {
+                    return rb::list_of({rb::native_error("write_atomic: no path set")});
+                }
+                auto text = rb::string_of(rb::para_at(paras, 0));
+                if (!text) {
+                    return rb::list_of({rb::native_error(
+                        "write_atomic requires a string argument")});
+                }
+                fs::path final = *p;
+                fs::path tmp = final;
+                tmp += ".tmp-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+                {
+                    std::ofstream fout(tmp, std::ios::trunc | std::ios::binary);
+                    if (!fout) {
+                        return rb::list_of({rb::native_error(
+                            "write_atomic: cannot open temp file")});
+                    }
+                    fout << *text;
+                }
+                std::error_code ec;
+                fs::rename(tmp, final, ec);
+                if (ec) {
+                    std::error_code ignore;
+                    fs::remove(tmp, ignore);
+                    return rb::list_of({rb::native_error(
+                        "write_atomic: rename failed: " + ec.message())});
+                }
+                return rb::list_of({rb::make_boolean(true)});
+            },
+            rb::make_sign("write_atomic", {{"text", "std::String"}}, {{"ok", "std::Boolean"}})
         );
     }
 
@@ -303,6 +657,30 @@ namespace rt_lib_file {
         proto->set_method("exists",   method_file_exists());
         proto->set_method("remove",   method_file_remove());
         proto->set_method("size",     method_file_size());
+        // path helpers / 路径助手
+        proto->set_method("join",      method_file_join());
+        proto->set_method("basename",  method_file_basename());
+        proto->set_method("dirname",   method_file_dirname());
+        proto->set_method("extname",   method_file_extname());
+        proto->set_method("absolute",  method_file_absolute());
+        proto->set_method("normalize", method_file_normalize());
+        // predicates / 谓词
+        proto->set_method("is_file",      method_file_is_file());
+        proto->set_method("is_dir",       method_file_is_dir());
+        proto->set_method("is_readable",  method_file_is_readable());
+        proto->set_method("is_writable",  method_file_is_writable());
+        // directory ops / 目录操作
+        proto->set_method("mkdir",     method_file_mkdir());
+        proto->set_method("rmdir",     method_file_rmdir());
+        proto->set_method("list_dir",  method_file_list_dir());
+        proto->set_method("walk",      method_file_walk());
+        // file ops / 文件操作
+        proto->set_method("copy_to",      method_file_copy_to());
+        proto->set_method("move_to",      method_file_move_to());
+        proto->set_method("rename",       method_file_rename());
+        // metadata + safe write / 元数据与原子写
+        proto->set_method("stat",         method_file_stat());
+        proto->set_method("write_atomic", method_file_write_atomic());
 
         runtime::Prototypes p;
         p.regcls("File", proto);
