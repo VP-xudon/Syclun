@@ -44,9 +44,22 @@
 #  include <sys/wait.h>
 #  include <fcntl.h>
 #  include <signal.h>
+#  if defined(__APPLE__)
+#    include <crt_externs.h>
+#  endif
 #endif
 
 #include "../../src/builtin.hpp"   // reuse the shared runtime + helper API
+
+// On Linux, glibc exports the global `environ` (the process environment block).
+// This declaration lives in the GLOBAL namespace on purpose: declaring it inside
+// `namespace rt_lib_system` would create an unrelated undefined symbol
+// `rt_lib_system::environ` at link time on POSIX (the bug that broke the macOS /
+// Linux CI builds). macOS does not export `environ` directly and uses
+// `_NSGetEnviron()` from <crt_externs.h> instead.
+#if defined(__linux__)
+extern char** environ;
+#endif
 
 namespace rt_lib_system {
 
@@ -639,8 +652,14 @@ namespace rt_lib_system {
                     FreeEnvironmentStringsW(env);
                 }
 #else
-                extern char** environ;
-                for (char** e = environ; e && *e; ++e) {
+                char** envp =
+                #if defined(__APPLE__)
+                    *_NSGetEnviron()
+                #else
+                    environ
+                #endif
+                    ;
+                for (char** e = envp; e && *e; ++e) {
                     aenv[rb::elem_key(i++)] = rb::make_string(std::string(*e));
                 }
 #endif
