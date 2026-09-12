@@ -1,7 +1,7 @@
 # Synth-OOP — VSCode 语法高亮插件
 
 为 Synth-OOP 语言提供语法高亮的 VSCode 扩展，覆盖文档
-`doc/Synth-OOP-Language-Documentation-修正版.md`（v1.29）中描述的所有语法特性。
+`doc/Synth-OOP-Language-Documentation-修正版.md` 中描述的所有语法特性。
 
 支持的文件扩展名：
 

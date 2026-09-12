@@ -214,8 +214,8 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
 - 📦 **打包与发布 / Packaging** — <https://github.com/VP-xudon/Syclun/wiki/Packaging>
 - ❓ **常见问题 / FAQ** — <https://github.com/VP-xudon/Syclun/wiki/FAQ>
 
-> 权威语言规范（`docs/olddocs/Synth-OOP语言文档-修正版.md`）与参考实现 Syclun 持续保持同步，并经运行期认证（最近认证：2026-09-12）；本文档不维持独立版本号。Wiki 是其通俗、分层的导读。
-> The authoritative spec (`docs/olddocs/Synth-OOP语言文档-修正版.md`) is kept in sync with the Syclun reference implementation and is runtime-certified (last certified: 2026-09-12); it carries no standalone version number. The Wiki is its plain-spoken, layered companion.
+> 权威语言规范（`docs/olddocs/Synth-OOP语言文档-修正版.md`）与参考实现 Syclun 持续保持同步，并经运行期认证；本文档不维持独立版本号。Wiki 是其通俗、分层的导读。
+> The authoritative spec (`docs/olddocs/Synth-OOP语言文档-修正版.md`) is kept in sync with the Syclun reference implementation and is runtime-certified ; it carries no standalone version number. The Wiki is its plain-spoken, layered companion.
 
 ---
 

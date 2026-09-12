@@ -1,10 +1,10 @@
 # Synth OOP Language Documentation
 
-> **Sync status — certified against the Syclun interpreter.** This document is kept in lock-step with the reference implementation (the `synth` executable built from `src/`). Every behavior described herein is verified by running example programs against the actual interpreter and by the project's `ctest` suite (lexer / parser / runtimes). Last certification: **2026-09-12**. There is no standalone "spec version number" — the document's authority is the running interpreter, not a label.
+> **Sync status — certified against the Syclun interpreter.** This document is kept in lock-step with the reference implementation (the `synth` executable built from `src/`). Every behavior described herein is verified by running example programs against the actual interpreter and by the project's `ctest` suite (lexer / parser / runtimes). It is certified against the running interpreter. There is no standalone "spec version number" — the document's authority is the running interpreter, not a label.
 
 > This is the official language documentation for Synth OOP, fully covering all syntax features up to the current version. This document is written entirely in clear, accessible, and friendly language. After reading it, you'll be able to write any valid Synth OOP program. This document is intended both for **compiler developers** and for anyone who wishes to learn more about the language: the syntax described herein takes precedence, and Appendix D provides compiler acceptance test cases.
 
-> **⚠ Implementation-status note (v1.27):** Chapter XI, "The Poisoned Water Model and `_case`," describes a "poisoned water model" and a `_case` exception-catching method that **no longer exist in the current interpreter**. Errors are now raised **immediately at their source** and reported in a **g++-style diagnostic** (`file:line:col: error: Type: message`, with the offending source line, a `^~~~` caret, and a full execution stack). Runtime legality checks use the `&assert;` standard library's `Checker` object (`has_method` / `has_changed`). Chapter XI is retained only as historical design record — do not write new programs against it.
+> **⚠ Implementation-status note:** Chapter XI, "The Poisoned Water Model and `_case`," describes a "poisoned water model" and a `_case` exception-catching method that **no longer exist in the current interpreter**. Errors are now raised **immediately at their source** and reported in a **g++-style diagnostic** (`file:line:col: error: Type: message`, with the offending source line, a `^~~~` caret, and a full execution stack). Runtime legality checks use the `&assert;` standard library's `Checker` object (`has_method` / `has_changed`). Chapter XI is retained only as historical design record — do not write new programs against it.
 
 ## The Reference Implementation: Syclun
 
@@ -27,26 +27,26 @@ Related documents:
 
 ## Revision History
 
-> This document carries **no standalone version number**. It is kept in sync with the Syclun interpreter's actual implementation and is re-certified whenever the interpreter's behavior changes (most recently **2026-09-12**, see the certification report). Historical entries below are kept as a change record only.
+> This document carries **no standalone version number**. It is kept in sync with the Syclun interpreter's actual implementation and is re-certified whenever the interpreter's behavior changes (see the certification report). Historical entries below are kept as a change record only.
 
-- **2026-09-12 (synced to interpreter, no version label)**: **Constraint signatures forbid a function body; unknown-object output form; single-tuple argument auto-expansion.** Three runtime-semantics enhancements, each verified against the actual interpreter by running example programs. Also fixed a pre-existing bug where container (Tuple / Array) output parameters did not collect flowed-in values, which had blocked the `@to_string` display path.
-- **v1.32**: **Closure-binding syntax `@name[closure];` — strict separation of closures from class objects; structural satisfaction of class constraints.** `<<` and `.` are value flow and assignment; "binding a behavior to a name" is neither — it now has a syntax of its own.
+- **Constraint signatures forbid a function body; unknown-object output form; single-tuple argument auto-expansion.** Three runtime-semantics enhancements, each verified against the actual interpreter by running example programs. Also fixed a pre-existing bug where container (Tuple / Array) output parameters did not collect flowed-in values, which had blocked the `@to_string` display path.
+- **Closure-binding syntax `@name[closure];` — strict separation of closures from class objects; structural satisfaction of class constraints.** `<<` and `.` are value flow and assignment; "binding a behavior to a name" is neither — it now has a syntax of its own.
   - **New binding syntax** `@name[closure];` covers every site: class-body methods (`@inc[...]`), closure variables inside behaviors (`@f[...]`), contract signatures (`@add[(params)->(outs)];`), and runtime injection / rebinding (`obj:@name[closure];` — replacing an existing non-const method rebinds it; `@!name` const methods still refuse with `ConstException`).
   - **Retired forms**: `@name << [closure]`, `@name .= [closure]`, `obj.name << [closure]`, and `obj.name.=(closure)` are now errors. The message explains: **a closure is NOT a class object but a separate major category, with no methods of its own** — use `@name[closure];` instead. Flows `<<` and assignments `.=` between ordinary objects are unaffected.
   - **Structural class constraints**: a class-name constraint (e.g. `-(objs[Addable] x)`) no longer demands an exact prototype match — any object whose methods cover every sign of the constraint class satisfies it (duck typing at the call boundary). Runtime injection can now shape a plain object into a constraint's form.
   - **Closure environment**: closures capture their defining scope as before; block-sugar closures read preset objects (e.g. `io::out`) and enclosing locals, and a local closure variable is callable by bare name.
-- **v1.31**: **Runtime object injection, block sugar, and library preset objects.** The language's OOP premise is taken to its conclusion: an object is a live thing you keep shaping at runtime.
+- **Runtime object injection, block sugar, and library preset objects.** The language's OOP premise is taken to its conclusion: an object is a live thing you keep shaping at runtime.
   - **Block sugar** `[{ body }]` is exactly `[() -> () { body }]` — the callback-shaped block used for condition branches and other empty-signature behaviors.
   - **Method injection** `obj:@name[behavior];` (or `.=`) binds a **new** method onto a live object. Re-declaring an existing method is a duplicate-declaration error — change an existing method with `obj.name.=(behavior)` instead. `@!name` injects a const method, which refuses later rebinding.
   - **Private-attribute injection** `obj:-(Type v) << init;` adds a private attribute that can only be initialized at injection; it is reachable only from methods of the owning object, so later changes must go through an injected method.
   - **Const state** `obj.#()` permanently freezes the object: no further injection, no rebinding, no way back. Set-only by design.
   - **Library preset objects**: a library face (`.synl`) may create top-level object instances (e.g. `-(io::OStream! io::out);`) that arrive with the import. An object's name is its **full qualified name** — the leading module is how a program finds the library's runtime space, the object lives there exactly like the library's classes do, and access takes the ordinary name-resolution path with no splitting or special-casing. `&io;` now provides const `io::out` / `io::in`, and `&maths;` provides const `maths::math` — no factory ceremony. A preset's name MUST carry the module prefix; a user program (`.syn`) must NOT declare global objects directly; objects live inside `$Program` or inside a library face.
-- **v1.30**: **Fatal errors now exit non-zero; corrected the Chapter IX "checking timing" wording.** Fatal errors (syntax errors, runtime errors, constraint violations, …) now terminate the process with exit status `1` instead of `0`. Previously `synth bad.syn && cmd` ran `cmd` even after a failure, and CI could not detect it — which contradicted the project's "immediate, traceable errors" commitment. `&&`, `set -e`, and CI now see the failure correctly, while a successful run still returns `0`. Also corrected §9.8/§9.9 in the Chinese edition: the constraint "roll call" happens at **runtime** (the heading and a note previously said "compile time"). Added an exit-code assertion: `assert_parser` grows to 64 tests, one of which verifies that a rejected source **must** terminate with a non-zero status.
-- **v1.29**: **Switched container/string indexing to 0-based and added the `sugar` standard library.** `Array`/`Tuple`/`String` `get`/`insert`/`remove` (and `String.slice`) now use 0-based indices (`arr.get(0)` is the first element). A new C++-backed `sugar` library provides `Infix`, an arithmetic-expression evaluator: `-(sugar::Infix("1+(2-3)*(3+5)") e); e.parse()` → `-7`; bind variables from a `std::Dict` via `e.env(dict)`; an unresolved variable raises a runtime error attributed to `parse`. The build is CMake-driven via `bash build.sh` (`bash build.sh --test` runs the full ctest suite: lexer / parser / runtimes).
-- **v1.28**: **Retired the `void` keyword and made constraints runtime-enforced.** `void` is no longer a type / name / output / constraint token; writing it in any of those positions is now a syntax error — use an **empty `()`** for "no value" (e.g. `[() -> () {…}]` publishes nothing). `#Contract` definitions are validated by `ClassContract::validate` (compared by type, not by parameter name), and parameter (`x[Contract]`) / variable (`-(T[Contract] v)`) constraints are checked with `check_constraint` whenever the bound value is known (parameter at behavior entry; variable at declaration and after a flow `<<`). See `verify/philosophy/constraint_demo.syn`.
+- **Fatal errors now exit non-zero; corrected the Chapter IX "checking timing" wording.** Fatal errors (syntax errors, runtime errors, constraint violations, …) now terminate the process with exit status `1` instead of `0`. Previously `synth bad.syn && cmd` ran `cmd` even after a failure, and CI could not detect it — which contradicted the project's "immediate, traceable errors" commitment. `&&`, `set -e`, and CI now see the failure correctly, while a successful run still returns `0`. Also corrected §9.8/§9.9 in the Chinese edition: the constraint "roll call" happens at **runtime** (the heading and a note previously said "compile time"). Added an exit-code assertion: `assert_parser` grows to 64 tests, one of which verifies that a rejected source **must** terminate with a non-zero status.
+- **Switched container/string indexing to 0-based and added the `sugar` standard library.** `Array`/`Tuple`/`String` `get`/`insert`/`remove` (and `String.slice`) now use 0-based indices (`arr.get(0)` is the first element). A new C++-backed `sugar` library provides `Infix`, an arithmetic-expression evaluator: `-(sugar::Infix("1+(2-3)*(3+5)") e); e.parse()` → `-7`; bind variables from a `std::Dict` via `e.env(dict)`; an unresolved variable raises a runtime error attributed to `parse`. The build is CMake-driven via `bash build.sh` (`bash build.sh --test` runs the full ctest suite: lexer / parser / runtimes).
+- **Retired the `void` keyword and made constraints runtime-enforced.** `void` is no longer a type / name / output / constraint token; writing it in any of those positions is now a syntax error — use an **empty `()`** for "no value" (e.g. `[() -> () {…}]` publishes nothing). `#Contract` definitions are validated by `ClassContract::validate` (compared by type, not by parameter name), and parameter (`x[Contract]`) / variable (`-(T[Contract] v)`) constraints are checked with `check_constraint` whenever the bound value is known (parameter at behavior entry; variable at declaration and after a flow `<<`). See `verify/philosophy/constraint_demo.syn`.
   - Added Appendix E, "Language Semantics", collecting the implementation-level notes moved out of `README.md`.
-- **v1.27**: **Retired the "Poisoned Water Model" and `_case`.** Errors are now raised immediately at the source and reported in a g++-style diagnostic (file:line:col + source caret + execution stack); runtime legality checks moved to the `&assert;` `Checker` (`has_method` / `has_changed`). `io` EOF reads and native-library bad input now raise an immediate `RuntimeException` instead of gracefully degrading to poison. Unit-test counts updated to 83 / 63 / 139.
-- **v1.26**: Removed the "contract" concept; added dedicated chapters for Constraints and the Poisoned Water Model.
+- **Retired the "Poisoned Water Model" and `_case`.** Errors are now raised immediately at the source and reported in a g++-style diagnostic (file:line:col + source caret + execution stack); runtime legality checks moved to the `&assert;` `Checker` (`has_method` / `has_changed`). `io` EOF reads and native-library bad input now raise an immediate `RuntimeException` instead of gracefully degrading to poison. Unit-test counts updated to 83 / 63 / 139.
+- Removed the "contract" concept; added dedicated chapters for Constraints and the Poisoned Water Model.
   - Removed all "contract" wording: the three arrow levels are uniformly called behavior patterns (zero-side-effect / constant / non-constant pattern); the arrow itself is the "behavior-pattern arrow".
   - Chapter V renamed to "Behaviors and Their Patterns".
   - Constraints extracted from Chapter I into a new dedicated Chapter IX, expanded with "Constraints vs Classes" and "Checking Timing".
@@ -55,43 +55,43 @@ Related documents:
   - Explained why assignment can reuse the stream syntax: the reception function `:=` defaults to assigning itself directly from a same-typed value, and the publication function `=:` cooperates; the `std::Object` method table gained an assignment method `=` (`a.=(b)` equivalent to streaming assignment), mirrored in Appendix A.
   - Clarified that `void` is NOT a keyword: the language philosophy forbids empty return values, so an output parameter named `void` is recognized and auto-discarded by the system.
   - Updated in sync with the Chinese edition.
-- **v1.25**: Copy-editing and structural polish.
+- Copy-editing and structural polish.
   - Fixed a broken Markdown bold in Example 3 and a bare `ClassName()` identifier.
   - Restructured Revision History into bullet sub-items.
   - De-duplicated repeated explanations (the dot-vs-method-name note, the `std::Float` clarification).
   - Added a Terminology section; unified section headings to Title Case.
   - Reduced colloquial/literary wording and first-person voice.
   - Added backticks to code identifiers; added Appendix links in the Table of Contents.
-- **v1.24**: Comprehensive syntax and logic review.
+- Comprehensive syntax and logic review.
   - Removed the standalone specification file (its content is now incorporated into this document).
   - Converted all infix comparisons (`a > b`) into method calls (`a.>(b)`); likewise for infix arithmetic in comments.
   - Expanded Section 5.5 to cover comparison operators (`<` `>` `<=` `>=` `==` `!=`).
   - Unified terminology: "integer" → "number"; "function" → "method/behavior".
   - Removed a leftover unused variable in the `while_` example.
-- **v1.23**: Section 2.3.2 rewritten as method-by-method function descriptions.
+- Section 2.3.2 rewritten as method-by-method function descriptions.
   - Replaced the concise method table with one code block per native object.
   - Each method is now described with Synth OOP's method-definition syntax and a function comment.
-- **v1.22**: Removed `std::Float` remnants; clarified `std::Number` semantics.
+- Removed `std::Float` remnants; clarified `std::Number` semantics.
   - `std::Number` now uniformly carries all numeric values; `std::Float` is replaced.
   - Added Section 2.3 "Built-in Methods of Native Objects".
   - Clarified in Section 2.3.1 that `std::Object` uniformly defines `::` / `~` / `=:` / `:=` / `_case` as const.
   - The former "The program itself is also an object" becomes Section 2.4.
   - Added a Section 6.3 note; fixed a stray leading quote in Section 3.1.
-- **v1.21**: Renamed the native object type; redesigned `while_` / `repeat_`.
+- Renamed the native object type; redesigned `while_` / `repeat_`.
   - `std::Integer` uniformly renamed to `std::Number`.
   - `while_` now takes a loop-body behavior plus a condition-check behavior (condition-check after body).
   - `repeat_` is now a `std::Number` method whose value is the loop count.
   - Added the "behavior qualifier `@`" mechanism.
-- **v1.20**: Fixed remaining "method exists independently of a class" issues.
+- Fixed remaining "method exists independently of a class" issues.
   - Converted floating `@methodName << ...` definitions into class methods or behavior literals.
   - Replaced the free-function-call syntax `@name(args)` with instance method calls.
   - Fixed poison-water examples, the constraint example, and redundant inherited members.
   - Cleaned up terminology remnants (`const closure` → `const behavior`, etc.).
-- **v1.19**: Clarified method binding and object instantiation.
+- Clarified method binding and object instantiation.
   - Clarified in Section 6.1 that methods cannot exist independently of a class.
   - Clarified in Section 4.1 that instantiation must be `-(prototype-name variable-name)`.
   - Completed every bare `-(name)` declaration with its typed form.
-- **v1.18**: Terminology unification and clarifications.
+- Terminology unification and clarifications.
   - Replaced "closure" with "behavior"; named the arrow inside behaviors the "behavior pattern".
   - Clarified that the method name has no "dot" (`.` is only the call operator).
   - Added the constant-pattern implementation clarification.
@@ -107,12 +107,12 @@ Related documents:
 8. [Class](#viii-class)
 9. [Constraints](#ix-constraints)
 10. [Module Import Statements and Namespaces](#x-module-import-statements-and-namespaces)
-11. [The Poisoned Water Model and _case: Error Propagation and Rescue](#xi-the-poisoned-water-model-and-_case-error-propagation-and-rescue) **(retired — see v1.27 note)**
+11. [The Poisoned Water Model and _case: Error Propagation and Rescue](#xi-the-poisoned-water-model-and-_case-error-propagation-and-rescue) **(retired)**
 - [Appendix A: Syntax Symbol Quick Reference](#appendix-a-syntax-symbol-quick-reference)
 - [Appendix B: On Computational Capability](#appendix-b-on-computational-capability)
 - [Appendix C: Comparison Examples — Synth OOP vs C++](#appendix-c-comparison-examples--synth-oop-vs-c)
 - [Appendix D: Compiler Self-Test Examples (Acceptance Tests)](#appendix-d-compiler-self-test-examples-acceptance-tests)
-- [Appendix E: Language Semantics (Implementation Notes for v1.28)](#appendix-e-language-semantics-implementation-notes-for-v128)
+- [Appendix E: Language Semantics (Implementation Notes)](#appendix-e-language-semantics-implementation-notes-for-v128)
 
 ## Terminology
 
@@ -124,7 +124,7 @@ The following terms have canonical spellings used consistently throughout this d
 | zero-side-effect pattern | `zero-side-effect pattern` | The `=>` level: fully isolated, no side effects |
 | constant pattern | `constant pattern` | The `~>` level: read-only access to the external environment (also called the read-only pattern) |
 | non-constant pattern | `non-constant pattern` | The `->` level: read-write access to the external environment |
-| Poisoned Water Model | `Poisoned Water Model` (retired) | Historical error-propagation mechanism (see v1.27 note); the current implementation uses immediate errors + execution stack instead |
+| Poisoned Water Model | `Poisoned Water Model` (retired) | Historical error-propagation mechanism (see the note above); the current implementation uses immediate errors + execution stack instead |
 | behavior | `behavior` | The language's term for a closure/function |
 | method | `method` | A behavior bound to a class/object |
 | constraint | `constraint` | Also called an interface (a method checklist); see Chapter IX |
@@ -211,7 +211,7 @@ $Object {
 }
 ```
 
-> **Note (v1.27):** Historically `std::Object` also defined an exception-handling method `_case` and an implicit `error` attribute (the "poison marker") used to propagate errors along the data flow. These are **retired** in the current implementation: errors are now raised immediately at the source and reported in a g++-style diagnostic (with execution stack), and runtime legality checks use the `&assert;` `Checker` (`has_method` / `has_changed`).
+> **Note:** Historically `std::Object` also defined an exception-handling method `_case` and an implicit `error` attribute (the "poison marker") used to propagate errors along the data flow. These are **retired** in the current implementation: errors are now raised immediately at the source and reported in a g++-style diagnostic (with execution stack), and runtime legality checks use the `&assert;` `Checker` (`has_method` / `has_changed`).
 
 #### 2.3.2 Built-in Methods by Native Object (method-by-method function description)
 
@@ -419,7 +419,7 @@ $IStream {
 }
 ```
 
-> Note: `std::Number` means "number", and `std::Float` has been replaced (see the clarification in Section 5.5). All objects above inherit from `std::Object` by default, so `::`, `~`, `=`, `=:`, `:=` are all automatically available with no need to re-implement them. (The historical `_case` method and `error` attribute are retired — see the v1.27 note.)
+> Note: `std::Number` means "number", and `std::Float` has been replaced (see the clarification in Section 5.5). All objects above inherit from `std::Object` by default, so `::`, `~`, `=`, `=:`, `:=` are all automatically available with no need to re-implement them. (The historical `_case` method and `error` attribute are retired — see the note above.)
 
 ### 2.4 The program itself is also an object
 The program's entry point `$Program` itself is an object instance:
@@ -576,7 +576,7 @@ In this example, `(-(std::String msg2) << "World")` is an expression whose value
 
 Here, a (with a value of 10) and b (with a value of 20) are first declared and initialized. The expression evaluates to these two objects, then performs the addition operation, and finally assigns the result to sum.
 
-> **Note (v1.27):** The old documentation described this with the "poisoned water model" — an object "carrying toxicity from the instant of creation, spreading along the data flow." That model is **retired**. Errors are now raised **immediately at the source** and reported as a g++-style diagnostic (with the offending source line and a full execution stack). For example, `a./(0)` (division by zero) follows IEEE 754 and yields `Infinity`/`NaN` directly (it does not interrupt), whereas a genuine semantic error (type mismatch, missing method, …) aborts immediately instead of "blending into the data flow."
+> **Note:** The old documentation described this with the "poisoned water model" — an object "carrying toxicity from the instant of creation, spreading along the data flow." That model is **retired**. Errors are now raised **immediately at the source** and reported as a g++-style diagnostic (with the offending source line and a full execution stack). For example, `a./(0)` (division by zero) follows IEEE 754 and yields `Infinity`/`NaN` directly (it does not interrupt), whereas a genuine semantic error (type mismatch, missing method, …) aborts immediately instead of "blending into the data flow."
 ## V. Behaviors and Their Patterns
 ### 5.1 What is Behavior
 "Behavior" is the fundamental unit of executable logic in Synth OOP, written as a behavior enclosed in square brackets:
@@ -1340,9 +1340,9 @@ This brings several benefits:
 > Summary: **Namespace = file name.** You never need to write any "declare a namespace" syntax — the compiler automatically wraps each file into a namespace. To let another file access your contents, just `&file-name;` on that side to import it.
 ## XI. The Poisoned Water Model and _case: Error Propagation and Rescue
 
-> **⚠ This chapter is retired (v1.27).** The "Poisoned Water Model" and the `_case` exception-catching method described here **no longer exist in the current interpreter**. Errors are now raised **immediately at the source** and reported in a **g++-style diagnostic**: `file:line:col: error: Type: message`, followed by the offending source line with a `^~~~` caret, and — for interpreter/runtime faults — a full **execution stack**. Color is on by default and can be disabled with `NO_COLOR=1`. Runtime legality checks use the `&assert;` standard library's `Checker` object (`has_method(target, name)` / `has_changed(target)`) instead of a propagated checked value.
+> **⚠ This chapter is retired.** The "Poisoned Water Model" and the `_case` exception-catching method described here **no longer exist in the current interpreter**. Errors are now raised **immediately at the source** and reported in a **g++-style diagnostic**: `file:line:col: error: Type: message`, followed by the offending source line with a `^~~~` caret, and — for interpreter/runtime faults — a full **execution stack**. Color is on by default and can be disabled with `NO_COLOR=1`. Runtime legality checks use the `&assert;` standard library's `Checker` object (`has_method(target, name)` / `has_changed(target)`) instead of a propagated checked value.
 >
-> The original text below is retained **only as a historical design record** — do not write new programs against it. The current correct behavior is described in the v1.27 notes above and in the README's "g++-style errors" section.
+> The original text below is retained **only as a historical design record** — do not write new programs against it. The current correct behavior is described in the notes above and in the README's "g++-style errors" section.
 
 You have already glimpsed the "poisoned water" several times — while learning instantiation expressions (Section 4.6) and division (Section 2.3). This chapter explains the (now-retired) mechanism from beginning to end, to help understand the language's evolution.
 
@@ -2039,9 +2039,9 @@ Note: Object instantiation syntax (Chapter IV) and control flow call syntax (Cha
 
 ---
 
-## Appendix E: Language Semantics (Implementation Notes for v1.28)
+## Appendix E: Language Semantics (Implementation Notes)
 
-> Moved out of `README.md` (2026-08-29). This appendix records the
+> Moved out of `README.md`. This appendix records the
 > language-level semantics **as the current interpreter implements them**
 > — decisions that narrow or clarify the specification in `doc/`. Where
 > this appendix and an earlier chapter disagree, this appendix wins.

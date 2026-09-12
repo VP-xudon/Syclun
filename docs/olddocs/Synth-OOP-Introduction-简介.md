@@ -105,17 +105,17 @@ interpreter:
   **Behaviors are closures.** Inline behavior literals capture the caller's
   scope, so branches read caller variables (spec C.5).
 
-- **运行期注入（v1.31）。** 对象在构造后仍是活的：`obj:@m[{ … }];` 新增方法，
+- **运行期注入。** 对象在构造后仍是活的：`obj:@m[{ … }];` 新增方法，
   `obj:-(T v) << init;` 新增私有属性（仅可初始化、只有对象自己的方法能访问），
   `obj.#()` 永久冻结。向已有名字注入属重复声明错误；重绑常数方法属更改常量错误。
-  **Runtime injection (v1.31).** Objects stay alive after construction:
+  **Runtime injection.** Objects stay alive after construction:
   `obj:@m[{ … }];` adds a method, `obj:-(T v) << init;` adds a private
   attribute (init-only, reachable only from the object's own methods), and
   `obj.#()` freezes the object permanently.
 
-- **库预置对象（v1.31）。** 库形态（.synl）可创建顶层常数实例（`-(io::OStream! out);`）
+- **库预置对象。** 库形态（.synl）可创建顶层常数实例（`-(io::OStream! out);`）
   随导入到来；`.syn` 程序自身被禁止声明全局对象。
-  **Library preset objects (v1.31).** Library faces (`.synl`) may create top-level
+  **Library preset objects.** Library faces (`.synl`) may create top-level
   const instances (`-(io::OStream! out);`) that arrive with the import; `.syn`
   programs are forbidden from declaring global objects themselves.
 

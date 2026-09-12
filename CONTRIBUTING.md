@@ -94,7 +94,7 @@ Then read, in this order / 然后按此顺序阅读：
 
 1. [`README.md`](./README.md) — what Syclun is, and the 30-second tour.
 2. [`doc/Synth-OOP语言文档-修正版.md`](./doc/Synth-OOP语言文档-修正版.md) — the
-   specification (v1.31). **The spec is the contract**; the interpreter is one
+   specification. **The spec is the contract**; the interpreter is one
    implementation of it.
 3. [`doc/Syclun标准库参考.md`](./doc/Syclun标准库参考.md) — signatures and the
    "how to add a library" checklist.
@@ -137,7 +137,7 @@ Examples / 示例：
 [lexer][add] support \e as an escape sequence
 [libs][add] Hash.fnv1a
 [syntax][remove] the void keyword
-[docs][fix] sync Appendix E with the v1.29 semantics
+[docs][fix] sync Appendix E with the implementation-layer semantics
 [verify][add] cover method rebind through the flow form
 ```
 

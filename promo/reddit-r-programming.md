@@ -1,11 +1,11 @@
 # Reddit post — r/programming (and friends)
 
 Promotional post for **Syclun / Synth-OOP**. Everything below is **verified
-against the current tree** (2026-08-30): the code samples were run, the numbers
+against the current tree**: the code samples were run, the numbers
 were taken from a real `build.sh --test` run. Do not edit the numbers without
 re-running things.
 
-宣传贴草稿。下面所有内容都已针对当前仓库核验（2026-08-30）：代码样例实跑过，数字
+宣传贴草稿。下面所有内容都已针对当前仓库核验：代码样例实跑过，数字
 来自真实的 `build.sh --test`。改数字前请重跑。
 
 ---
@@ -238,7 +238,7 @@ on the language, not on the implementation language. Also `std::regex` and
 is the obvious next step and I haven't done it.
 
 **Specs / docs:** `doc/` in the repo — Chinese and English versions of the
-language spec (v1.28), plus a separate standard-library reference.
+language spec, plus a separate standard-library reference.
 
 **Contributing:** `CONTRIBUTING.md` has the PR format and the rejection list.
 Two rules worth knowing: after 1.0.0 the syntax is frozen, and I'll send back any
@@ -303,7 +303,7 @@ this on purpose; it's the kind of detail that buys credibility.
 
 ## 5. Fact sheet / 数字备查
 
-Verified 2026-08-30, from a fresh `bash build.sh --test` on Windows (MinGW-w64, C++23):
+Verified from a fresh `bash build.sh --test` on Windows (MinGW-w64, C++23):
 
 | Fact | Value |
 |------|-------|
@@ -317,4 +317,4 @@ Verified 2026-08-30, from a fresh `bash build.sh --test` on Windows (MinGW-w64, 
 | Indexing | 0-based |
 | Recursion limit | 1000, with a 32 MB stack so the guard fires cleanly |
 | Licence | GPL-3.0-or-later; user-written `.syn` programs are not covered |
-| Docs | `doc/` — Chinese + English spec (v1.28), plus `Syclun标准库参考.md` |
+| Docs | `doc/` — Chinese + English spec, plus `Syclun标准库参考.md` |

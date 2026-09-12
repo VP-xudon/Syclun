@@ -1,10 +1,10 @@
 # Syclun Standard-Library Reference
 # Syclun 标准库参考
 
-> Moved out of `README.md` (2026-08-29) so the README stays an introduction.
+> Moved out of `README.md` so the README stays an introduction.
 > This file is the **reference**: exact method signatures and the checklist for
 > adding a new library.
-> 2026-08-29 从 `README.md` 迁出，使 README 回归「介绍」职责。本文件是**参考手册**：
+> 从 `README.md` 迁出，使 README 回归「介绍」职责。本文件是**参考手册**：
 > 精确的方法签名与新增标准库的清单。
 >
 > See also / 另见：
@@ -23,7 +23,7 @@
 
 ## Preset objects / 预置对象
 
-Since v1.31 a library face (`.synl`) may create ready-made object instances at
+Since then a library face (`.synl`) may create ready-made object instances at
 the top level (e.g. `-(io::OStream! io::out);`). The object's name is its full
 qualified name — the leading module is how a program finds the library's
 runtime space, and the object lives in it exactly like the library's classes
@@ -31,7 +31,7 @@ do. Presets arrive with the import, live for the whole run, and are **const
 bindings** — the name always refers to the same object (assignment via `.=` is
 rejected with a `ConstException`). A user program (`.syn`) must NOT declare
 global objects directly; presets belong to libraries.
-自 v1.31 起，库形态（`.synl`）可在顶层创建成品对象实例（如
+当前，库形态（`.synl`）可在顶层创建成品对象实例（如
 `-(io::OStream! io::out);`）。对象的名字就是它的全限定名——前导的模块名正是
 程序找到该库运行空间的路径，对象与库的类一样居于其中。预置对象随导入到来、
 贯穿整个运行期，且是**常数绑定**——名字永远指向同一对象（经 `.=` 赋值会以
@@ -198,7 +198,7 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
     `ok` / `error` / `timeout` / `cancelled`; a failing closure becomes an
     `error` whose `payload` is an `Error` object (fault tolerance — the
     Reactor never crashes on a bad task). Hard interpreter errors (missing
-    method, type violation) are NOT isolated: by design (v1.30) they take the
+    method, type violation) are NOT isolated: by design they take the
     immediate fatal-diagnostic path, wherever they occur.
     / `set(tasks)` 存闭包数组；`set_limit(max)` 并发上限（0 不限，背压）；
     `set_timeout(ms)` 逐任务默认超时；`cancel()` 尽力取消；`start([timeout])`
@@ -335,7 +335,7 @@ existing ones (`File`/`System`/`Maths`/`Reactor`/`Hash`/`Structs`/`Re`):
    shapes; the class type is `$<CapitalizedName>` (the `$`-suffix is used
    **verbatim and capitalized**, e.g. `$Maths`, `$System`, `$Reactor`,
    `$Hash`, `$File`, `$Structs`, `$Re`). A `$Program` here would be ignored.
-   Since v1.31 this face may also create top-level **preset object instances**
+   Since then this face may also create top-level **preset object instances**
    (`-(<module>::<Type>! <module>::<name>);`) — const globals that arrive with
    the import (io's `io::out`/`io::in`, maths' `maths::math`). The name MUST
    carry the module prefix: the object belongs to the library's namespace,
@@ -344,7 +344,7 @@ existing ones (`File`/`System`/`Maths`/`Reactor`/`Hash`/`Structs`/`Re`):
    / 接口 `lib/<name>.synl`：仅签名，与 .hpp 形态对应；类名为 `$<首字母大写名>`
    （`$` 后后缀**原样且首字母大写**，如 `$Maths`/`$System`/`$Reactor`/`$Hash`
    /`$File`/`$Structs`/`$Re`）。库内的 `$Program` 会被忽略。
-   自 v1.31 起，此文件还可创建顶层**预置对象实例**
+   当前，此文件还可创建顶层**预置对象实例**
    （`-(<模块>::<类型>! <模块>::<名字>);`）——随导入到来的常数全局对象
    （io 的 io::out/io::in、maths 的 maths::math）。名字**必须**带模块前缀：
    对象属于库的命名空间，而非程序的裸作用域。若一个无状态类只会迫使用户

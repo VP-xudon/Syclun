@@ -45,8 +45,8 @@ Lower-case module name; the interpreter resolves `lib/<module>.synl`, defines it
 
 ## 3. 预置对象 / Preset objects
 
-自 v1.31，库的 `.synl` 可在顶层创建**成品常数对象**，随导入到来、贯穿整个运行期。它们属于库命名空间，你的 `.syn` 程序**不得**自己声明全局对象。
-Since v1.31, a library's `.synl` may create **ready-made const objects** at the top level; they arrive with the import and live for the whole run. They belong to the library's namespace; your `.syn` must **not** declare global objects itself.
+当前，库的 `.synl` 可在顶层创建**成品常数对象**，随导入到来、贯穿整个运行期。它们属于库命名空间，你的 `.syn` 程序**不得**自己声明全局对象。
+Since then, a library's `.synl` may create **ready-made const objects** at the top level; they arrive with the import and live for the whole run. They belong to the library's namespace; your `.syn` must **not** declare global objects itself.
 
 | 模块 / Module | 预置对象 / Preset | 类型 / Type |
 |------|------|------|
