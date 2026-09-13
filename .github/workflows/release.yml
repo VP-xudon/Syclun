@@ -163,6 +163,19 @@ jobs:
 
       # --- Build & package / 构建并打包 -------------------------------------
 
+      # Linux native build needs the X11 dev package: CMakeLists.txt does
+      # find_package(X11 REQUIRED) on Linux and links X11::X11. The macOS and
+      # Windows legs don't need it (Cocoa / Win32 backends), and the
+      # windows-arm64 cross leg targets Windows too.
+      # Linux 原生构建需要 X11 开发库：CMakeLists 在 Linux 上 find_package(X11
+      # REQUIRED) 并链接 X11::X11。macOS / Windows 腿用 Cocoa / Win32 后端，
+      # windows-arm64 交叉腿目标也是 Windows，均不需要。
+      - name: Install X11 dev (Linux native) / 安装 X11 开发库
+        if: matrix.target == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libx11-dev
+
       # Windows x64 MUST run inside the MSYS2 MINGW64 shell.
       - name: Run package.sh — Windows MinGW
         if: matrix.setup == 'msys2-mingw64'
@@ -171,7 +184,7 @@ jobs:
           PACKAGE_TARGETS: ${{ matrix.target }}
           SYNTH_FORCE_BUILD: '1'
         run: bash package.sh
-      
+
       # Linux / macOS / Windows ARM64 use the normal Git Bash shell.
       - name: Run package.sh — native/cross
         if: matrix.setup != 'msys2-mingw64'
