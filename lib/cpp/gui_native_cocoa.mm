@@ -14,6 +14,10 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <string>
+#include <vector>
+#include <algorithm>
+
 // Opaque structs from gui_native.h, defined in global scope.
 // gui_native.h 的不透明结构在全局作用域定义。
 struct gui_ctrl_s {

@@ -210,7 +210,7 @@ void win_canvas_close(win_canvas cv) {
     auto it = std::find(g_canvas.begin(), g_canvas.end(), cv);
     if (it != g_canvas.end()) g_canvas.erase(it);
     [w close];
-    CFRelease((__bridge CFTypeRef)cv->view);
+    CFRelease((CFTypeRef)cv->view);
     delete cv;
 }
 void win_canvas_run(void) { [NSApp run]; }
