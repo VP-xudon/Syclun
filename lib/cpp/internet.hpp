@@ -41,6 +41,14 @@
 #ifdef _WIN32
 #  include <iphlpapi.h>
 #  pragma comment(lib, "Iphlpapi.lib")
+#else
+// POSIX (Linux / macOS / BSD): getifaddrs / freeifaddrs / struct ifaddrs are
+// declared in <ifaddrs.h>, which is NOT pulled in transitively by the socket
+// headers (net_common.hpp). Without it the interfaces / local_addresses methods
+// fail to compile on every non-Windows platform ("getifaddrs/freeifaddrs was not
+// declared", "struct ifaddrs is an incomplete type"), breaking the CI ubuntu +
+// macos legs and the release verification gate.
+#  include <ifaddrs.h>
 #endif
 
 namespace rt_lib_internet {

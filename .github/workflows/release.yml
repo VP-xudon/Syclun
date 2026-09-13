@@ -63,7 +63,7 @@ jobs:
       - name: Install toolchain / 安装工具链
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake
+          sudo apt-get install -y cmake libx11-dev
           g++ --version
 
       - name: Build + run full assertion suite / 构建并跑全部断言
