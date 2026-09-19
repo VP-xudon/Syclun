@@ -176,6 +176,37 @@ namespace parser {
 
     using AstNodePtr = std::shared_ptr<AstNode>;
 
+    // A signature parameter / output written as a bare, capitalized or
+    // namespace-qualified name (e.g. `Boolean`, `std::Number`, `MyClass`) is
+    // understood as a TYPE constraint, not a plain variable. By convention
+    // Synth OOP types are Capitalized and variables are lowercase, so a leading
+    // capital (or a `::`-qualified name) marks a type. This lets the designer's
+    // canonical shorthand `()->(Boolean)` mean "returns a std::Boolean" — the
+    // variable is named `Boolean` AND typed as std::Boolean, so flowing a value
+    // into it performs the type's receive (e.g. a std::Boolean output converts a
+    // truthy Number into true) and the return value carries a concrete type for
+    // output-signature enforcement. A lowercase name (e.g. `r`, `n`) stays an
+    // unconstrained variable.
+    // 签名参数 / 输出若写成裸的大写或命名空间限定名（如 `Boolean`、
+    // `std::Number`、`MyClass`），即视为类型约束而非普通变量。Synth OOP 约定
+    // 类型首字母大写、变量小写，故首字母大写（或带 `::` 限定）即类型。这样
+    // 设计者规范的简写 `()->(Boolean)` 即「返回 std::Boolean」——变量名为
+    // `Boolean` 且类型即 std::Boolean，流入值时执行该类型的接收（如 std::Boolean
+    // 输出把真值 Number 转为 true），返回值带具体类型供输出签名约束核查。
+    // 小写名（如 `r`、`n`）仍是未约束变量。
+    inline bool is_type_name(const std::string& s) {
+        if (s.empty()) return false;
+        if (s.find("::") != std::string::npos) return true;  // namespace::Class
+        char c = s.front();
+        if (c < 'A' || c > 'Z') return false;                // must start A-Z
+        static const char* kTypes[] = {
+            "Boolean", "Number", "String", "Object",
+            "Array", "Dict", "Tuple"
+        };
+        for (auto t : kTypes) if (s == t) return true;
+        return true;   // any Capitalized name is treated as a type
+    }
+
     class Parser {
         // Token stream (includes a trailing <eof>) and the source lines
         // for error context.
@@ -1307,6 +1338,29 @@ namespace parser {
         //                            {contract/class, @, @signature}
         AstNodePtr parse_param() {
             long long ln = peek().line;
+            // Constraint-first signature syntax (designer's canonical form
+            // `([...],[...])->([...],[...])`): a parameter may BEGIN with a
+            // constraint bracket, e.g. `[std::Boolean]`. The bracketed name is
+            // a STRICT TYPE CONSTRAINT; the variable name is optional and plays
+            // no part in matching (so `a` in `a[std::Boolean]` may be any name).
+            // 约束前置的签名语法（设计者的规范形式
+            // `([...],[...])->([...],[...])`）：参数可直接以约束中括号开头，
+            // 如 `[std::Boolean]`。括号里是**严格类型约束**，变量名可选且不参与
+            // 匹配（故 `a[std::Boolean]` 里的 `a` 叫什么名字都行）。
+            if (at("<symbol>", "[")) {
+                advance();
+                auto limit = expect_name("constraint type");
+                if (limit.value == "void") {
+                    fail("'void' is not a constraint type; use empty "
+                         "parentheses '()' for no value / no return.");
+                }
+                expect_symbol("]", "constraint closing bracket ']'");
+                auto p = mknode("param", ln);
+                p->name = "";                 // no variable name
+                p->mode = "type";             // strict type constraint
+                p->value = limit.value;       // e.g. "std::Boolean"
+                return p;
+            }
             auto first = expect_name("parameter (name or type name)");
             // `void` is no longer a type / name keyword: use empty parentheses
             // `()` for "no value". Reject it as a parameter or output name.
@@ -1399,15 +1453,42 @@ namespace parser {
             }
 
             // Single-name form: `first` IS the parameter name (optionally
-            // constrained, e.g. `x[Addable]`).
-            // 单名形式：first 即参数名（可带约束，如 `x[Addable]`）。
+            // constrained, e.g. `x[std::Boolean]` / `a[Addable]`).
+            // 单名形式：first 即参数名（可带约束，如 `x[std::Boolean]` /
+            // `a[Addable]`）。
             auto p = mknode("param", ln);
             p->name = first.value;
             if (!constraint.empty()) {
-                p->mode = "constraint";
-                p->value = constraint;       // type tag seen by enforce_sign
-                p->constraint = constraint;  // #Contract name seen by
-                                            // check_constraint at call time
+                // The bracketed name is a TYPE constraint. Record it as the
+                // parameter's expected type so the runtime enforcer strictly
+                // matches it. Concrete types (std::Number / std::Boolean / …)
+                // are checked; user #Contract / class names stay non-concrete
+                // and are skipped — identical to before (not runtime-checkable).
+                // 括号里的名字是类型约束。记入参数期望类型，使运行期约束器
+                // 严格匹配。具体类型（std::Number / std::Boolean 等）会被核查；
+                // 用户 #Contract / 类名仍属非具体，照旧跳过（运行期不可核查）。
+                p->mode = "type";
+                p->value = constraint;       // type to match (e.g. std::Boolean)
+                p->constraint = constraint;
+            } else if (is_type_name(first.value)) {
+                // A bare capitalized / namespace-qualified name IS a type
+                // constraint whose variable name is the same as the type. So
+                // `Boolean` == `Boolean[std::Boolean]` == `std::Boolean Boolean`:
+                // the variable is named `Boolean` and typed std::Boolean. This is
+                // the designer's canonical shorthand `()->(Boolean)` — it both
+                // names the output and constrains its type, so flowing a value in
+                // (e.g. `Boolean << 1`) performs the Boolean receive (converting a
+                // truthy Number to true) and the return carries a concrete type
+                // for output-signature enforcement.
+                // 裸大写 / 命名空间限定名即类型约束，且变量名同此类型名。故
+                // `Boolean` 等价于 `Boolean[std::Boolean]` 等价于
+                // `std::Boolean Boolean`：变量名为 `Boolean`、类型为 std::Boolean。
+                // 即设计者规范简写 `()->(Boolean)`——既命名输出又约束其类型，使
+                // 流入值（如 `Boolean << 1`）执行布尔接收（真值 Number 转 true），
+                // 且返回带具体类型供输出签名约束核查。
+                p->mode = "type";
+                p->value = first.value;       // type to instantiate / match
+                p->constraint = first.value;
             } else {
                 p->mode = "none";           // bare name: no type constraint
             }

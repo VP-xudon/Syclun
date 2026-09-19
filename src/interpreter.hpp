@@ -156,8 +156,8 @@ namespace interp {
     );
     RuntimeObjectPtr eval_expr(Frame& f, AstNodePtr node);
     InstanceListPtr eval_expr_list(Frame& f, AstNodePtr node);
-    void exec_block(Frame& f, AstNodePtr block);
-    void exec_stmt(Frame& f, AstNodePtr stmt);
+    RuntimeObjectPtr exec_block(Frame& f, AstNodePtr block);
+    RuntimeObjectPtr exec_stmt(Frame& f, AstNodePtr stmt);
     void exec_vardef(Frame& f, AstNodePtr node);
     void call_constructor(Frame& f, RuntimeObjectPtr obj, AstNodePtr argsNode);
     RuntimeObjectPtr resolve(Frame& f, const std::string& name);
@@ -1730,7 +1730,21 @@ namespace interp {
                 InstanceMap& /*env_ignored*/,
                 InstanceListPtr paras
             ) mutable -> InstanceListPtr {
-                return exec_behavior(captured, paras, behavior, sign, self_w.lock());
+                auto result =
+                    exec_behavior(captured, paras, behavior, sign, self_w.lock());
+                // Output-signature enforcement for the closure's own body. A
+                // behavior literal wraps user AST in this native closure, so
+                // RuntimeBehavior::call cannot tell it is "user" (is_user() is
+                // false for capture reasons) — enforce here so a closure's
+                // declared output constraint (e.g. `([std::Boolean])`) is still
+                // checked at the call boundary. 对闭包本体做输出签名约束。行为
+                // 字面量把用户 AST 包进原生闭包，RuntimeBehavior::call 因捕获
+                // 原因无法判定其 is_user()（为 false）——在此强制，使闭包声明的
+                // 输出约束（如 `([std::Boolean])`）仍能在调用边界被核查。
+                if (rt_basic::g_output_enforcer) {
+                    rt_basic::g_output_enforcer(sign, result);
+                }
+                return result;
             };
         return std::make_shared<RuntimeBehavior>(
             Callable(clos, sign, state_from_mode(mode), {false, false})
@@ -1865,7 +1879,7 @@ namespace interp {
             }
         }
 
-        exec_block(f, behavior->kids[1]);
+        RuntimeObjectPtr lastVal = exec_block(f, behavior->kids[1]);
 
         // Collect outputs in declaration order. `void` is no longer a keyword;
         // an empty output list `()` means "no return", and any ordinary name
@@ -1876,7 +1890,20 @@ namespace interp {
         if (signNode->kids.size() >= 2) {
             for (auto& o : signNode->kids[1]->kids) {
                 if (o->isPlaceholder) continue;
-                result->push_back(resolve(f, o->name));
+                if (o->name.empty()) {
+                    // Constraint-only output `([std::Boolean])`: there is no
+                    // named variable to resolve — the body's LAST expression
+                    // value IS the returned value (this is how the designer's
+                    // bracketed-constraint form `([...],[...])->([...],[...])`
+                    // yields a result to be strictly matched against the
+                    // constraint). 仅约束的输出 `([std::Boolean])`：无具名变量
+                    // 可解析——函数体最后一条表达式的值即返回值（这正是设计者
+                    // 的括号约束形式 `([...],[...])->([...],[...])` 产生结果、
+                    // 并据约束严格匹配的方式）。
+                    result->push_back(lastVal);
+                } else {
+                    result->push_back(resolve(f, o->name));
+                }
             }
         }
         if (result->empty()) { --g_recursion_depth; return rb::empty_result(); }
@@ -1890,20 +1917,23 @@ namespace interp {
 
     // Execute a block of statements.
     // 执行语句块。
-    inline void exec_block(Frame& f, AstNodePtr block) {
+    inline RuntimeObjectPtr exec_block(Frame& f, AstNodePtr block) {
+        RuntimeObjectPtr last;
         for (auto& stmt : block->kids) {
-            exec_stmt(f, stmt);
+            last = exec_stmt(f, stmt);
         }
+        return last;
     }
 
     // Execute a single statement.
     // 执行单条语句。
-    inline void exec_stmt(Frame& f, AstNodePtr stmt) {
+    inline RuntimeObjectPtr exec_stmt(Frame& f, AstNodePtr stmt) {
         // Record the current evaluation locus for the diagnostic reporter.
         // 记录当前求值位置，供诊断上报器使用。
         diag::set_locus(diag::source_file(), stmt->line, stmt->col);
         if (stmt->kind == "vardef") {
             exec_vardef(f, stmt);
+            return nullptr;
         } else if (stmt->kind == "methoddef") {
             // A method/closure declaration reached at runtime (inside a closure
             // body) defines a LOCAL closure variable bound to a behavior — it
@@ -1929,11 +1959,16 @@ namespace interp {
                 );
             }
             f.locals[mname] = make_closure(stmt->kids[0], f);
+            return nullptr;
         } else {
             // Expression statement (flow / call / instantiation chain / ...):
-            // evaluated for its side effects.
-            // 表达式语句（流 / 调用 / 实例化链 / …）：为副作用而求值。
-            eval_expr(f, stmt);
+            // its value is returned so a constraint-only output signature
+            // `([std::Boolean])` can use the body's LAST expression as the
+            // returned value (there is no named output to resolve).
+            // 表达式语句（流 / 调用 / 实例化链 / …）：返回其值，使仅约束的
+            // 输出签名 `([std::Boolean])` 可把函数体最后一条表达式作为返回值
+            //（无具名输出可解析）。
+            return eval_expr(f, stmt);
         }
     }
 

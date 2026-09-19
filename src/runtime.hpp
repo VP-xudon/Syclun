@@ -128,6 +128,27 @@ namespace rt_basic {
         const rt_basic::InstanceListPtr&
     )> g_sign_enforcer = nullptr;
 
+    // Output-signature enforcement hook (return-value type check).
+    // 输出签名约束钩子（返回值类型核查）。
+    //
+    // builtin.hpp assigns the real implementation (enforce_output_sign) here so
+    // that RuntimeBehavior::call / RuntimeClass::call_method can reject a
+    // return value whose type does not match the signature's declared OUTPUT
+    // at the call boundary — without a circular include into builtin.hpp.
+    // Same inline-std::function trick as g_sign_enforcer (single-TU build,
+    // no ODR). Mirrors g_sign_enforcer: an output constraint of "@" / "value"
+    // / "std::Object" / "..." / empty / non-concrete (#Contract) is skipped.
+    // builtin.hpp 在此赋予真实实现（enforce_output_sign），使
+    // RuntimeBehavior::call / RuntimeClass::call_method 能在调用边界拒收类型
+    // 不符声明的**输出**返回值，而无需循环包含 builtin.hpp。与 g_sign_enforcer
+    // 同款 inline std::function 手法（单编译单元、无 ODR）。语义镜像输入约束：
+    // 输出约束为 "@" / "value" / "std::Object" / "..." / 空 / 非具体（#Contract）
+    // 时跳过。
+    inline std::function<void(
+        const rt_basic::CallableSign&,
+        const rt_basic::InstanceListPtr&
+    )> g_output_enforcer = nullptr;
+
     // Behavior execution modes. Shared by Callable (which stores it) and the
     // interpreter (which maps the `->` / `~>` / `=>` arrows onto it).
     // 行为执行模式。Callable（存储它）与解释器（把 `->` / `~>` / `=>` 箭头
@@ -569,6 +590,12 @@ namespace runtime {
                 rt_basic::g_sign_enforcer(found->second.get_sign(), para);
             }
             auto res = found->second.call(this->attributes, para, shared_from_this());
+            // Output-signature enforcement: a user-defined (AST) method's
+            // return value must satisfy its declared output constraint(s).
+            // 输出签名约束：用户定义（AST）方法的返回值须满足其声明的输出约束。
+            if (rt_basic::g_output_enforcer && found->second.is_user()) {
+                rt_basic::g_output_enforcer(found->second.get_sign(), res);
+            }
             if (pushed_frame) diag::call_stack().pop_back();
             return res;
         }
@@ -601,7 +628,21 @@ namespace runtime {
         RuntimeBehavior(rt_basic::Callable _body) : body(_body) {}
 
         rt_basic::InstanceListPtr call(rt_basic::InstanceMap& env, rt_basic::InstanceListPtr para) {
-            return body.call(env, para);
+            auto res = body.call(env, para);
+            // Output-signature enforcement: a user-defined (AST) behavior must
+            // return a value satisfying its declared output constraint(s).
+            // Closures produced by make_closure wrap user AST in a native
+            // closure (is_user() == false for capture reasons) and enforce their
+            // own output inside the closure lambda; here we enforce for every
+            // other user behavior (instance methods etc.).
+            // 输出签名约束：用户定义（AST）行为的返回值须满足其声明的输出约束。
+            // make_closure 产出的闭包把用户 AST 包进原生闭包（因捕获原因
+            // is_user()==false），其输出约束已在闭包 lambda 内强制；此处对除此
+            // 之外的其它用户行为（实例方法等）做强制。
+            if (rt_basic::g_output_enforcer && body.is_user()) {
+                rt_basic::g_output_enforcer(body.get_sign(), res);
+            }
+            return res;
         }
 
         bool is_behav() {

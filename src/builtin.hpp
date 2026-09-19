@@ -452,6 +452,56 @@ namespace rt_builtin {
         return capsule ? capsule_boolean(capsule) : std::nullopt;
     }
 
+    // A "concrete" signature type is one the runtime can actually verify at the
+    // call boundary: a namespaced name ("module::Class"), a built-in scalar /
+    // container ("std::Number" / "std::Array" / ...), or a bare capitalized
+    // scalar name ("Boolean" / "Number" / "String" ... — resolved against
+    // "std::" by the runtime's namespace-tolerant lookup). User #Contract names
+    // and user class names are NOT concrete here (their roll-call check is a
+    // compile-time feature not yet implemented for parameters), so the enforcer
+    // skips them and never falsely rejects a well-formed call.
+    // 「具体」签名类型是运行期可在调用边界核查的类型：带命名空间
+    // （"module::Class"）、内建标量 / 容器（"std::Number" / "std::Array" 等），
+    // 或裸大写标量名（"Boolean" / "Number" / "String" 等——由运行期
+    // 命名空间容错查找解析到 "std::"）。用户 #Contract 名与用户类名尚非具体
+    // 类型（其点名单核查为尚未在参数级实现的编译期特性），约束器跳过之。
+    inline bool is_concrete_type(const std::string& t) {
+        if (t.empty() || t == "@" || t == "value" || t == "std::Object") return false;
+        if (t.find("::") != std::string::npos) return true;
+        if (t.rfind("std::", 0) == 0) return true;
+        if (t.size() >= 3 && t.substr(t.size() - 3) == "...") return false;
+        static const char* const kScalars[] = {
+            "Boolean", "Number", "String", "Object",
+            "Array", "Dict", "Tuple"
+        };
+        for (auto s : kScalars) if (t == s) return true;
+        return false;
+    }
+
+    // Truthiness of a runtime value, used by std::If / std::While / std::Repeat
+    // to decide branch / loop execution. A non-empty Boolean capsule is used
+    // directly; a Number is true when non-zero; a String is true when non-empty;
+    // any other (existing) object is treated as true. This is the "corrected
+    // constraint judgment": a control-flow condition is expected to be Boolean,
+    // but a truthy Number / String is accepted and converted, and an EMPTY
+    // return (a body that yields nothing) is reported by the caller — it is NOT
+    // silently treated as false.
+    // 运行期值的真值，供 std::If / std::While / std::Repeat 决定分支 / 循环
+    // 执行。非空布尔胶囊直接用；Number 非零为真；String 非空为真；其余
+    // （存在）对象视为真。此即「更正后的约束判断」：控制流条件期望为布尔，但
+    // 接受真值 Number / String 并转换；空返回（函数体什么都不产出）由调用方
+    // 上报——绝不静默当作 false。
+    inline bool truthy_of(const runtime::RuntimeObjectPtr& object) {
+        if (!object) return false;
+        auto capsule = unwrap(object);
+        if (!capsule) return true;   // a live object/container is truthy
+        std::string k = capsule_tag(capsule);
+        if (k == "bool") return capsule_boolean(capsule).value_or(false);
+        if (k == "num")  return capsule_number(capsule).value_or(0) != 0;
+        if (k == "str")  return !capsule_string(capsule).value_or("").empty();
+        return false;
+    }
+
 
     // ========================================================
     // Native error reporting (post poison-water retirement)
@@ -741,8 +791,7 @@ namespace rt_builtin {
             // "std::Array" 等）。用户约束名（如 "Addable"）与用户类名并非
             // 运行期可验证类型——§9.8 点名单是尚未在参数级实现的编译期
             // 特性——故跳过，绝不误拒合法调用。
-            bool concrete = (expect.find("::") != std::string::npos)
-                         || (expect.rfind("std::", 0) == 0);
+            bool concrete = is_concrete_type(expect);
             if (!concrete) continue;
             if (i >= actual.size()) {
                 // Fewer actuals than declared: defer to in-closure handling.
@@ -767,6 +816,62 @@ namespace rt_builtin {
             }
         }
         return true;
+    }
+
+    // Output-signature enforcer, assigned to rt_basic::g_output_enforcer in
+    // init_builtins. Strictly matches a user-defined behavior / method's RETURN
+    // value against the declared OUTPUT constraint(s) of its signature.
+    // 输出签名约束器，在 init_builtins 中赋值给 rt_basic::g_output_enforcer。
+    // 把用户定义行为 / 方法的**返回值**与其签名的输出约束做严格匹配。
+    inline void enforce_output_sign(
+        const rt_basic::CallableSign& sign,
+        const rt_basic::InstanceListPtr& res
+    ) {
+        const auto& out = sign.outpara;
+        if (out.empty()) return;          // no output constraint declared
+        // A declared output constraint but nothing returned is a hard error
+        // (previously this was silently ignored — e.g. `()->(){}` passed to
+        // std::If would neither run nor fail). Only concrete types are enforced;
+        // a non-concrete declared output with no return is left to the caller.
+        // 已声明输出约束却无返回值即为硬性错误（此前被静默忽略——例如把
+        // `()->(){}` 传给 std::If 既不执行也不报错）。仅具体类型被强制；
+        // 非具体类型声明但无返回则交调用方处理。
+        if (!res || res->empty()) {
+            for (std::size_t i = 0; i < out.size(); ++i) {
+                if (is_concrete_type(out[i].second)) {
+                    Thrower.throwE("TypeException",
+                        "Method '" + sign.name + "' declared output '"
+                        + out[i].first + "' (" + out[i].second
+                        + ") but returned no value");
+                }
+            }
+            return;
+        }
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            const std::string& expect = out[i].second;
+            // Universal / untyped / variadic outputs are not checked (mirror of
+            // the input enforcer).
+            // 通用 / 无类型 / 变参输出不核查（与输入约束器一致）。
+            if (expect.empty() || expect == "@" || expect == "value" ||
+                expect == "std::Object" ||
+                (expect.size() >= 3 &&
+                 expect.substr(expect.size() - 3) == "...")) {
+                continue;
+            }
+            // Only concrete runtime types are verifiable; user #Contract / class
+            // names are not (skipped, never falsely rejected).
+            // 仅具体运行期类型可核查；用户 #Contract / 类名不可核查（跳过）。
+            if (!is_concrete_type(expect)) continue;
+            if (i >= res->size()) continue;   // fewer returns than declared
+            const runtime::RuntimeObjectPtr& o = (*res)[i];
+            if (!o) continue;                 // poisoned return: defer
+            if (!type_match(expect, arg_type_key(o))) {
+                Thrower.throwE("TypeException",
+                    "Return type mismatch for '" + sign.name
+                    + "': expected '" + expect + "', got '"
+                    + arg_type_key(o) + "'");
+            }
+        }
     }
 
 
@@ -1173,6 +1278,32 @@ namespace rt_builtin {
             if (auto capsule = unwrap(incoming)) {
                 if (capsule_tag(capsule) == tag) {
                     env[VALUE_KEY] = capsule;
+                } else if (tag == "bool") {
+                    // Auto-convert a truthy scalar into a Boolean: this is the
+                    // "corrected constraint judgment" the designer asked for — a
+                    // std::Boolean can be filled from any truthy value (non-zero
+                    // Number, non-empty String), so `b << 1` makes b true and
+                    // `b << 0` makes it false, instead of silently keeping the
+                    // old value. An incompatible type (a container / behavior /
+                    // object) is rejected with a clear error rather than dropped.
+                    // 把真值标量自动转为布尔：这是设计者要求的「更正后的约束判断」
+                    //——std::Boolean 可由任意真值填入（非零 Number、非空 String），
+                    // 故 `b << 1` 使 b 为真、`b << 0` 使之为假，而非静默保留旧值。
+                    // 不兼容类型（容器 / 行为 / 对象）以清晰错误被拒，而非丢值。
+                    std::string k = capsule_tag(capsule);
+                    bool truthy;
+                    if (k == "bool") {
+                        truthy = capsule_boolean(capsule).value_or(false);
+                    } else if (k == "num") {
+                        truthy = capsule_number(capsule).value_or(0) != 0;
+                    } else if (k == "str") {
+                        truthy = !capsule_string(capsule).value_or("").empty();
+                    } else {
+                        Thrower.throwE("TypeException",
+                            "cannot assign a '" + k + "' value to a Boolean");
+                        return empty_result(); // unreachable
+                    }
+                    env[VALUE_KEY] = cap_boolean(truthy);
                 }
             }
             return empty_result();
@@ -2690,8 +2821,31 @@ namespace rt_builtin {
                 bool ok = false;
                 if (cond) {
                     auto r = call_behavior(cond, env, empty_result());
-                    auto b = boolean_of(first_of(r));
-                    ok = b && *b;
+                    auto val = (r && !r->empty()) ? first_of(r) : nullptr;
+                    // A condition body that returns NOTHING is a hard error, not
+                    // a silent "false": the designer requires an explicit Boolean
+                    // (a `()->(std::Boolean)` signature, or a truthy Number /
+                    // String). This is the corrected constraint judgment — a
+                    // missing return is reported instead of being swallowed.
+                    // 条件函数体什么都不返回即为硬性错误，而非静默当作 false：
+                    // 设计者要求显式的布尔（如 `()->(std::Boolean)` 签名，或真值
+                    // Number / String）。此即更正后的约束判断——缺失的返回会被
+                    // 上报，而非被吞掉。
+                    if (!val) {
+                        Thrower.throwE("RuntimeException",
+                            "std::If condition body returned no value; a "
+                            "Boolean (or truthy Number/String) is required "
+                            "(declare the output as '()->(std::Boolean)')");
+                    }
+                    std::string tk = arg_type_key(val);
+                    if (!type_match("std::Boolean", tk)
+                            && !type_match("std::Number", tk)
+                            && !type_match("std::String", tk)) {
+                        Thrower.throwE("TypeException",
+                            "std::If condition must be a Boolean (or a truthy "
+                            "Number/String), got '" + tk + "'");
+                    }
+                    ok = truthy_of(val);
                 }
                 env["_cond"] = make_boolean(ok);
                 return list_of({self});
@@ -2781,8 +2935,22 @@ namespace rt_builtin {
                 if (cond) {
                     for (;;) {
                         auto r = call_behavior(cond, env, empty_result());
-                        auto b = boolean_of(first_of(r));
-                        if (!(b && *b)) break;
+                        auto val = (r && !r->empty()) ? first_of(r) : nullptr;
+                        if (!val) {
+                            Thrower.throwE("RuntimeException",
+                                "std::While condition body returned no value; a "
+                                "Boolean (or truthy Number/String) is required "
+                                "(declare the output as '()->(std::Boolean)')");
+                        }
+                        std::string tk = arg_type_key(val);
+                        if (!type_match("std::Boolean", tk)
+                                && !type_match("std::Number", tk)
+                                && !type_match("std::String", tk)) {
+                            Thrower.throwE("TypeException",
+                                "std::While condition must be a Boolean (or a "
+                                "truthy Number/String), got '" + tk + "'");
+                        }
+                        if (!truthy_of(val)) break;
                         if (body) last = first_of(call_behavior(body, env, empty_result()));
                     }
                 }
@@ -3153,6 +3321,7 @@ namespace rt_builtin {
         // 使仅调用 init_builtins() 的场景（如 runtime 验收套件，未调用
         // init_stdlibs()）亦能使用这些库。
         rt_basic::g_sign_enforcer = enforce_sign;
+        rt_basic::g_output_enforcer = enforce_output_sign;
         init_stdlibs();
     }
 
