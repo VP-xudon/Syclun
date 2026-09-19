@@ -32,10 +32,10 @@
 //     member environment; locals and parameters live in a frame on top.
 //     方法体（行为）以对象的属性表作为成员环境执行；局部变量与参数位于
 //     其上的帧中。
-//   * An inline behavior literal (e.g. an if_ branch) is a *closure*: it
+//   * An inline behavior literal (e.g. a branch body) is a *closure*: it
 //     captures the caller's local scope so the branch can read the caller's
 //     variables (spec C.5).
-//     内联行为字面量（如 if_ 分支）是*闭包*：捕获调用者的局部作用域，
+//     内联行为字面量（如分支体）是*闭包*：捕获调用者的局部作用域，
 //     使分支能读取调用者的变量（文档 C.5）。
 //   * Flow `a << b` is executed as: publish b (b's "=:"), then receive into
 //     a (a's ":="). `>>` is normalized to `<<` by the parser.
@@ -535,14 +535,14 @@ namespace interp {
         // `std::Object` that holds a scalar value behaves as that scalar for
         // method calls. This is the root fix for type-tag degradation — a
         // value threaded through an untyped behavior output parameter (the
-        // loop state of `repeat_` / `while_`, an `if_` branch result, …)
+        // loop state of a std::repeat / std::while loop, or a std::if branch result, …)
         // kept its scalar value but lost its concrete type, so methods such
         // as `+` could no longer be called on it. The Object now transparently
         // stands in for the value it carries. Lifecycle / flow methods
         // (:: ~ =: := =) belong to Object itself and are never delegated.
         // 通用接收方（万物之源）的鸭子式派发：持有标量值的通用 std::Object
         // 在方法调用时表现为该标量类型。这是类型标签退化的根源修复——
-        // 经无类型行为输出参数（repeat_/while_ 的循环状态、if_ 分支结果…）
+        // 经无类型行为输出参数（std::repeat / std::while 的循环状态、std::if 分支结果…）
         // 穿线的数值保留了标量值却丢了具体类型，导致无法对其调用 + 等方法。
         // 现 Object 透明地代表其持有的值。生命周期 / 流方法（:: ~ =: := =）
         // 属于 Object 自身，绝不委派。
@@ -1574,6 +1574,16 @@ namespace interp {
                     std::make_shared<std::vector<RuntimeObjectPtr>>(
                         std::move(args)));
                 return rb::first_of(res);
+            }
+            // Bare `TypeName(args)` is a constructor call: create a fresh
+            // instance of the named type and run its `@::` with the supplied
+            // arguments (or the duck-typed receive fallback).
+            // 裸 `类型名(实参)` 视为构造函数调用：创建该类型的全新实例，
+            // 并以给定实参运行其 `@::`（或鸭子式接收兜底）。
+            auto ctor_inst = ::stdRT.make(node->value);
+            if (ctor_inst) {
+                call_constructor(f, ctor_inst, node->kids[0]);
+                return ctor_inst;
             }
             interp_error(
                 "InterException",

@@ -91,6 +91,26 @@ namespace rt_basic {
         runtime::RuntimeClassPtr
     )> g_user_behavior_executor = nullptr;
 
+    // Thread-local "current self" for native closures.
+    // 原生闭包的线程局部「当前自身」指针。
+    //
+    // Callable::call forwards the receiver instance (`selfInst`) to
+    // user-defined AST behaviors via g_user_behavior_executor, but native
+    // C++ closures only receive (env, paras). A handful of fluent built-in
+    // objects (std::If / std::While / std::Repeat) need to return *their own
+    // instance* to support chaining (then().else()...). To avoid changing
+    // the NativeClosure signature (which would ripple to ~100 lambdas), we
+    // stash the receiver instance here for the duration of the native call
+    // and restore the previous value afterwards, so nested calls behave
+    // correctly. Native methods read it through rt_builtin::current_self().
+    // Callable::call 经 g_user_behavior_executor 把接收实例（selfInst）
+    // 转发给 AST 用户行为，但原生 C++ 闭包只拿到 (env, paras)。少数流式
+    // 内置对象（std::If / std::While / std::Repeat）需要返回「自身实例」以
+    // 支持链式（then().else()...）。为避免改动 NativeClosure 签名（会波及约
+    // 百处 lambda），这里在原生调用期间暂存接收实例、事后复原，使嵌套调用
+    // 行为正确。原生方法经 rt_builtin::current_self() 读取。
+    inline thread_local runtime::RuntimeClassPtr g_native_self = nullptr;
+
     // Signature-enforcement hook.
     // 签名约束钩子。
     //
@@ -154,14 +174,20 @@ namespace rt_basic {
         InstanceListPtr call(InstanceMap &env, const InstanceListPtr &paras, runtime::RuntimeClassPtr selfInst = nullptr) {
             if (std::holds_alternative<NativeClosure>(this->self)) {
                 NativeClosure selfbody = std::get<NativeClosure>(self);
+                runtime::RuntimeClassPtr saved_self = g_native_self;
+                g_native_self = selfInst;
+                InstanceListPtr result;
                 if (behav_state == BehavStateOBJ::STRICT) {
                     InstanceMap newe = {};
-                    return selfbody(newe, paras);
+                    result = selfbody(newe, paras);
                 } else if (behav_state == BehavStateOBJ::CONST) {
                     InstanceMap copy = env;
-                    return selfbody(copy, paras);
+                    result = selfbody(copy, paras);
+                } else {
+                    result = selfbody(env, paras);
                 }
-                return selfbody(env, paras);
+                g_native_self = saved_self;
+                return result;
             } else {
                 parser::AstNodePtr selfbody = std::get<parser::AstNodePtr>(self);
                 // User-defined behavior (AST node): hand execution to the

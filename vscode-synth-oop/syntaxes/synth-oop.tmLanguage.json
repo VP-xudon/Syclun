@@ -13,7 +13,6 @@
     { "include": "#method-call" },
     { "include": "#class-decl" },
     { "include": "#method-decl" },
-    { "include": "#control-keyword" },
     { "include": "#operator" },
     { "include": "#constant-marker" },
     { "include": "#keyword-marker" },
@@ -82,10 +81,6 @@
         "1": { "name": "keyword" },
         "2": { "name": "entity.name.function" }
       }
-    },
-    "control-keyword": {
-      "name": "keyword.control",
-      "match": "\\b(if_|while_|repeat_)\\b"
     },
     "operator": {
       "name": "keyword.operator",

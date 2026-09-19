@@ -1,0 +1,37 @@
+&io;
+&structs;
+// 深度 / 广度优先搜索模板 / DFS & BFS template.
+// 用 std::Graph 的 dfs(start) 与 bfs(start) 即可，无需手写板子。
+// Use std::Graph.dfs(start) / bfs(start) — no hand-written boilerplate.
+
+$Program {
+  @::[{
+    -(std::Graph g);
+    g.add_node(std::Number(1));
+    g.add_node(std::Number(2));
+    g.add_node(std::Number(3));
+    g.add_node(std::Number(4));
+    g.add_node(std::Number(5));
+    g.add_edge(std::Number(1), std::Number(2));
+    g.add_edge(std::Number(1), std::Number(3));
+    g.add_edge(std::Number(2), std::Number(4));
+    g.add_edge(std::Number(3), std::Number(5));
+
+    io::out.push_line("DFS from 1: ");
+    io::out.push_line(g.dfs(std::Number(1)));
+    io::out.push_line("BFS from 1: ");
+    io::out.push_line(g.bfs(std::Number(1)));
+
+    // 自己写的遍历（演示 std::while / std::if 控制流）/ hand-rolled traversal
+    // using the new control-flow objects
+    io::out.push_line("manual BFS using std::while:");
+    -(std::Array q) << g.bfs(std::Number(1));
+    -(std::Number i) << std::Number(0);
+    std::while([()->(Boolean){ Boolean << i.<(q.size()); }])
+        .then([{
+            io::out.push_line(q.get(i));
+            i << i.+(std::Number(1));
+        }]);
+    g.dispose();
+  }];
+}

@@ -1,0 +1,31 @@
+&io;
+&structs;
+// 线段树模板 / Segment Tree template.
+// 赋权数组的区间求和 / 最值，用 std::SegTree 即可，无需手写板子。
+// Interval sum / min / max over a weighted array — use std::SegTree.
+
+$Program {
+  @::[{
+    -(std::Array a) << std::Array((1, 3, 5, 7, 9));
+    -(std::SegTree st) << std::SegTree(a, std::String("sum"));
+
+    io::out.push_line("size: ");
+    io::out.push_line(st.size());
+    io::out.push_line("sum[0, 4] = ");
+    io::out.push_line(st.query(std::Number(0), std::Number(4)));
+    io::out.push_line("sum[1, 3] = ");
+    io::out.push_line(st.query(std::Number(1), std::Number(3)));
+
+    st.update(std::Number(2), std::Number(100));
+    io::out.push_line("after update(2 -> 100), sum[0, 4] = ");
+    io::out.push_line(st.query(std::Number(0), std::Number(4)));
+
+    // 换成最小值模式 / switch to min mode
+    -(std::SegTree mn) << std::SegTree(a, std::String("min"));
+    io::out.push_line("min[0, 4] = ");
+    io::out.push_line(mn.query(std::Number(0), std::Number(4)));
+
+    st.dispose();
+    mn.dispose();
+  }];
+}

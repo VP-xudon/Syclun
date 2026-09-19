@@ -526,122 +526,73 @@ namespace {
     }
 
     // --------------------------------------------------------
-    // 5. Control flow: if_ / while_ / repeat_ (Chapter 7 / D.16)
-    // 5. 控制流：if_ / while_ / repeat_（第七章 / D.16）
+    // 5. Control flow: std::if / std::while / std::repeat (Chapter 7 / D.16)
+    // 5. 控制流：std::if / std::while / std::repeat（第七章 / D.16）
     // --------------------------------------------------------
 
     void test_control_flow() {
-        section("Control flow — if_ / while_ / repeat_ (D.16)");
+        section("Control flow — std::if / std::while / std::repeat (D.16)");
 
-        auto out = rt_builtin::make_ostream();
+        // D.16: std::repeat(n) runs the body n times; the body mutates the
+        // captured environment directly (no threaded loop-state parameter).
+        // D.16：std::repeat(n) 把 body 执行 n 次，body 直接修改被捕获的环境
+        // （不再有穿线式循环状态参数）。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @::[{\n"
+            "    -(std::Number n) << std::Number(0);\n"
+            "    std::repeat(std::Number(5)).then([{ n << n.+(std::Number(1)); }]);\n"
+            "    io::out.push_line(n);\n"
+            "  }];\n"
+            "}\n",
+            "5"),
+            "std::repeat(5) body runs 5 times -> 5");
 
-        // D.16: repeat_ runs 3 times; state accumulates from 0 to 3.
-        // D.16：repeat_ 执行 3 次，state 从 0 累加到 3。
-        auto counter = behavior(
-            [](rt_basic::InstanceMap& /*env*/,
-               rt_basic::InstanceListPtr paras) {
-                auto state = rt_builtin::number_of(
-                    rt_builtin::first_of(paras)).value_or(0);
-                return list_of({rt_builtin::make_int(
-                    static_cast<std::int64_t>(state) + 1)});
-            }
-        );
-        auto last = call(rt_builtin::make_int(3), "repeat_", {counter});
-        check(num(last) == 3, "3.repeat_(state + 1) == 3");
+        // std::if: a true condition takes the then branch, a false one the else.
+        // std::if：条件为真走 then，为假走 else。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @::[{\n"
+            "    -(std::Number r) << std::Number(0);\n"
+            "    std::if([()->(Boolean){ Boolean << std::Number(7).>(std::Number(5)); }])\n"
+            "      .then([{ r << std::Number(1); }])\n"
+            "      .else([{ r << std::Number(2); }]);\n"
+            "    io::out.push_line(r);\n"
+            "  }];\n"
+            "}\n",
+            "1"),
+            "std::if(true) takes the then branch -> 1");
 
-        // if_: the condition is the caller; the true branch returns last, the
-        // false branch returns 0.
-        // if_：条件为调用者，真分支返回 last，假分支返回 0。
-        auto last_value = first_of(last);
-        auto picked = call(
-            first_of(call(last_value, ">", {rt_builtin::make_int(2)})),
-            "if_",
-            {
-                behavior([last_value](rt_basic::InstanceMap&,
-                                      rt_basic::InstanceListPtr) {
-                    return list_of({last_value});
-                }),
-                behavior([](rt_basic::InstanceMap&,
-                            rt_basic::InstanceListPtr) {
-                    return list_of({rt_builtin::make_int(0)});
-                }),
-            }
-        );
-        check(num(picked) == 3, "(3.>(2)).if_(true branch) == 3");
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @::[{\n"
+            "    -(std::Number r) << std::Number(0);\n"
+            "    std::if([()->(Boolean){ Boolean << std::Number(3).>(std::Number(5)); }])\n"
+            "      .then([{ r << std::Number(1); }])\n"
+            "      .else([{ r << std::Number(2); }]);\n"
+            "    io::out.push_line(r);\n"
+            "  }];\n"
+            "}\n",
+            "2"),
+            "std::if(false) takes the else branch -> 2");
 
-        // Boolean constant as condition (Spec 7.1 example 2).
-        // 布尔常数作条件（文档 7.1 示例 2）。
-        auto constant = call(
-            rt_builtin::make_boolean(true),
-            "if_",
-            {
-                behavior([](rt_basic::InstanceMap&,
-                            rt_basic::InstanceListPtr) {
-                    return list_of({rt_builtin::make_int(1)});
-                }),
-                behavior([](rt_basic::InstanceMap&,
-                            rt_basic::InstanceListPtr) {
-                    return list_of({rt_builtin::make_int(0)});
-                }),
-            }
-        );
-        check(num(constant) == 1, "(true).if_ takes the true branch");
-
-        // D.16 output: 3 and 3.
-        // D.16 输出：3 和 3。
-        flow(last_value, out);
-        flow(rt_builtin::make_string(" "), out);
-        flow(first_of(picked), out);
-        flow(rt_builtin::make_string("\n"), out);
-
-        // while_ (Spec 7.2 example): state accumulates from 0 to 10.
-        // while_（文档 7.2 示例）：state 从 0 累加到 10。
-        auto grow = behavior(
-            [](rt_basic::InstanceMap& /*env*/,
-               rt_basic::InstanceListPtr paras) {
-                auto state = rt_builtin::number_of(
-                    rt_builtin::first_of(paras)).value_or(0);
-                return list_of({rt_builtin::make_int(
-                    static_cast<std::int64_t>(state) + 1)});
-            }
-        );
-        auto below_ten = behavior(
-            [](rt_basic::InstanceMap& /*env*/,
-               rt_basic::InstanceListPtr paras) {
-                auto state = rt_builtin::number_of(
-                    rt_builtin::first_of(paras)).value_or(0);
-                return list_of({rt_builtin::make_boolean(state < 10)});
-            }
-        );
-        auto looped = call(
-            rt_builtin::make_boolean(true), "while_", {grow, below_ten}
-        );
-        check(num(looped) == 10,
-            "(true).while_(body, check) returns last state == 10");
-
-        // Initial condition false: ends immediately, returns the zero state.
-        // 初始条件为假：直接结束，返回零值 state。
-        auto skipped = call(
-            rt_builtin::make_boolean(false), "while_", {grow, below_ten}
-        );
-        check(num(skipped) == 0, "(false).while_ ends immediately, state stays zero");
-
-        // Non-const contract loop body: the body mutates the caller's
-        // environment directly (Spec 10.3).
-        // 非常数契约循环体：body 直接修改调用者环境（文档 10.3）。
-        double total = 0;
-        auto accumulate = behavior(
-            [&total](rt_basic::InstanceMap& /*env*/,
-                     rt_basic::InstanceListPtr paras) {
-                auto state = rt_builtin::number_of(
-                    rt_builtin::first_of(paras)).value_or(0);
-                total += state + 1;   // accumulate 1 to 5 / 累加 1 到 5
-                return list_of({rt_builtin::make_int(
-                    static_cast<std::int64_t>(state) + 1)});
-            }
-        );
-        call(rt_builtin::make_int(5), "repeat_", {accumulate});
-        check(total == 15, "repeat_ loop body accumulates 1 to 5 == 15");
+        // std::while: loops while the condition closure returns true.
+        // std::while：条件闭包为真时循环。
+        check(expect_program_output(
+            "&io;\n"
+            "$Program {\n"
+            "  @::[{\n"
+            "    -(std::Number i) << std::Number(0);\n"
+            "    std::while([()->(Boolean){ Boolean << i.<(std::Number(3)); }])\n"
+            "      .then([{ i << i.+(std::Number(1)); }]);\n"
+            "    io::out.push_line(i);\n"
+            "  }];\n"
+            "}\n",
+            "3"),
+            "std::while loops until condition false -> 3");
     }
 
     // --------------------------------------------------------
@@ -858,24 +809,26 @@ namespace {
         section("Type-tag preservation (universal receiver) + member initializers");
 
         // A behavior output parameter is an untyped `std::Object`; a value
-        // threaded through it (repeat_ / while_ loop state) used to keep its
-        // scalar value but lose its concrete type, so `st.+(1)` and `1.+(st)`
-        // both failed signature enforcement. The universal receiver now
-        // transparently acts as the scalar it holds.
-        // 行为输出参数是无类型 std::Object；经其穿线的数值（repeat_/while_
-        // 循环状态）曾保留标量值却丢失具体类型，导致 `st.+(1)` 与 `1.+(st)`
-        // 都被签名检查拒绝。现通用接收方透明地代表其持有的标量。
+        // captured by a closure body (std::repeat / std::while loop) keeps both
+        // its scalar value and concrete type, so `st.+(1)` and `1.+(st)` both
+        // pass signature enforcement. The universal receiver transparently acts
+        // as the scalar it holds.
+        // 行为输出参数是无类型 std::Object；被闭包 body 捕获的数值
+        //（std::repeat / std::while 循环）既保留标量值又保留具体类型，
+        // 故 `st.+(1)` 与 `1.+(st)` 都能通过签名检查。现通用接收方透明地
+        // 代表其持有的标量。
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
             "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
-            "    -(std::Number n) << 5.repeat_([(st) -> (next) { next << st.+(1); }]);\n"
+            "    -(std::Number n) << std::Number(0);\n"
+            "    std::repeat(std::Number(5)).then([{ n << n.+(std::Number(1)); }]);\n"
             "    out << n;\n"
             "  }];\n"
             "}\n",
             "5"),
-            "repeat_ loop state keeps its type: st.+(1) works (prints 5)");
+            "std::repeat accumulates via a captured closure; the accumulator keeps its scalar type (prints 5)");
 
         // Direct method dispatch on a universal `std::Object` holder.
         // 对通用 std::Object 持有者直接派发方法。
@@ -910,40 +863,42 @@ namespace {
             "7"),
             "class member initializer `-(std::Number(7) inner)` sets inner to 7");
 
-        // while_ threads its loop state through an untyped output parameter
+        // std::while threads its loop state through an untyped output parameter
         // and compares it with `<` (delegated from the universal receiver).
-        // while_ 把循环状态经无类型输出参数穿线，并用 `<` 比较（经通用接收方委托）。
+        // std::while 把循环状态经无类型输出参数穿线，并用 `<` 比较
+        // （经通用接收方委托）。
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
             "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
-            "    -(std::Number m) << true.while_(\n"
-            "      [(st) -> (next) { next << st.+(1); }],\n"
-            "      [(st) ~> (flag) { flag << st.<(4); }]);\n"
+            "    -(std::Number m) << std::Number(0);\n"
+            "    std::while([()->(Boolean){ Boolean << m.<(std::Number(4)); }])\n"
+            "      .then([{ m << m.+(std::Number(1)); }]);\n"
             "    out << m;\n"
             "  }];\n"
             "}\n",
             "4"),
-            "while_ threaded state keeps type and compares via delegated `<` (m=4)");
+            "std::while threads its loop state, keeps its type, and compares via the delegated `<` (m=4)");
 
-        // Nested repeat_ capturing an outer accumulator (closure capture).
-        // 嵌套 repeat_ 捕获外层累加器（闭包捕获）。
+        // Nested std::repeat capturing an outer accumulator (closure capture).
+        // 嵌套 std::repeat 捕获外层累加器（闭包捕获）。
         check(expect_program_output(
             "&io;\n"
             "$Program {\n"
             "  @::[() -> () {\n"
             "    -(io::OStream out);\n"
             "    -(std::Number total) << 0;\n"
-            "    -(std::Number k) << 3.repeat_([(i) -> (o) {\n"
-            "      -(std::Number t2) << i.repeat_([(j) -> (p) { total << total.+(1); p << j; }]);\n"
-            "      o << i.+(1);\n"
+            "    -(std::Number oc) << std::Number(0);\n"
+            "    std::repeat(std::Number(3)).then([{\n"
+            "      std::repeat(oc).then([{ total << total.+(std::Number(1)); }]);\n"
+            "      oc << oc.+(std::Number(1));\n"
             "    }]);\n"
             "    out << total;\n"
             "  }];\n"
             "}\n",
             "3"),
-            "nested repeat_ with closure capture accumulates correctly (3)");
+            "nested std::repeat with closure capture accumulates correctly (3)");
 
         // `self` keyword inside a method plus an empty-method declaration
         // `@touch;` must both be valid (self resolves to the instance).
@@ -1435,10 +1390,10 @@ namespace {
             "&io;\n$Program {@::[() -> () {\n"
             "  -(io::OStream out);\n"
             "  -(std::Boolean(true)! b);\n"
-            "  out << (b.if_(1, 0));\n"
+            "  out << (std::if(b).then([{}]).else([{}]));\n"
             "}];};",
             "behavior"),
-            "if_ receiving a non-behavior raises an immediate error");
+            "std::if receiving a non-behavior raises an immediate error");
 
         // Variadic signature ("..." convention): Tuple.make accepts any number
         // of elements.

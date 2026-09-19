@@ -56,17 +56,17 @@ $Program {
         // identifiers may contain digits (e.g. sha2a3 / hashValue42) / 标识符可含数字
         -(std::Number sha2a3) << 7;
         -(std::String hashValue42) << "ok";
-        // qualified constant type (const variable must use a constructor) /
-        // 带常量标记限定的库类型（常数变量须用构造器初始化）
-        -(std::Number(1)! frozen);
+        // value-first declaration (value followed by the variable name) /
+        // 值优先声明（值后跟变量名）
+        -(std::Number(1) frozen);
 
         // stream assignment & operators (all are method calls) / 流赋值与方法调用
         out << "sum = ";
         out << a.+(b);
-        out << (a.>(b)).if_(          // control method if_
-            [() ~> (value) { value << a; }],
-            [() ~> (value) { value << b; }]
-        );
+        out << (std::if([() ~> (c) { c << a.>(b); }])   // control-flow object std::if
+                    .then([() ~> (value) { value << a; }])
+                    .else([() ~> (value) { value << b; }])
+                    .value());
 
         // behavior literal with zero-side-effect pattern (=>), shown as a
         // method body and invoked normally. / 零副作用行为字面量（=>），
@@ -78,15 +78,18 @@ $Program {
         -(std::Tuple pair) << (100, 200);
         -(std::Number first, _) << pair;
 
-        // repeat_ runs the body N times, threading a loop state. The loop
-        // state is an untyped behavior output parameter; because the
-        // interpreter now preserves the scalar type a universal `std::Object`
-        // carries (root fix for type-tag degradation), arithmetic *on* the
-        // threaded state works directly — no captured-accumulator workaround.
-        // repeat_ 把 body 跑 N 次，穿线循环状态。该状态是无类型行为输出参数；
-        // 因解释器现已保留通用 std::Object 所携带的标量类型（类型标签退化的
-        // 根源修复），对穿线状态直接做运算即可，无需捕获累加器的绕开写法。
-        -(std::Number n) << 5.repeat_([(st) -> (next) { next << st.+(1); }]);
+        // std::repeat runs the body N times; each iteration's body output is
+        // threaded straight through as the next .value(). A closure-captured
+        // accumulator demonstrates the run — the interpreter preserves the
+        // scalar type a universal `std::Object` carries (root fix for
+        // type-tag degradation), so arithmetic on the threaded output works
+        // directly.
+        // std::repeat 把 body 跑 N 次；每轮 body 的输出即下一轮的 .value()。
+        // 用闭包捕获的累加器演示运行——解释器保留通用 std::Object 所携带的
+        // 标量类型（类型标签退化的根源修复），对穿线输出直接做运算即可。
+        -(std::Number n) << (std::repeat(std::Number(5))
+                                .then([() -> (nx) { n << n.+(1); nx << n; }])
+                                .value());
         out << "repeat result = "; out << n; out << "\n";
 
         // constraint used as a parameter qualifier / 约束作参数限定

@@ -1026,6 +1026,58 @@ namespace rt_lib_structs {
         return path;
     }
 
+    // Depth-first order of node ids (iterative DFS; deterministic neighbour
+    // order). When `start` is empty, DFS visits every connected component.
+    // 深度优先遍历（迭代 DFS；邻居顺序确定）。`start` 为空时遍历所有连通分量。
+    inline std::vector<std::string> graph_dfs(
+            GraphState& g, const std::string& start) {
+        std::vector<std::string> out;
+        if (g.nodes.empty()) return out;
+        std::unordered_set<std::string> vis;
+        std::function<void(const std::string&)> dfs =
+            [&](const std::string& u) {
+                vis.insert(u);
+                out.push_back(u);
+                auto it = g.adj.find(u);
+                if (it == g.adj.end()) return;
+                std::vector<std::string> ns;
+                for (auto& e : it->second) ns.push_back(e.first);
+                std::sort(ns.begin(), ns.end());
+                for (auto& v : ns) if (vis.find(v) == vis.end()) dfs(v);
+            };
+        if (!start.empty() && g.nodes.find(start) != g.nodes.end()) {
+            dfs(start);
+        } else {
+            std::vector<std::string> nodes(g.nodes.begin(), g.nodes.end());
+            std::sort(nodes.begin(), nodes.end());
+            for (auto& n : nodes) if (vis.find(n) == vis.end()) dfs(n);
+        }
+        return out;
+    }
+
+    inline rt_basic::Callable method_graph_dfs() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto id = rb::para_at(paras, 0);
+                std::vector<RuntimeObjectPtr> out;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    auto& g = g_graphs[instance_id(env)];
+                    std::string start = id ? key_text(id) : "";
+                    if (!start.empty() && g.nodes.find(start) == g.nodes.end()) {
+                        return rb::list_of({rb::native_error(
+                            "graph.dfs: start node not in graph")});
+                    }
+                    for (auto& s : graph_dfs(g, start)) {
+                        out.push_back(rb::make_string(s));
+                    }
+                }
+                return rb::list_of({build_array(out)});
+            },
+            rb::make_sign("dfs", {{"start", "std::Object"}}, {{"arr", "std::Array"}})
+        );
+    }
+
     inline rt_basic::Callable method_graph_bfs() {
         return rb::native_method(
             [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
@@ -1850,6 +1902,225 @@ namespace rt_lib_structs {
         );
     }
 
+    // ========================================================
+    // SegTree (segment tree) / 线段树：区间和 / 最小值 / 最大值
+    // ========================================================
+    struct SegTreeState {
+        std::vector<double> t;   // segment-tree storage (1-based indexing)
+        std::vector<double> a;   // base array (0-based)
+        std::string mode = "sum";// "sum" | "min" | "max"
+        int n = 0;
+    };
+    static std::unordered_map<long long, SegTreeState> g_segtrees;
+    inline void erase_segtree(long long id) {
+        std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+        g_segtrees.erase(id);
+    }
+    inline double seg_combine(const std::string& m, double x, double y) {
+        if (m == "min") return std::min(x, y);
+        if (m == "max") return std::max(x, y);
+        return x + y;
+    }
+    inline std::vector<double> seg_to_doubles(const RuntimeObjectPtr& arr) {
+        std::vector<double> out;
+        auto* cls = dynamic_cast<RuntimeClass*>(arr.get());
+        if (!cls) return out;
+        auto* am = &cls->get_attributes();
+        std::size_t n = rb::container_size(*am);
+        for (std::size_t i = 0; i < n; ++i) {
+            auto it = am->find(rb::elem_key(i));
+            double v = 0.0;
+            if (it != am->end()) {
+                auto d = rb::number_of(it->second);
+                if (d) v = *d;
+            }
+            out.push_back(v);
+        }
+        return out;
+    }
+    inline void seg_do_build(SegTreeState& s) {
+        int n = s.n;
+        if (n <= 0) { s.t.clear(); return; }
+        s.t.assign(4 * n + 1, 0.0);
+        std::function<void(int,int,int)> build = [&](int node, int l, int r) {
+            if (l == r) { s.t[node] = s.a[l]; return; }
+            int m = l + (r - l) / 2;
+            build(node * 2, l, m);
+            build(node * 2 + 1, m + 1, r);
+            s.t[node] = seg_combine(s.mode, s.t[node * 2], s.t[node * 2 + 1]);
+        };
+        build(1, 0, n - 1);
+    }
+    inline void seg_do_update(SegTreeState& s, int idx, double v) {
+        if (s.n <= 0 || idx < 0 || idx >= s.n) return;
+        s.a[idx] = v;
+        std::function<void(int,int,int)> upd = [&](int node, int l, int r) {
+            if (l == r) { s.t[node] = v; return; }
+            int m = l + (r - l) / 2;
+            if (idx <= m) upd(node * 2, l, m);
+            else upd(node * 2 + 1, m + 1, r);
+            s.t[node] = seg_combine(s.mode, s.t[node * 2], s.t[node * 2 + 1]);
+        };
+        upd(1, 0, s.n - 1);
+    }
+    inline double seg_do_query(SegTreeState& s, int ql, int qr) {
+        if (s.n <= 0 || ql > qr) return 0.0;
+        ql = std::max(ql, 0);
+        qr = std::min(qr, s.n - 1);
+        std::function<double(int,int,int)> q = [&](int node, int l, int r) {
+            if (ql <= l && r <= qr) return s.t[node];
+            int m = l + (r - l) / 2;
+            if (qr <= m) return q(node * 2, l, m);
+            if (ql > m)  return q(node * 2 + 1, m + 1, r);
+            return seg_combine(s.mode, q(node * 2, l, m), q(node * 2 + 1, m + 1, r));
+        };
+        return q(1, 0, s.n - 1);
+    }
+
+    // constructor @::(arr, mode) — also tolerates no args (empty tree).
+    // 构造函数 @::(数组, 模式)；无实参时建立空树。
+    inline rt_basic::Callable method_segtree_ctor() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                SegTreeState s;
+                auto arr = rb::para_at(paras, 0);
+                if (arr) {
+                    s.a = seg_to_doubles(arr);
+                    s.n = static_cast<int>(s.a.size());
+                }
+                auto modeo = rb::para_at(paras, 1);
+                auto ms = rb::string_of(modeo);
+                if (ms) {
+                    std::string m = *ms;
+                    if (m == "min" || m == "max" || m == "sum") s.mode = m;
+                }
+                seg_do_build(s);
+                g_segtrees[instance_id(env)] = std::move(s);
+                return rb::empty_result();
+            },
+            rb::make_sign("::", {{"arr", "std::Array"}, {"mode", "std::String"}}, {})
+        );
+    }
+    // publish/receive overrides so that `-(std::SegTree t) << std::SegTree(...)`
+    // carries the C++ backend state across the flow (the state lives in a global
+    // map keyed by instance id; a plain Object publish/receive would drop it).
+    // 重写公布 / 接收，使 `-(std::SegTree t) << std::SegTree(...)` 能把 C++
+    // 底层状态随流转移（状态存于按实例 id 索引的全局表，裸 Object 流会丢状态）。
+    inline rt_basic::Callable method_segtree_publish() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                return rb::list_of({rb::current_self()});
+            },
+            rb::make_sign("=:", {}, {{"self", "std::SegTree"}})
+        );
+    }
+    inline rt_basic::Callable method_segtree_receive() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto src = rb::para_at(paras, 0);
+                if (src) {
+                    auto* sc = dynamic_cast<runtime::RuntimeClass*>(src.get());
+                    if (sc) {
+                        long long sid = id_from(sc->get_attributes());
+                        long long did = instance_id(env);
+                        std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                        auto it = g_segtrees.find(sid);
+                        if (it != g_segtrees.end()) g_segtrees[did] = it->second;
+                        else g_segtrees.erase(did);
+                    }
+                }
+                return rb::empty_result();
+            },
+            rb::make_sign(":=", {{"value", "std::SegTree"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_segtree_build() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto arr = rb::para_at(paras, 0);
+                if (!arr) {
+                    return rb::list_of({rb::native_error(
+                        "segtree.build requires an Array")});
+                }
+                SegTreeState s;
+                s.a = seg_to_doubles(arr);
+                s.n = static_cast<int>(s.a.size());
+                auto modeo = rb::para_at(paras, 1);
+                auto ms = rb::string_of(modeo);
+                if (ms) {
+                    std::string m = *ms;
+                    if (m == "min" || m == "max" || m == "sum") s.mode = m;
+                }
+                seg_do_build(s);
+                g_segtrees[instance_id(env)] = std::move(s);
+                return rb::empty_result();
+            },
+            rb::make_sign("build", {{"arr", "std::Array"}, {"mode", "std::String"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_segtree_update() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto io = rb::para_at(paras, 0), vo = rb::para_at(paras, 1);
+                auto iv = rb::number_of(io), vv = rb::number_of(vo);
+                if (!iv || !vv) {
+                    return rb::list_of({rb::native_error(
+                        "segtree.update requires (index, value)")});
+                }
+                std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                seg_do_update(g_segtrees[instance_id(env)],
+                              static_cast<int>(*iv), *vv);
+                return rb::empty_result();
+            },
+            rb::make_sign("update",
+                {{"index", "std::Number"}, {"value", "std::Number"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_segtree_query() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto lo = rb::para_at(paras, 0), ro = rb::para_at(paras, 1);
+                auto lv = rb::number_of(lo), rv = rb::number_of(ro);
+                if (!lv || !rv) {
+                    return rb::list_of({rb::native_error(
+                        "segtree.query requires (left, right)")});
+                }
+                double r = 0.0;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    r = seg_do_query(g_segtrees[instance_id(env)],
+                                     static_cast<int>(*lv), static_cast<int>(*rv));
+                }
+                return rb::list_of({rb::make_number(r)});
+            },
+            rb::make_sign("query",
+                {{"left", "std::Number"}, {"right", "std::Number"}},
+                {{"value", "std::Number"}})
+        );
+    }
+    inline rt_basic::Callable method_segtree_size() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                int n = 0;
+                {
+                    std::lock_guard<std::recursive_mutex> lk(g_st_mux);
+                    n = g_segtrees[instance_id(env)].n;
+                }
+                return rb::list_of({rb::make_number(static_cast<double>(n))});
+            },
+            rb::make_sign("size", {}, {{"n", "std::Number"}})
+        );
+    }
+    inline rt_basic::Callable method_segtree_dispose() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                erase_segtree(id_from(env));
+                return rb::empty_result();
+            },
+            rb::make_sign("dispose", {}, {})
+        );
+    }
+
     // ---- registration / 登记 ----
     inline void init_structs_stdlib() {
         // Queue / 队列
@@ -1934,6 +2205,7 @@ namespace rt_lib_structs {
             proto->set_method("node_count",    method_graph_node_count());
             proto->set_method("edge_count",    method_graph_edge_count());
             proto->set_method("bfs",           method_graph_bfs());
+            proto->set_method("dfs",           method_graph_dfs());
             proto->set_method("shortest_path", method_graph_shortest_path());
             proto->set_method("shortest_distance", method_graph_shortest_distance());
             proto->set_method("directed",          method_graph_directed());
@@ -1955,6 +2227,20 @@ namespace rt_lib_structs {
             proto->set_method("dispose",  method_graph_dispose());
             proto->on_release = [](rt_basic::InstanceMap& env) { erase_graph(id_from(env)); };
             runtime::Prototypes p; p.regcls("Graph", proto); ::stdRT.add_protos(p);
+        }
+        // SegTree / 线段树
+        {
+            auto proto = std::make_shared<rt_basic::ClsProto>(::stdRT.getcls("Object"));
+            proto->set_method("::",        method_segtree_ctor());
+            proto->set_method("=:",        method_segtree_publish());
+            proto->set_method(":=",        method_segtree_receive());
+            proto->set_method("build",     method_segtree_build());
+            proto->set_method("update",    method_segtree_update());
+            proto->set_method("query",     method_segtree_query());
+            proto->set_method("size",      method_segtree_size());
+            proto->set_method("dispose",   method_segtree_dispose());
+            proto->on_release = [](rt_basic::InstanceMap& env) { erase_segtree(id_from(env)); };
+            runtime::Prototypes p; p.regcls("SegTree", proto); ::stdRT.add_protos(p);
         }
     }
 

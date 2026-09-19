@@ -434,10 +434,105 @@ namespace parser {
         //   -(Type! var) << value;    declare and assign
         //   -(Type a, Type b) << val;  multi-decl (tuple destructuring, 5.4.3)
         //   -(Type a, _) << val;      `_` placeholder
+        // Peek whether the instantiation is value-first: the leading token is a
+        // literal ("3", 5) or a bare name immediately followed by '('.
+        // 预判是否为「值优先」实例化：首 token 为字面量（"3"、5）或裸名紧跟 '('。
+        bool is_value_first_form() {
+            auto cur = peek();
+            if (cur.typetag == "<string>" || cur.typetag == "<number>") {
+                return true;
+            }
+            if (cur.typetag == "<name>" && peek(1).typetag == "<symbol>"
+                    && peek(1).value == "(") {
+                return true;
+            }
+            return false;
+        }
+
+        // Infer the std type implied by a value expression used in value-first
+        // instantiation (-(<value> var)). 由「值优先」实例化的值表达式推断其
+        // 隐含 std 类型（-(<值> 变量)）。
+        std::string infer_value_type(const AstNodePtr& v) {
+            if (!v) return "std::Object";
+            if (v->kind == "string") return "std::String";
+            if (v->kind == "number") return "std::Number";
+            if (v->kind == "selfcall") return v->value;   // e.g. "std::String"
+            return "std::Object";
+        }
+
         AstNodePtr parse_vardef_stmt() {
             long long ln = peek().line;
             expect_name("instantiation prefix '-'");   // `-` is a name token
             expect_symbol("(", "instantiation opening paren '('");
+
+            // Value-first form: -(<value> [Constraint] var);  e.g. -("3" s),
+            // -(std::String("3") s), -(std::String("3")[Constraint] s).
+            // Transformed into the canonical -(Type var) << value so the
+            // existing flow path builds the object.
+            // 值优先形式：-(<值> [约束] 变量)；如 -("3" s)、
+            // -(std::String("3") s)、-(std::String("3")[约束] s)。
+            // 转换为规范的 -(类型 变量) << 值，复用既有流路径造对象。
+            if (is_value_first_form()) {
+                auto valueExpr = parse_postfix();   // literal or ctor-call
+                std::string constraint;
+                bool is_const = false;
+                if (at("<symbol>", "[")) {                 // optional [Constraint]
+                    advance();
+                    constraint = expect_name("constraint or class name").value;
+                    if (constraint == "void") {
+                        fail("'void' is not a constraint; use a contract / class "
+                             "name, or empty parentheses '()' for no value.");
+                    }
+                    expect_symbol("]", "constraint closing bracket ']'");
+                }
+                if (at("<name>", "!")) {                    // optional '!' const
+                    advance();
+                    is_const = true;
+                }
+                auto var_tok = expect_name("variable name");
+                expect_symbol(")", "instantiation closing paren ')'");
+                auto decl = mknode("decl", ln);
+                decl->name = var_tok.value;
+                decl->constraint = constraint;
+                decl->isConst = is_const;
+                // A constructor-call value `-(std::String("3") s)` parses as a
+                // self-call and is semantically identical to the canonical
+                // `-(std::String("3") s)`: build a *constructor-init* decl
+                // (ctorArgs), never a trailing flow. This keeps class-body member
+                // initializers and const-by-constructor (`Type(args)! name`)
+                // working — a const may only be bound by its constructor, not by
+                // a flow. 构造调用值 `-(std::String("3") s)` 解析为自身调用，与
+                // 规范 `-(std::String("3") s)` 同义：造*构造初始化* decl
+                // （ctorArgs），而非尾部流。这令类体成员初始化与常数经构造器
+                // （`类型(实参)! 名`）生效——常数只能经构造器绑定，不得经流。
+                if (valueExpr->kind == "selfcall") {
+                    decl->value = valueExpr->value;       // the type name
+                    // A `selfcall` wraps its arguments in a single `args` child
+                    // node; unwrap it so `call_constructor` sees the raw
+                    // arguments. 自身调用把实参包进单个 `args` 子节点，此处拆出
+                    // 原始实参，使 call_constructor 见到的是实参而非 `args` 节点。
+                    auto ctorArgs = mknode("args", ln);
+                    if (!valueExpr->kids.empty()
+                            && valueExpr->kids[0]->kind == "args") {
+                        for (auto& a : valueExpr->kids[0]->kids) {
+                            ctorArgs->kids.push_back(a);
+                        }
+                    }
+                    decl->kids.push_back(ctorArgs);
+                    auto node = mknode("vardef", ln);
+                    node->kids.push_back(decl);
+                    expect_symbol(";", "statement terminator ';'");
+                    return node;
+                }
+                // A literal value: infer the std type and flow the value in.
+                // 字面量值：推断 std 类型并经流写入。
+                decl->value = infer_value_type(valueExpr);
+                auto node = mknode("vardef", ln);
+                node->kids.push_back(decl);
+                node->kids.push_back(valueExpr);   // initializer (flowed in)
+                expect_symbol(";", "statement terminator ';'");
+                return node;
+            }
 
             auto node = mknode("vardef", ln);
             node->kids.push_back(parse_decl());
@@ -516,7 +611,9 @@ namespace parser {
             bool is_const = false;
             if (at_type("<name>")) {
                 // Two-name form: `first` is the type, the next name is the var.
-                // 双名形式：first 是类型，下一个名称是变量名。
+                // A const marker folded into the name (lexer token `Type!`) is
+                // split off here. 双名形式：first 是类型，下一个名称是变量名；
+                // 折叠进名称的常数标记（词法 `Type!`）在此拆出。
                 auto [tn, c] = split_const_typename(first.value);
                 if (tn == "_" || tn.empty()) {
                     fail("Instantiation must name a prototype: the parentheses "
@@ -525,12 +622,24 @@ namespace parser {
                 }
                 type_name = tn;
                 is_const = c;
-                // Optional standalone const marker '!' (e.g. Type(args)! name).
-                // 可选独立常数标记 '!'（如 类型(实参)! 名）。
-                if (at_type("<name>") && peek().value == "!") {
-                    advance();
-                    is_const = true;
+                auto var_tok = expect_name("variable name");
+                if (var_tok.value == "void") {
+                    fail("'void' is not a variable name; use empty parentheses "
+                         "'()' for no value / no return.");
                 }
+                var_name = var_tok.value;
+            } else if (at("<name>", "!")) {
+                // Const-by-constructor: `Type(args)! name` where the '!' follows
+                // the constructor-argument list as a *separate* symbol token (the
+                // lexer only folds '!' into a name when it is not preceded by
+                // '('). The object is built by the constructor, never by a
+                // trailing flow. 常数经构造器：`类型(实参)! 名`，其中 '!' 作为
+                // 独立符号紧跟构造实参（词法仅在 '!' 前非 '(' 时折叠进名称）。
+                // 对象由构造器建立，而非尾部流。
+                advance();
+                auto [tn, c] = split_const_typename(first.value);
+                type_name = tn.empty() ? first.value : tn;
+                is_const = true;
                 auto var_tok = expect_name("variable name");
                 if (var_tok.value == "void") {
                     fail("'void' is not a variable name; use empty parentheses "
@@ -677,6 +786,70 @@ namespace parser {
             long long startcol = peek().col;   // for diagnostics on this stmt
             expect_name("instantiation prefix '-'");
             expect_symbol("(", "instantiation opening paren '('");
+
+            // Value-first form: -(<value> [Constraint] var);  e.g. -("3" s),
+            // -(std::String("3") s), -(std::String("3")[Constraint] s).
+            // Transformed into the canonical -(Type var) << value so the
+            // existing flow path builds the object.
+            // 值优先形式：-(<值> [约束] 变量)；如 -("3" s)、
+            // -(std::String("3") s)、-(std::String("3")[约束] s)。
+            // 转换为规范的 -(类型 变量) << 值，复用既有流路径造对象。
+            if (is_value_first_form()) {
+                auto valueExpr = parse_postfix();   // literal or ctor-call
+                std::string constraint;
+                bool is_const = false;
+                if (at("<symbol>", "[")) {                 // optional [Constraint]
+                    advance();
+                    constraint = expect_name("constraint or class name").value;
+                    if (constraint == "void") {
+                        fail("'void' is not a constraint; use a contract / class "
+                             "name, or empty parentheses '()' for no value.");
+                    }
+                    expect_symbol("]", "constraint closing bracket ']'");
+                }
+                if (at("<name>", "!")) {                    // optional '!' const
+                    advance();
+                    is_const = true;
+                }
+                auto var_tok = expect_name("variable name");
+                expect_symbol(")", "instantiation closing paren ')'");
+                auto decl = mknode("decl", ln);
+                decl->name = var_tok.value;
+                decl->constraint = constraint;
+                decl->isConst = is_const;
+                // A constructor-call value `-(std::String("3") s)` parses as a
+                // self-call and is semantically identical to the canonical
+                // `-(std::String("3") s)`: build a *constructor-init* decl
+                // (ctorArgs), never a trailing flow. See parse_vardef_stmt for
+                // the full rationale. 构造调用值 `-(std::String("3") s)` 与规范
+                // 形式同义：造构造初始化 decl（ctorArgs），而非尾部流。
+                if (valueExpr->kind == "selfcall") {
+                    decl->value = valueExpr->value;       // the type name
+                    // A `selfcall` wraps its arguments in a single `args` child
+                    // node; unwrap it so `call_constructor` sees the raw args.
+                    // 自身调用把实参包进单个 `args` 子节点，此处拆出原始实参。
+                    auto ctorArgs = mknode("args", ln);
+                    if (!valueExpr->kids.empty()
+                            && valueExpr->kids[0]->kind == "args") {
+                        for (auto& a : valueExpr->kids[0]->kids) {
+                            ctorArgs->kids.push_back(a);
+                        }
+                    }
+                    decl->kids.push_back(ctorArgs);
+                    auto node = mknode("vardef", ln, startcol);
+                    node->kids.push_back(decl);
+                    expect_symbol(";", "statement terminator ';'");
+                    return node;
+                }
+                // A literal value: infer the std type and flow the value in.
+                // 字面量值：推断 std 类型并经流写入。
+                decl->value = infer_value_type(valueExpr);
+                auto node = mknode("vardef", ln, startcol);
+                node->kids.push_back(decl);
+                node->kids.push_back(valueExpr);   // initializer (flowed in)
+                expect_symbol(";", "statement terminator ';'");
+                return node;
+            }
 
             std::vector<AstNodePtr> decls;
             decls.push_back(parse_decl());
@@ -1160,7 +1333,16 @@ namespace parser {
                 advance();
                 if (at("<symbol>", "@")) {
                     advance();
-                    if (at("<symbol>", "(")) {
+                    if (at("<symbol>", "[")) {
+                        // Behavior qualifier with an explicit signature written
+                        // in brackets: handler[@[x -> y]] / handler[@[()->()]].
+                        // 带显式签名（写进中括号）的行为限定：
+                        // handler[@[x -> y]] / handler[@[()->()]]。
+                        advance();
+                        behaviorMode = "behaviorsign";
+                        behaviorSign = parse_sign_core();
+                        expect_symbol("]", "signature closing bracket ']'");
+                    } else if (at("<symbol>", "(")) {
                         // Behavior qualifier with a signature:
                         // handler[@(x) -> (y)]
                         // 带签名的行为限定：handler[@(x) -> (y)]

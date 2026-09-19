@@ -211,8 +211,8 @@ int main() {
     expect("zero",      "0",    {M("0"), E()});
     expect("negative (Section 11.2.3: value << -1;)", "value << -1;",
         {N("value"), S("<<"), M("-1"), S(";"), E()});
-    expect("literal call 3.repeat_ (D.16)", "3.repeat_(",
-        {M("3"), S("."), N("repeat_"), S("("), E()});
+    expect("built-in control object std::repeat (D.16)", "std::repeat(",
+        {N("std::repeat"), S("("), E()});
     expect("10.+(5): non-digit after dot is a call symbol", "10.+(5)",
         {M("10"), S("."), N("+"), S("("), M("5"), S(")"), E()});
     expect("10.5 is a single number", "10.5", {M("10.5"), E()});
@@ -221,10 +221,11 @@ int main() {
     expect("10./(0)._case chain (Section 11.2.1)", "10./(0)._case(",
         {M("10"), S("."), N("/"), S("("), M("0"), S(")"),
          S("."), N("_case"), S("("), E()});
-    expect("D.16 repeat_ full call", "3.repeat_([(state) -> (next) { next << state.+(1); }]);",
-        {M("3"), S("."), N("repeat_"), S("("), S("["), S("("), N("state"), S(")"),
-         N("->"), S("("), N("next"), S(")"), S("{"),
-         N("next"), S("<<"), N("state"), S("."), N("+"), S("("), M("1"), S(")"), S(";"),
+    expect("D.16 std::repeat full call",
+        "std::repeat(std::Number(5)).then([{ n << n.+(std::Number(1)); }]);",
+        {N("std::repeat"), S("("), N("std::Number"), S("("), M("5"), S(")"), S(")"),
+         S("."), N("then"), S("("), S("["), S("{"), N("n"), S("<<"), N("n"), S("."),
+         N("+"), S("("), N("std::Number"), S("("), M("1"), S(")"), S(")"), S(";"),
          S("}"), S("]"), S(")"), S(";"), E()});
 
     // --------------------------------------------------------
@@ -397,16 +398,13 @@ int main() {
     // 17. 布尔字面量与控制流（第七章）
     // --------------------------------------------------------
     section("17. Boolean literals and control flow (Chapter 7)");
-    expect("true/false/void are all names", "(true).if_(void)",
-        {S("("), N("true"), S(")"), S("."), N("if_"), S("("), N("void"), S(")"), E()});
-    expect("D.16 if_ two branches", "(last.>(2)).if_([() ~> (value) { value << last; }], [() ~> (value) { value << 0; }]);",
-        {S("("), N("last"), S("."), N(">"), S("("), M("2"), S(")"), S(")"), S("."),
-         N("if_"), S("("), S("["), S("("), S(")"), N("~>"), S("("), N("value"), S(")"), S("{"),
-         N("value"), S("<<"), N("last"), S(";"), S("}"), S("]"), S(","),
-         S("["), S("("), S(")"), N("~>"), S("("), N("value"), S(")"), S("{"),
-         N("value"), S("<<"), M("0"), S(";"), S("}"), S("]"), S(")"), S(";"), E()});
-    expect("while_ two behavior arguments (Section 7.2)", "(true).while_(",
-        {S("("), N("true"), S(")"), S("."), N("while_"), S("("), E()});
+    expect("true/false/void are all names", "std::if(true)",
+        {N("std::if"), S("("), N("true"), S(")"), E()});
+    expect("D.16 std::if then/else chain", "std::if(x).then([{ }]).else([{ }]);",
+        {N("std::if"), S("("), N("x"), S(")"), S("."), N("then"), S("("), S("["), S("{"), S("}"),
+         S("]"), S(")"), S("."), N("else"), S("("), S("["), S("{"), S("}"), S("]"), S(")"), S(";"), E()});
+    expect("std::while built-in control object (Section 7.2)", "std::while(",
+        {N("std::while"), S("("), E()});
 
     // --------------------------------------------------------
     // 18. EOF semantics

@@ -1,0 +1,81 @@
+&io;
+&structs;
+// 几道经典 NOI / NOIP 题目的检查 / A few classic NOI / NOIP problem checks.
+// 用新版控制流 std::if / std::while / std::repeat 与 std::Array 实现，
+// 并对照已知答案做 PASS / FAIL 自检。
+// Classic NOI problems solved with the new std::if / std::while / std::repeat
+// control-flow objects and std::Array, each self-checked against a known answer.
+
+$Program {
+  @::[{
+    // ---- 检查器 / a tiny PASS/FAIL checker ----
+    // check(name, got, expect): 比较数值并报告 / compare two numbers, report
+    -(std::Number do_check) << std::Number(1);
+    // （直接内联比对，下面每题都用一个 std::if 打印结果）
+
+    // 1) 最大子段和 / Maximum Subarray Sum (NOIP 2006)
+    //    序列 1 -2 3 10 -4 7 2 -5 ，答案应为 18
+    -(std::Array arr) << std::Array((1, -2, 3, 10, -4, 7, 2, -5));
+    -(std::Number best) << arr.get(std::Number(0));
+    -(std::Number cur)  << std::Number(0);
+    -(std::Number i)    << std::Number(0);
+    std::while([()->(Boolean){ Boolean << i.<(arr.size()); }])
+      .then([{
+        cur << cur.+(arr.get(i));
+        std::if([()->(Boolean){ Boolean << cur.<(std::Number(0)); }])
+          .then([{ cur << std::Number(0); }]);
+        std::if([()->(Boolean){ Boolean << cur.>(best); }])
+          .then([{ best << cur; }]);
+        i << i.+(std::Number(1));
+      }]);
+    io::out.push_line(("1) 最大子段和 = ").+(best.to_string()).+(" (期望 18)"));
+    std::if([()->(Boolean){ Boolean << best.==(std::Number(18)); }])
+      .then([{ io::out.push_line("   PASS"); }])
+      .else([{ io::out.push_line("   FAIL"); }]);
+
+    // 2) 最大公约数（欧几里得）/ GCD (Euclid)  gcd(48, 36) = 12
+    -(std::Number a) << std::Number(48);
+    -(std::Number b) << std::Number(36);
+    std::while([()->(Boolean){ Boolean << b.>(std::Number(0)); }])
+      .then([{
+        -(std::Number t) << a.%(b);
+        a << b;
+        b << t;
+      }]);
+    io::out.push_line(("2) gcd(48, 36) = ").+(a.to_string()).+(" (期望 12)"));
+    std::if([()->(Boolean){ Boolean << a.==(std::Number(12)); }])
+      .then([{ io::out.push_line("   PASS"); }])
+      .else([{ io::out.push_line("   FAIL"); }]);
+
+    // 3) 素数判定 / Primality test  97 是素数，91 = 7 * 13 不是
+    // 复用上面写好的判定，分别检查两个数 / check 97 (prime) and 91 (not)
+    -(std::Number n1) << std::Number(97);
+    -(std::Number isP1) << std::Number(1);
+    -(std::Number d1) << std::Number(2);
+    std::while([()->(Boolean){ Boolean << d1.<(n1); }])
+      .then([{
+        -(std::Number r1) << n1.%(d1);
+        std::if([()->(Boolean){ Boolean << r1.==(std::Number(0)); }])
+          .then([{ isP1 << std::Number(0); }]);
+        d1 << d1.+(std::Number(1));
+      }]);
+    io::out.push_line(("3) 97 是素数? ").+(isP1.to_string()).+(" (期望 1)"));
+    std::if([()->(Boolean){ Boolean << isP1.==(std::Number(1)); }])
+      .then([{ io::out.push_line("   PASS"); }])
+      .else([{ io::out.push_line("   FAIL"); }]);
+
+    // 4) 斐波那契 / Fibonacci  f(10) = 55  （用 std::repeat）
+    -(std::Number fn)  << std::Number(10);
+    -(std::Number fa)  << std::Number(0);
+    -(std::Number fb)  << std::Number(1);
+    std::repeat(fn).then([{
+      -(std::Number ft) << fa.+(fb);
+      fa << fb;
+      fb << ft;
+    }]);
+    io::out.push_line(("4) fib(10) = ").+(fa.to_string()).+(" (期望 55)"));
+    std::if([()->(Boolean){ Boolean << fa.==(std::Number(55)); }])
+      .then([{ io::out.push_line("   PASS"); }])
+      .else([{ io::out.push_line("   FAIL"); }]);
+  }];
+}

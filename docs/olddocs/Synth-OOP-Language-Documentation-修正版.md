@@ -67,7 +67,7 @@ Related documents:
   - Converted all infix comparisons (`a > b`) into method calls (`a.>(b)`); likewise for infix arithmetic in comments.
   - Expanded Section 5.5 to cover comparison operators (`<` `>` `<=` `>=` `==` `!=`).
   - Unified terminology: "integer" → "number"; "function" → "method/behavior".
-  - Removed a leftover unused variable in the `while_` example.
+  - Removed a leftover unused variable in the control-flow example.
 - Section 2.3.2 rewritten as method-by-method function descriptions.
   - Replaced the concise method table with one code block per native object.
   - Each method is now described with Synth OOP's method-definition syntax and a function comment.
@@ -77,10 +77,10 @@ Related documents:
   - Clarified in Section 2.3.1 that `std::Object` uniformly defines `::` / `~` / `=:` / `:=` / `_case` as const.
   - The former "The program itself is also an object" becomes Section 2.4.
   - Added a Section 6.3 note; fixed a stray leading quote in Section 3.1.
-- Renamed the native object type; redesigned `while_` / `repeat_`.
+- Renamed the native object type; redesigned control flow as streaming objects.
   - `std::Integer` uniformly renamed to `std::Number`.
-  - `while_` now takes a loop-body behavior plus a condition-check behavior (condition-check after body).
-  - `repeat_` is now a `std::Number` method whose value is the loop count.
+  - Control flow now takes a loop-body behavior plus a condition-check behavior (condition-check after body).
+  - Looping is now the `std::Repeat` object, whose constructor argument is the loop count.
   - Added the "behavior qualifier `@`" mechanism.
 - Fixed remaining "method exists independently of a class" issues.
   - Converted floating `@methodName << ...` definitions into class methods or behavior literals.
@@ -103,7 +103,7 @@ Related documents:
 4. [Object Instantiation Statements (Expressions)](#iv-object-instantiation-statements-expressions)
 5. [Behaviors and Their Patterns](#v-behaviors-and-their-patterns)
 6. [Methods](#vi-methods)
-7. [Control Flow: if_, while_, repeat_](#vii-control-flow-if_-while_-repeat_)
+7. [Control Flow: std::If / std::While / std::Repeat](#vii-control-flow-stdif--stdwhile--stdrepeat)
 8. [Class](#viii-class)
 9. [Constraints](#ix-constraints)
 10. [Module Import Statements and Namespaces](#x-module-import-statements-and-namespaces)
@@ -257,11 +257,6 @@ $Number {
     @to_string[() => (std::String result) {
         // Convert self to a decimal string representation
     }];
-    @repeat_[(body) -> (value) {
-        // Loop: self is the loop count (Number), body is the loop-body behavior;
-        // body is like [(state) -> (state)], its parameter format must equal its return format;
-        // value is the value returned by the last execution of body
-    }];
 }
 ```
 
@@ -269,20 +264,13 @@ $Number {
 
 ```text
 $Boolean {
-    @if_[(true_branch, false_branch) -> (value) {
-        // Conditional branch: execute true_branch when self is true, otherwise false_branch;
-        // value is the output of the executed branch, both branches must output the same type
-    }];
-    @while_[(body, condition_check) -> (value) {
-        // Loop: self is the initial condition (Boolean), body is the loop-body behavior, condition_check is the condition-check behavior (after body);
-        // body is like [(state) -> (state)], its parameter format must equal its return format;
-        // condition_check is like [(state) ~> (flag)], its parameter format must equal body's return format;
-        // value is the value returned by the last execution of body
-    }];
+    // (no control-flow methods on the types — conditional branching and looping have been
+    //  extracted into the standalone streaming control-flow objects std::If /
+    //  std::While / std::Repeat; see Section VII.)
 }
 ```
 
-Parameter notes: `true_branch`, `false_branch`, `body`, and `condition_check` are all **behaviors**. `repeat_` does not belong here — it is a method of `std::Number`.
+> Earlier versions exposed control flow as methods of `std::Boolean` and `std::Number`. These control-flow methods **have been removed** in favor of the streaming control-flow objects `std::If` / `std::While` / `std::Repeat` in Section VII — they are more flexible (storable in variables, passable as arguments, deferrable) and no longer pollute the native numeric / boolean types.
 
 **`std::String` (string, immutable character sequence)**
 
@@ -577,6 +565,27 @@ In this example, `(-(std::String msg2) << "World")` is an expression whose value
 Here, a (with a value of 10) and b (with a value of 20) are first declared and initialized. The expression evaluates to these two objects, then performs the addition operation, and finally assigns the result to sum.
 
 > **Note:** The old documentation described this with the "poisoned water model" — an object "carrying toxicity from the instant of creation, spreading along the data flow." That model is **retired**. Errors are now raised **immediately at the source** and reported as a g++-style diagnostic (with the offending source line and a full execution stack). For example, `a./(0)` (division by zero) follows IEEE 754 and yields `Infinity`/`NaN` directly (it does not interrupt), whereas a genuine semantic error (type mismatch, missing method, …) aborts immediately instead of "blending into the data flow."
+
+### 4.7 Constructor Calls: Supplying an Initial Value at Instantiation
+
+Besides first declaring and then assigning with `<<`, Synth OOP supports two "in one step" construction forms — both travel the exact same stream-negotiation path as `x << v` (single arguments are duck-typed into the instance by type):
+
+1. **Construction-initialization syntax**: write `type(args)` directly inside the parentheses of the instantiation statement, i.e. `-(type(args) variable-name)`. The argument is fed to the object at instantiation time. A const member (`!`) **must** get its initial value on this line and cannot be deferred to `@::`:
+   ```text
+   -(std::Number(5) n);              // n's value is 5 directly
+   -(std::String("hi") s);           // s's value is "hi" directly
+   -(std::Array((1, 2, 3)) arr);     // fill the array with a tuple
+   ```
+   > Note: A const variable uses the `!` type-name suffix (see 4.5, e.g. `-(std::Number! m)`), but the instantiation statement **does not yet support** carrying constructor arguments at the same time (a form like `-(type(args)! name)` is not currently accepted by the parser); give a const member its initial value inside the class's constructor behavior `@::` instead.
+2. **Bare constructor call**: simply write `type-name(args)`; this **creates a new instance of that type and runs its `@::` constructor behavior with the arguments** — it is itself an expression, and can participate in computation, flow into a variable, or serve as the argument of a control-flow object:
+   ```text
+   -(std::Number n) << std::Number(5);                              // equivalent to -(std::Number(5) n)
+   std::Repeat(std::Number(3)).then([() -> () { io::out << "."; }]);      // construct Number(3) as the loop count
+   ```
+   > Distinguish carefully: `type-name(args)` is a *constructor call* (creates a new instance), whereas `object.method(args)` is a *method call* (sends a message to an existing object). Only when `type-name` resolves to a class does `(...)` mean a constructor call.
+
+A class may also define its own constructor behavior `@::(args) -> ()` to assign members at construction time (see Chapter VI for details).
+
 ## V. Behaviors and Their Patterns
 ### 5.1 What is Behavior
 "Behavior" is the fundamental unit of executable logic in Synth OOP, written as a behavior enclosed in square brackets:
@@ -899,8 +908,10 @@ A method is a behavior bound to an object. The syntax is highly fluent — simpl
 ```
 
 > 💡 **Beginner clarification: Methods cannot exist independently of a class**
-> **A method must be bound to some class (or some object); it cannot exist independently of a class.** Think of a method as an "ability attached to a class" — without a class to act as the carrier, there's nothing for the method to attach to. This is the same as how "member functions belong to a class" in C++/Java: a method name must be declared inside a class definition body like `$ClassName { ... }` (e.g. `$Counter { @inc << ...; }`), or be bound to a specific object. Writing a standalone `@methodName[behavior];` with no class to host it is **illegal**.
-> By contrast, **behaviors themselves may exist freely** — they are the units of executable logic and can be stored in variables, passed to behaviors, and used as arguments (see Section 5.1). But once a behavior is declared as a "method" via `@methodName << ...`, it must have an owning class/object. To remember it simply: **behaviors are free; methods belong to classes.**
+> **A method must be bound to some class (or some object); it cannot exist independently of a class.** Think of a method as an "ability attached to a class" — without a class to act as the carrier, there's nothing for the method to attach to. This is the same as how "member functions belong to a class" in C++/Java: a method name must be declared inside a class definition body like `$ClassName { ... }` (e.g. `$Counter { @inc[...]; }`), or be bound to a specific object. Writing a standalone `@methodName[behavior];` with no class to host it is **illegal**.
+> By contrast, **behaviors themselves may exist freely** — they are the units of executable logic and can be stored in variables, passed to behaviors, and used as arguments (see Section 5.1). But once a behavior is declared as a "method" via `@methodName[...]`, it must have an owning class/object. To remember it simply: **behaviors are free; methods belong to classes.**
+
+> ⚠️ **`<<` is no longer used to bind a closure.** Binding a behavior to a name uses `@methodName[behavior];`; **`<<` now means only value flow / assignment** (e.g. `a << b`, `out << "hi"`). The old forms `@methodName << [behavior]`, `obj.name << [behavior]`, and `@methodName .= [behavior]` are now errors — a closure is not a class object, it has no methods and cannot be called. Use `@methodName[behavior];` instead. See the "Closure-binding syntax" entry in the revision history.
 
 ### 6.2 Method Modifiers
 First, a concept to clarify: **A method itself is a variable** (a behavioral variable, whose value is the behavior). The method modifiers apply to this variable, not to the inside of the behavior:
@@ -912,10 +923,10 @@ The two can be combined:
 
 | Notation | Meaning |
 | ---- | ---- |
-| `@name << …;` | Ordinary method |
-| `@!name << …;` | Method variable is const (cannot be rebound) |
-| `@#name << …;` | Private method |
-| `@!#name << …;` | Private and the method variable is const |
+| `@name[…];` | Ordinary method |
+| `@!name[…];` | Method variable is const (cannot be rebound) |
+| `@#name[…];` | Private method |
+| `@!#name[…];` | Private and the method variable is const |
 
 Note the distinction: **The behavior pattern is a property of the behavior**, describing the behavior's access permissions toward the outside (the three levels `=>` / `~>` / `->`); it travels with the behavior — a behavior can also exist freely without being bound as a method. **The method modifier `!` is the const-ness of the method variable**, governing "whether this method binding can be changed." The two are orthogonal and never interfere with each other. This only loosely resembles the `const` written before a code block in C++ — it is not the same concept.
 
@@ -962,187 +973,108 @@ In Synth OOP, a method call itself is also an expression, and its value is the r
 -(std::Number sum) << obj.add(10).get();
 // A method call's return value passed directly to another method
 other.process(obj.compute());
-// A method call used as the condition of if_
-(obj.check()).if_(
-    [() ~> (value) { value << 1; }],
-    [() ~> (value) { value << 0; }]
-);
+// A method call's result keeps participating in the data flow
+-(std::Number doubled) << obj.add(10).mul(2);
 ```
 
 This is entirely consistent with the method-call syntax you've encountered before in C++, Java, and other languages — method calls return a value that can continue to participate in the data flow. In Synth OOP, there's no strict distinction between "statements" and "expressions"; everything can be an expression, and everything can take part in data flow.
 Tip: This design allows code to be combined as freely as mathematical formulas. You don't need to declare extra variables for intermediate results; method-call chains can be executed in one smooth, continuous flow, with data entering at one end and exiting at the other — all neatly and efficiently.
-## VII. Control Flow: if_, while_, repeat_
-In Synth OOP, control-flow constructs such as if, while, and repeat are neither rigid syntax keywords nor standalone global functions — they are **methods**. To distinguish them from reserved words, these method names uniformly carry an underscore suffix: `if_`, `while_`, and `repeat_`. Among them, `if_` and `while_` are methods of `std::Boolean` (boolean values), while `repeat_` is a method of `std::Number` (numbers).
-Why is this design adopted? It means that control flow can be passed around, composed, and deferred just like data. You can store the branch behaviors of if_ in variables, pass them to other methods, or selectively decide whether to execute them on demand. This provides extraordinary flexibility.
-The syntax for control-flow behaviors fully follows the behavior-definition pattern described in Chapter V: `[parameter-list behavior-pattern arrow (type return-name) { body }]`. The parameter list is essentially a tuple declaration, with the order strictly matching the method signatures — there's no tolerance whatsoever. There's no return keyword; instead, the return value is determined by the final values of the output parameters at the end of execution.
-Branch and loop-body behaviors directly access the caller's environment variables (reading or reading/writing according to the behavior pattern), without relying on any dictionaries to pass context.
-### 7.1 if_ statement
-if_ is a method of std::Boolean. A boolean value calls `.if_()`, passing in a true branch behavior and a false branch behavior:
+## VII. Control Flow: std::If / std::While / std::Repeat
+
+In Synth OOP, conditional branching and looping are not rigid syntax keywords, nor methods hanging off the Boolean / Number types — they are **streaming control-flow objects** in the `std::` namespace. You feed a "condition closure" or a "loop count" to the constructor, then attach branches or loop bodies with the chained methods `.then(...)` / `.else(...)`; each method returns the object itself, so you can write a single fluent chain. This is consistent with the language's philosophy that "objects are alive and composable": control flow can be passed around, deferred, and spliced just like data.
+
+> ⚠️ **Migration note**: Earlier versions exposed control flow as methods of `std::Boolean` and `std::Number`. These control-flow methods **have been removed**; use the `std::If` / `std::While` / `std::Repeat` objects below instead.
+
+The control-flow objects follow exactly the behavior-definition pattern from Chapter V: `[(parameter-list) behavior-pattern arrow (type output-name) { body }]`. There is no `return` keyword; the return value is the value of the output parameter at the end of execution. Branch / loop-body behaviors **directly access the caller's environment variables** (read-only or read-write according to the behavior pattern), with no dictionary to pass context through.
+
+### 7.1 std::If — conditional branch
+
+`std::If(cond_closure)` creates a control-flow object and **evaluates the condition closure immediately** (caching the Boolean). Then `.then(branch)` runs the true branch when "the condition is true and not yet dispatched", and `.else(branch)` runs the false branch when "the condition is false and not yet dispatched". Both branches are **behaviors**; their published value is stored in the object and retrievable via `.value()`; `.done()` returns whether a branch was dispatched (a Boolean).
 
 ```text
-condition.if_(true_behavior, false_behavior)
-```
+&io;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(std::Number x) << 7;
 
-Here, condition is a `std::Boolean` expression, and `.if_()` is its method. if_ takes exactly two arguments: the true branch behavior and the false branch behavior. The condition itself is not an argument; rather, it's the boolean value that triggers the call to `.if_()`.
-Parameter description:
+        // condition closure: returns a Boolean
+        std::If([() -> (b) { b << (x.>(0)); }])
+            .then([() -> () { out << "x is positive\n"; }])
+            .else([() -> () { out << "x is non-positive\n"; }]);
 
-| Parameter | Method Signature | Description |
-| ---- | ---- | ---- |
-| First | Behavior (true branch) | Executed when the condition is true; the output value represents the return value of this branch. |
-| Second | Behavior (false branch) | Executed when the condition is false; the output value represents the return value of this branch. |
-
-Return value: The return value of `.if_()` is the value of the output parameter value produced by the executed branch behavior.
-Method constraint: The value outputs from both behaviors must be consistent. The compiler checks this constraint at compile time to ensure consistency.
-Example 1 (using an expression as the condition):
-
-```text
--(std::Number a) << 10;
--(std::Number b) << 20;
--(std::Number result) << (a.>(b)).if_(
-    [() ~> (value) { value << a; }],
-    [() ~> (value) { value << b; }]
-);
-```
-
-In this example:
-- `(a.>(b))` is a `std::Boolean` expression that calls the `.if_()` method;
-- Both branch behaviors directly read the caller's environment variables `a` and `b` (constant pattern `~>` suffices since they are read-only);
-- Both behaviors output `value` of object `std::Number`, satisfying the method constraint;
-- `if_` returns the executed branch's `value`, which flows into `result` via `<<`.
-
-**Example 2 (using a boolean constant as the condition):**
-
-```text
--(std::Number result) << (true).if_(
-    [() ~> (value) { value << 1; }],
-    [() ~> (value) { value << 0; }]
-);
-```
-
-Here, the boolean constant `true` is directly used as the condition, demonstrating that if_ can accept any std::Boolean expression — whether it's an expression, a constant, or even the return value of a method call.
-
-**Example 3 (using the return value of a method call as the condition):**
-
-```text
-$Checker {
-    @check[() ~> (result) {
-        -(std::Number x) << 5;
-        -(std::Boolean cond) << (x.>(3));
-        result << cond;
+        // retrieve the branch's published value
+        -(std::Number picked) << std::If([() -> (b) { b << (x.>(5)); }])
+            .then([() -> (r) { r << 99; }])
+            .else([() -> (r) { r << 0; }])
+            .value();
+        out << "picked = "; out << picked;     // 99 (x=7>5 hits the then branch)
     }];
 }
--(Checker c);
--(std::Number result) << c.check().if_(
-    [() ~> (value) { value << 1; }],
-    [() ~> (value) { value << 0; }]
-);
 ```
 
-### 7.2 while loop
-`while_` is a method of `std::Boolean`. A boolean value calls `.while_()`, passing in a **loop-body behavior** and a **condition-check behavior** — note that the condition-check behavior comes **after** the loop-body behavior:
+Key points:
+- The condition-closure signature is `() -> (b[std::Boolean])`: the closure publishes the Boolean through the output parameter `b`.
+- `.then` / `.else` each run at most once, and only one of them is ever hit (first come, first served).
+- If you only care about a side effect (e.g. printing), the branch behavior can use an empty output `()`; to capture a return value, use an output parameter and retrieve it via `.value()`.
+
+### 7.2 std::While — pre-conditioned loop
+
+`std::While(cond_closure)` takes a condition closure; `.then(body)` evaluates the condition closure **before each iteration**, runs the body while it is true, and repeats until the condition is false. The body is also a behavior; the value it publishes on its last run is retrievable via `.value()`.
 
 ```text
-condition.while_(body, condition_check)
+&io;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(std::Number i) << 0;
+
+        std::While([() -> (b) { b << (i.<(3)); }])
+            .then([() -> () { out << i; out << " "; i << i.+(1); }]);
+
+        out << "\nfinal i = "; out << i;       // 0 1 2 \n final i = 3
+    }];
+}
 ```
 
-- `condition` (the caller): a `std::Boolean`, the initial condition for entering the loop (if false, the loop ends immediately);
-- `body` (first argument): the loop-body behavior. It receives a "loop state" `state` and returns a new `state` of the same type — **its parameter format must equal its return format**;
-- `condition_check` (second argument): the condition-check behavior. It receives the `state` returned by `body` each round and returns a `std::Boolean` indicating whether to continue — **its parameter format must equal `body`'s return format**.
+- The condition closure must return a Boolean; the loop body may read / modify outer variables (like `i` above), so it uses the non-constant `->` pattern.
+- If the condition closure is false from the start, the loop body never runs.
 
-Parameter description:
+### 7.3 std::Repeat — counted loop
 
-| Parameter | Method Signature | Description |
-| ---- | ---- | ---- |
-| First | Behavior (loop body) `[(state) -> (state)]` | Receives state, returns a new state of the same type; parameter format must equal return format |
-| Second | Behavior (condition check) `[(state) ~> (flag)]` | Receives state (i.e. body's return), returns a Boolean flag for whether to continue |
-
-Execution flow:
-1. Evaluate the caller `condition` (initial condition); if false, end immediately;
-2. Execute the loop body `body`, obtaining its returned `state` (the initial `state` follows the zero-value rule);
-3. Pass `state` to the condition-check behavior `condition_check`, obtaining `flag`;
-4. If `flag` is true, use this round's `state` as the next round's `body` input and go back to step 2; otherwise end;
-5. Return the value returned by the last execution of `body`.
-
-> ⚠️ Compiler-internal checks: ① `body`'s "parameter format" must equal its "return format"; ② `condition_check`'s "parameter format" must equal `body`'s "return format". Both format-consistency checks are performed internally by the compiler; a mismatch is a compile error.
-
-Example:
+`std::Repeat(n)` takes a loop count (`std::Number`); `.then(body)` runs the body `n` times. The value the body publishes on its last run is retrievable via `.value()`.
 
 ```text
--(std::Number result) << (true).while_(
-    [(state) -> (next) {
-        next << state.+(1); // loop body: receive state, return state+1
-    }],
-    [(state) ~> (flag) {
-        flag << (state.<(10)); // condition check: use body's returned state to decide whether to continue
-    }]
-);
+&io;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        std::Repeat(5)
+            .then([() -> () { out << "x"; }]);          // prints xxxxx
+        out << "\n";
+    }];
+}
 ```
 
-In this example:
-- The initial condition `true` allows entering the loop, and `state` starts from the zero value `0`;
-- The loop body receives `state` and returns `state+1` (parameter format `std::Number` == return format `std::Number`);
-- The condition-check behavior receives the `state` returned by the body and checks `state.<(10)` to decide whether to continue;
-- `while_` returns the last `state` returned by the loop body (here `10`).
-### 7.3 repeat_ loop
-`repeat_` is a method of `std::Number`. A number calls `.repeat_()`, passing in a **loop-body behavior** — the number itself represents the **loop count**:
+- The loop count is decided by the `std::Number` passed at construction; the loop-body behavior's parameter / return format **no longer** carries the old "parameter format must equal return format" constraint — it can be any behavior.
+
+### 7.4 Parameter strictness and chaining
+
+What you pass to `.then` / `.else` must be **behaviors (closures)**, and their signatures must match the expected shape; there are no defaults, no omissions, no tolerance.
+- `std::If(cond)` takes exactly one condition closure; `.then` / `.else` each take one branch behavior.
+- `std::While(cond)` takes exactly one condition closure; `.then` takes one loop-body behavior.
+- `std::Repeat(n)` takes exactly one loop count; `.then` takes one loop-body behavior.
+
+Chaining works because `.then` / `.else` return **the object itself**, so you can keep dotting. If you want to reuse or defer execution, store the object in a variable first:
 
 ```text
-count.repeat_(body)
+-(std::If gate) << std::If([() -> (b) { b << true; }]);
+gate.then([() -> () { io::out << "yes\n"; }]);
+gate.else([() -> () { io::out << "no\n"; }]);
 ```
 
-- `count` (the caller): a `std::Number`, the number of times the loop executes;
-- `body` (the argument): the loop-body behavior. It receives a "loop state" `state` and returns a new `state` of the same type — **its parameter format must equal its return format**.
+> Note: Extracting control flow into objects means branch / loop-body behaviors can be stored in variables, passed as arguments, and executed on demand — control flow thereby gains the same composability as data. This shares the design motivation of the old method-style control-flow era, but upgrades from "methods hanging off Boolean / Number" to "standalone streaming control-flow objects", avoiding pollution of the native numeric / boolean types and making chained calls clearer.
 
-Parameter Description:
-
-| Parameter | Method Signature | Description |
-| ---- | ---- | ---- |
-| First | Behavior (loop body) `[(state) -> (state)]` | Receives state, returns a new state of the same type; parameter format must equal return format |
-
-Execution Flow:
-1. `state` starts from the zero value;
-2. Execute the loop body `body`, obtaining its returned `state`;
-3. Use this round's `state` as the next round's `body` input, repeating until the body has executed `count` times;
-4. Return the value returned by the last execution of `body`.
-
-> ⚠️ Compiler-internal check: `body`'s "parameter format" must equal its "return format"; a mismatch is a compile error.
-
-Example:
-
-```text
--(std::Number result) << 5.repeat_(
-    [(state) -> (next) {
-        next << state.+(1); // loop body: receive state, return state+1
-    }]
-);
-```
-
-In this example:
-- `5` is the loop count, and `state` starts from the zero value `0`;
-- The loop body receives `state` and returns `state+1` (parameter format `std::Number` == return format `std::Number`);
-- The loop body executes 5 times, and `repeat_` returns the last `state` returned by the loop body (here `5`).
-
-### 7.4 Parameter Strictness
-The arguments for if_, while_, and repeat_ are strict:
-
-```text
-// if_ requires exactly 2 arguments (true branch + false branch)
-condition.if_(
-    [() ~> (v) { v << 1; }],
-    [() ~> (v) { v << 0; }]
-);
-// while_ requires exactly 2 arguments (loop body + condition check, condition check last)
-condition.while_(
-    [(state) -> (next) { next << state.+(1); }],
-    [(state) ~> (flag) { flag << (state.<(10)); }]
-);
-// repeat_ requires exactly 1 argument (loop body); the loop count is the caller Number
-5.repeat_([(state) -> (next) { next << state.+(1); }]);
-```
-
-Format-consistency requirements (checked internally by the compiler):
-- For `while_` / `repeat_`, the loop-body behavior's **parameter format must equal its return format**;
-- For `while_`, the condition-check behavior's **parameter format must equal the loop-body behavior's return format**.
 
 ## VIII. Class
 
@@ -1152,7 +1084,7 @@ Classes are declared with the `$` prefix. The syntax is:
 ```text
 $<ClassName> [<ParentClass>] {
     -(member-signature memberName);
-    @methodName << behavior;
+    @methodName [behavior];
 }
 ```
 
@@ -1204,6 +1136,93 @@ $GraduateStudent [s] {
 ```
 
 In this example, `$GraduateStudent [s]` is derived from the instance `s`. GraduateStudent automatically inherits the three members `name`, `age`, and `major`, and uses `s`'s current values ("Alice", 22, "Computer Science") as its initial values; its parent class is `Student` (which in turn inherits from `Human`), so the inheritance chain is fully preserved. In the `addResearch` method, string concatenation is done with the `.+(anotherString)` method (see the examples in Chapter XI and Appendix A).
+
+### 8.4 Runtime Object Injection: Objects Are Live Things
+
+Synth OOP takes "object orientation" all the way: an object is not a one-shot product that's fixed the moment it's constructed — it is a **live thing you keep shaping at runtime**. After an object is born, you can keep **adding methods and private attributes** to it, but members are **never removed**; a frozen object can **never thaw**. This mechanism is called "runtime object injection."
+
+> Why is it needed? In many real scenarios, an object's capabilities grow gradually as the program runs — e.g. a plugin appends behavior to the host only after it's loaded, or dynamically equips private state from data obtained at runtime. Freeing "shaping" from "construction time" to "runtime" is what truly makes objects *live*.
+
+> ⚠️ **An injected method does NOT capture the local variables of its definition site.** The behavior injected into an object is evaluated in the **object's own scope**, and cannot see the enclosing function's locals (e.g. an `out` declared outside). So if an injected method needs external resources, either declare them inside its own body (e.g. `-(io::OStream o);`), access the object's own members via `self`, or use a library preset object directly (e.g. `io::out`). Every example below follows this rule.
+
+#### 8.4.1 Injecting a New Method (`object:@name [behavior];`)
+
+Use `:@` to bind a new behavior as a member method of the object. Note the binding syntax is `@name [behavior];` — **not `<<`** — because `<<` is for flowing values, whereas "binding a behavior to a name" is a different thing (see Section 4.7 and Appendix A).
+
+```text
+&io;
+$Program {
+    @::[() -> () {
+        -(std::Object box);                  // an empty object, no methods yet
+        // inject a describe method at runtime
+        box:@describe[() -> () {
+            -(io::OStream o);                // the injected method declares its own resources
+            o.push_line("I am a box.");
+        }];
+        box.describe();                      // now box can describe itself
+    }];
+}
+```
+
+> **Rebind vs. add**: If `box` already has a same-named **non-const** method, `box:@name [behavior];` is treated as a **rebind** (replacing the old behavior); if the method is `@!name` (const), the injection is rejected with `ConstException` (see 8.4.4). To modify an **already existing** method, use `box.name.=(behavior)` instead. Injecting the same not-yet-existing method name twice on the same object is a duplicate-declaration error.
+
+#### 8.4.2 Injecting a Private Attribute (`object:-(type name) << initial;`)
+
+Use `:-(` to append a **private attribute** to the object — it can be initialized only once (at injection time) and is accessible **only by the object's own (host) methods**; external code can neither read nor write it. Afterward, to modify it you must go through a method the object injected itself (via `self`). Note that the `<<` here is the stream statement that supplies the initial value — perfectly valid.
+
+```text
+&io;
+$Program {
+    @::[() -> () {
+        -(std::Object box);
+        box:-(std::Number items) << 2;       // inject private attribute items, initial value 2
+        box:@describe[() -> () {
+            -(io::OStream o);
+            o.push("items = "); o.push(self.items); o.push_line("");
+        }];
+        box.describe();                      // output: items = 2
+    }];
+}
+```
+
+> Private attributes differ from public members: a public member (e.g. `-(std::Number age)`) can be read/written externally with `box.age << ...`, whereas a `:-(...)`-injected private attribute is **invisible** from outside — that's encapsulation. It gets its initial value only at injection, and afterward can be changed solely through the object's own method (via `self`).
+
+#### 8.4.3 Mutating a Private Attribute Inside an Injected Method (`self.name.=(value)`)
+
+An injected method holds the object itself via `self`, so it can both read and — with the `.=` operator (which rebinds the object's internal state) — modify the private attribute:
+
+```text
+&io;
+$Program {
+    @::[() -> () {
+        -(std::Object box);
+        box:-(std::Number items) << 2;
+        box:@add[() -> () {
+            self.items.=( self.items.+(1) );    // mutate private attribute via self
+        }];
+        box:@describe[() -> () {
+            -(io::OStream o);
+            o.push("items = "); o.push(self.items); o.push_line("");
+        }];
+        box.describe();                      // items = 2
+        box.add();
+        box.describe();                      // items = 3
+    }];
+}
+```
+
+#### 8.4.4 Freezing an Object (`object.#()`): One-Way and Irreversible
+
+`#()` permanently freezes an object: afterward you can neither inject new methods nor rebind existing ones, and it can never thaw — by design it is "set once, never undone."
+
+```text
+-(std::Object box);
+box:@ping[() -> () { /* ... */ }];
+box.#();                                   // freeze
+box:@pong[() -> () { /* never reached */ }];   // ❌ ConstException: cannot inject into a const object
+```
+
+> This belongs to the same "const state" family as the `!` on library preset objects (e.g. `io::out!`): `!` freezes at declaration time, `#()` freezes at runtime, and both make the object reject subsequent injection and rebinding. See Chapter X for the `!` preset objects.
 
 ## IX. Constraints
 
@@ -1302,7 +1321,7 @@ If `@` is followed by a **behavior signature** (i.e., keeping the behavior's par
 }]
 ```
 
-> The compiler performs two checks accordingly: ① the parameter **is a behavior**; ② the behavior's **signature matches**. This mechanism is mainly used by control-flow methods (such as `while_` / `repeat_`) to constrain the format of loop-body behaviors and condition-check behaviors (see Chapter VII).
+> The compiler performs two checks accordingly: ① the parameter **is a behavior**; ② the behavior's **signature matches**. This mechanism is widely used by interfaces that take "behavior arguments" — for example the streaming control-flow objects `std::While` / `std::Repeat` in Chapter VII constrain the format of their loop-body / condition closures.
 
 ### 9.8 When Checks Happen: A Runtime "Roll Call"
 
@@ -1469,7 +1488,7 @@ Careful readers will notice that the `_case` handler behaviors in this chapter's
 - If toxicity travels all the way to the program's end without being caught by `_case`, the program gracefully reports the error and exits.
 This design lets you freely choose the granularity of error handling: check at every step (using `_case`), or let toxicity propagate to the top level for unified handling.
 ### 11.3 Comprehensive Example: Connecting Everything
-The following complete program demonstrates all the core mechanisms described in this document: instantiation expressions, while_ loops, if_ branches, the three levels of behavior patterns, the Poisoned Water Model, and `_case` rescue.
+The following complete program demonstrates the core mechanisms covered so far: instantiation expressions, a `std::While` loop, a `std::If` branch, the three levels of behavior patterns, a user-defined class, and multi-value return decomposition.
 
 ```text
 &io;
@@ -1483,46 +1502,43 @@ $Program {
     @::[() -> () {
         -(io::OStream out);
         -(Math m);
+        // 1. std::While loop: accumulate 1 through 5 into total
+        // The loop body signs the non-constant pattern, directly modifying the caller's env vars
         -(std::Number total) << 0;
-        // 1. repeat_ loop: sum 1 through 5
-        // The loop body signs the non-constant pattern, directly modifying the caller's env var total
-        5.repeat_([(state) -> (next) {
-            next << state.+(1);
-            total << total.+(next); // sum 1 through 5
-        }]);
-        // 2. if_ branch: check the size of total
-        // Both branch behaviors only read env var total, so signing the constant pattern suffices
-        -(std::String msg) << (total.>(10)).if_(
-            [() ~> (value) { value << "big"; }],
-            [() ~> (value) { value << "small"; }]
-        );
-        out << msg;
-        // 3. Poison water and _case rescue: divide by 0 produces poison, caught locally
-        -(std::Number safe) << m.divide(total, 0)._case([
-            (error) -> (value) {
-                out << "Caught exception: ".+(error);
-                value << 0;
-            }
-        ]);
-        out << safe;
+        -(std::Number i) << 0;
+        std::While([() -> (go) { go << (i.<(5)); }])
+            .then([() -> () {
+                i << i.+(1);
+                total << total.+(i);   // accumulate 1 through 5, getting 15
+            }]);
+        // 2. std::If branch: check the size of total
+        // Both branch behaviors only read env var total, so the constant pattern suffices
+        std::If([() -> (b) { b << (total.>(10)); }])
+            .then([() -> () { out << "big\n"; }])
+            .else([() -> () { out << "small\n"; }]);
+        // 3. user-defined class method + multi-value return decomposition
+        -(std::Number q, std::Number r) << m.divide(total, 3);
+        out << "divide("; out << total; out << ", 3) = "; out << q; out << " rem "; out << r;
     }];
 }
 ```
 
-Expected behavior: repeat_ accumulates 1 to 5 into total (getting 15); if_ checks `15 > 10` which is true, outputs `big`; `m.divide(15, 0)` produces poison water, `_case` catches it and outputs the error message, safe is cured to 0 and then output. The entire program doesn't crash — errors are handled gracefully.
+Expected: `std::While` accumulates 1 through 5 into `total` (getting 15); `std::If` checks `15 > 10` which is true, so it outputs `big`; `m.divide(15, 3)` decomposes into quotient `5` and remainder `0`, outputting `divide(15, 3) = 5 rem 0`.
+
+
 ## Appendix A: Syntax Symbol Quick Reference
 
 | Symbol | Name | Usage |
 | ---- | ---- | ---- |
 | - | Instantiation expression prefix | `-(type name variable name)` declare and create object |
 | () | Parentheses | Instantiation expression `-(type name variable name)`; tuple / positional passing `(val1, val2)` |
-| << | Left stream | Assignment, stream statements, method binding (`@name << behavior`) |
+| << | Left stream | Value flow / assignment, stream statements (no longer binds closures) |
 | >> | Right stream | Stream statement in opposite direction, equivalent to `<<` |
 | => | Zero-side-effect pattern | Absolutely no access to any external entities (not even class attributes), zero side effects |
 | ~> | Constant pattern | Can access (read-only) caller's environment variables / class members, cannot modify |
 | -> | Non-constant pattern | Can access and modify caller's environment variables / class members |
 | [ ] | Behavior delimiter | `[(params) behavior-pattern arrow (result) { body }]` |
-| @ | Method declaration | `@methodName << behavior;` |
+| @ | Method declaration | `@methodName [behavior];` |
 | ! (after type) | Constant variable | `-(std::Number! x)` declare constant variable |
 | ! (after @) | Method variable const | Method itself is a variable, `@!` means the binding cannot be rebound |
 | # | Constraint prefix / private modifier | `#Addable {...}` declares a constraint; `@#` means private method, can be combined with `!` as `@!#` |
@@ -1538,8 +1554,8 @@ Expected behavior: repeat_ accumulates 1 to 5 into total (getting 15); if_ check
 Note: `=` is not an operator in Synth OOP — the infix `a = b` is invalid; however, the assignment method `a.=(b)` can be called explicitly and is fully equivalent to the streaming assignment `a << b` (see Section 4.3). All arithmetic and comparison operations are method calls, e.g., `a.+(b)`, `a.-(b)`, `a.*(b)`, `a./(b)`, `a.%(b)`, and `a.<(b)`, `a.>(b)`, `a.<=(b)`, `a.>=(b)`, `a.==(b)`, `a.!=(b)`. See Section 5.5 for details.
 ## Appendix B: On Computational Capability
 Synth OOP is Turing complete. All three ingredients are present:
-1. **Conditional branching**: if_ is a method of boolean values, so the ability to choose is established;
-2. **Unbounded looping**: while_ is a method of boolean values (receiving a loop body and a condition-check behavior), repeat_ is a method of numbers (receiving a loop count), the body is a behavior, and non-constant patterns allow state modification;
+1. **Conditional branching**: `std::If` is a streaming control-flow object, so the ability to choose is established;
+2. **Unbounded looping**: `std::While` (pre-conditioned loop) and `std::Repeat` (counted loop) are streaming control-flow objects, the loop body is a behavior, and non-constant patterns allow state modification;
 3. **Unbounded storage**: Containers like std::Array can grow infinitely, and the zero-value rule ensures storage is always available.
 Branching + looping + unbounded storage = Turing complete. Even if future versions impose additional restrictions on zero-side-effect `=>` or constant `~>` behaviors (such as termination requirements), the language as a whole remains complete.
 ## Appendix C: Comparison Examples — Synth OOP vs C++
@@ -1647,16 +1663,21 @@ if (a > b) {
 ```
 
 ```text
-// Synth OOP: if_ is a method of boolean values, branch behaviors directly access caller's environment variables
--(std::Number a) << 10;
--(std::Number b) << 20;
--(std::Number result) << (a.>(b)).if_(
-    [() ~> (value) { value << a; }],
-    [() ~> (value) { value << b; }]
-);
+// Synth OOP: std::If is a streaming control-flow object; branch behaviors directly access caller's env vars
+&io;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(std::Number a) << 10;
+        -(std::Number b) << 20;
+        std::If([() -> (c) { c << (a.>(b)); }])
+            .then([() -> () { out << "a wins\n"; }])
+            .else([() -> () { out << "b wins\n"; }]);
+    }];
+}
 ```
 
-Key comparison: C++'s control flow is a syntax structure; Synth OOP's control flow is a method of boolean values — it can be passed around, composed, and deferred just like data. if_ itself has a return value, returning the value of the output parameter `value` from the executed branch. Branch behaviors directly access the caller's environment variables through behavior patterns, without needing any extra parameter passing.
+Key comparison: C++'s control flow is a syntax structure; Synth OOP's control flow is a standalone streaming object — it can be stored in variables, passed around, and executed on demand just like data. Branch behaviors directly access the caller's environment variables through behavior patterns, without needing any extra parameter passing.
 ### C.6 Instantiation Expressions
 
 ```cpp
@@ -1939,24 +1960,22 @@ Expected: Compilation success, `_` placeholder correctly ignores unwanted return
 $Program {
     @::[() -> () {
         -(io::OStream out);
-        // repeat_ loop body receives state and returns a new state of the same type
-        -(std::Number last) << 3.repeat_(
-            [(state) -> (next) {
-                next << state.+(1); // loop body: state accumulates from 0 to 3
-            }]
-        );
-        out << last;
-        // if_ branch behaviors only read env var, so signing the constant pattern suffices
-        -(std::Number picked) << (last.>(2)).if_(
-            [() ~> (value) { value << last; }],
-            [() ~> (value) { value << 0; }]
-        );
+        // std::Repeat runs the body n times; the last published value is retrievable via .value()
+        -(std::Number last) << std::Repeat(3)
+            .then([() -> () { out << "."; }])
+            .value();
+        out << "\n";
+        // std::If branch: branch behaviors only read env var, so the constant pattern suffices
+        -(std::Number picked) << std::If([() -> (b) { b << (last.>(2)); }])
+            .then([() -> (r) { r << last; }])
+            .else([() -> (r) { r << 0; }])
+            .value();
         out << picked;
     }];
 }
 ```
 
-Expected: Output `3` and `3`. repeat_ executes 3 times (state accumulates from 0 to 3), returning the last loop-body state (3); if_ checks `last.>(2)` which is true, returning the true branch's value.
+Expected: Output `.` three times (std::Repeat runs the body 3 times) then a newline, followed by `3` (std::If checks `last.>(2)` which is true, returning the true branch's value `last`).
 ### D.17 Edge Case Test Summary
 
 | Test Case | Verification Target | Expected |
@@ -2092,10 +2111,10 @@ Note: Object instantiation syntax (Chapter IV) and control flow call syntax (Cha
 - **A class definition may end with an optional `;`.** `$Class { … }` and
   `$Class { … };` are both accepted — a class definition is a statement.
 
-- **Constructor init syntax `-(Type(args)! name)`.** A variable can be built
-  directly from constructor arguments: `-(std::Number(5)! n)` creates a const
-  `std::Number` whose value is `5`; `-(std::String("hello")! s)` builds a
-  `String` "hello"; `-(std::Array((1,2,3))! a)` fills an `Array` from a tuple.
+- **Constructor init syntax `-(Type(args) name)` (non-const).** A variable can be built
+  directly from constructor arguments: `-(std::Number(5) n)` creates a
+  `std::Number` whose value is `5`; `-(std::String("hello") s)` builds a
+  `String` "hello"; `-(std::Array((1,2,3)) a)` fills an `Array` from a tuple.
   The implementation invokes the class's constructor: a class with its own
   `@::(args) -> ()` runs that; otherwise a single argument is duck-typed
   into the instance through the normal flow negotiation (so every existing class
@@ -2104,14 +2123,19 @@ Note: Object instantiation syntax (Chapter IV) and control flow call syntax (Cha
   are never silently dropped. Each core scalar / collection class
   (`std::Number`, `std::Boolean`, `std::String`, `std::Array`, `std::Dict`,
   `std::Tuple`) now ships an explicit `@::(value) -> ()` constructor that
-  reuses its proven `:=` receive closure, so `-(std::Number(5)! n)` is exactly
-  equivalent to constructing the object and then receiving `5`.
+  reuses its proven `:=` receive closure, so `-(std::Number(5) n)` is exactly
+  equivalent to constructing the object and then receiving `5`. (A const member
+  uses the `!` type-name suffix, e.g. `-(std::Number! n)`, but the instantiation
+  statement **does not yet support** combining that `!` with constructor
+  arguments — `-(Type(args)! name)` is not accepted by the current parser; give
+  a const member its initial value inside the class's constructor behavior `@::`.)
 
 - **Const variables: build via constructor, never via flow.** A const variable
-  (`!(...)`) may only be initialized by a constructor (`-(std::Number(5)! n)`);
-  assigning it through a trailing flow (`-(std::Number! n) << 5`) raises a
-  `ConstException`, and a const member may not be overwritten by a flow inside a
-  behavior. This fixes the earlier bug where `-(std::Number! int); outer << int;`
+  (`Type! name`, e.g. `-(std::Number! n)`) may only be given its initial value
+  by the class's constructor behavior `@::`; assigning it through a trailing flow
+  (`-(std::Number! n) << 5`) raises a `ConstException`, and a const member may
+  not be overwritten by a flow inside a behavior. This fixes the earlier bug
+  where `-(std::Number! int); outer << int;`
   printed a stream of zeros.
 
 - **No assignment to rvalues.** The left side of a flow (`<<`) or of the assign

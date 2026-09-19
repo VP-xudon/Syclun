@@ -17,7 +17,7 @@ re-running things.
 | Repo URL | **MISSING** — `<<REPO_URL>>` below must be filled in. There is no git remote and no public repo yet, so the post is not postable until you publish one. |
 | Release assets | Five packages are produced by `.github/workflows/release.yml` **on tag push**. Locally only `synth-windows-x64` was built (the other four need their own host). Push a tag before claiming "download a release". |
 | Numbers in the post | 83 lexer + 64 parser + 143 runtime = **290** assertions; **~11,000** lines of C++23 (10,178 non-blank across `src/` + `lib/cpp/`). Both verified today by a fresh `bash build.sh --test`. |
-| Samples | `hello.syn`, `flow.syn`, `counter.syn`, the `sugar::Infix` line, the `if_`-with-two-behaviors snippet, `a.=(1)`, and the error block were **all executed today**. The error block is real output, copied verbatim. |
+| Samples | `hello.syn`, `flow.syn`, `counter.syn`, the `sugar::Infix` line, the `std::If` control-flow snippet, `a.=(1)`, and the error block were **all executed today**. The error block is real output, copied verbatim. |
 | Exit codes | Verified fixed: `0` on success, `1` on syntax errors, `1` on runtime errors, `1` on a missing file. The post may claim this. / 已复验修复：成功 0、语法错误 1、运行期错误 1、缺文件 1。贴子里可以这么写。 |
 
 **One honest warning about the subreddit.** r/programming removes a lot of
@@ -87,8 +87,8 @@ my type" problem, because there was never a privileged `+` to begin with.
 
 Same trick for the rest of the "special" parts of a language:
 
-- **No conditional keyword.** `if_` is a method on `std::Boolean` that takes two behaviors.
-- **No loop keyword.** `while_` is on `std::Boolean` too; `repeat_` is on `std::Number` (the number *is* the count).
+- **No conditional keyword.** `std::If` is a streaming control-flow object: you feed it a condition closure, then attach branches with `.then(...)` / `.else(...)`.
+- **No loop keyword.** `std::While` (pre-conditioned) and `std::Repeat` (counted) are streaming control-flow objects too — the number *is* the count.
 - **No constructor keyword.** `@::` is just a method with a reserved name.
 
 Branches are ordinary behaviors, so you can store one in a variable and pass it
@@ -221,14 +221,20 @@ Both are ordinary methods you can override. `=` also exists as a method
 **"Did you actually write this at 14?"** Yes. It's ~11k lines of C++23 across
 `src/` and `lib/cpp/`. The git history is public if you want to check the pace.
 
-**"How is `if_` a method?"**
+**"How is control flow just objects?"**
 ```
--(std::Boolean ok) << (a.>(b));
-ok.if_([() -> () { out.push_line("bigger"); }],
-       [() -> () { out.push_line("smaller"); }]);
+&io;
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        std::If([() -> (c) { c << (a.>(b)); }])
+            .then([() -> () { out << "bigger\n"; }])
+            .else([() -> () { out << "smaller\n"; }]);
+    }];
+}
 ```
-Both branches are behaviors (closures), so they're just values until `if_` calls
-one.
+Both branches are behaviors (closures), so they're just values until `std::If`
+dispatches one.
 
 **"Why C++ and not Rust/Zig?"** Because I knew C++ and wanted to spend the time
 on the language, not on the implementation language. Also `std::regex` and

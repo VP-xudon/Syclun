@@ -13,9 +13,9 @@
 //   The lexer only splits the character stream into tokens; it does
 //   no contextual analysis:
 //   Lexer 只负责把字符流切成 token，不做任何上下文分析：
-//   - It recognizes no keywords (true / false / if_ / void are all
+//   - It recognizes no keywords (true / false / void are all
 //     <name>);
-//     不识别关键字（true / false / if_ / void 一律是 <name>）；
+//     不识别关键字（true / false / void 一律是 <name>）；
 //   - It does not distinguish the meaning of `-`: the instantiation
 //     prefix `-(Type var)` and the method name `a.-(b)` are
 //     lexically identical (<name>"-" + <symbol>"("), and the parser
@@ -71,9 +71,9 @@
 //     文档 11.2.3 的 `value << -1;`）；
 //   - a `.` inside a number is a decimal point only when followed by
 //     a digit; otherwise it is the call symbol
-//     (3.repeat_(...), 10.+(5) both split correctly).
+//     (3.foo(...), 10.+(5) both split correctly).
 //     数字中的 `.` 仅在后跟数字时视为小数点，否则是调用符号
-//     （3.repeat_(...)、10.+(5) 均正确切分）。
+//     （3.foo(...)、10.+(5) 均正确切分）。
 //   - Colons follow the "colon principle": a `:` is only legal as part of
 //     the `::` separator (namespace / constructor) or the `=:` (publish) /
 //     `:=` (receive) method names. Any other `:` is a lexical error.

@@ -1,13 +1,13 @@
 &io;
+// 控制流演示：用 std::if 选择较大值 / Control-flow demo: pick the larger with std::if.
 $Program {
     @::[() -> () {
-        -(std::Number a) << 10;
-        -(std::Number b) << 20;
-        -(std::Number result) << (a.>(b)).if_(
-            [() ~> (value) { value << a; }],
-            [() ~> (value) { value << b; }]
-        );
-        -(io::OStream out);
-        out << result;
+        -(std::Number a) << std::Number(10);
+        -(std::Number b) << std::Number(20);
+        -(std::Number result) << std::Number(0);
+        std::if([()->(Boolean){ Boolean << a.>(b); }])
+            .then([{ result << a; }])
+            .else([{ result << b; }]);
+        io::out.push_line(result);
     }];
 }

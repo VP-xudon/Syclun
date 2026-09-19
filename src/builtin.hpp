@@ -17,9 +17,9 @@
 //
 //   std::Object   ::  ~  =:  :=  =             (root of all things)
 //   std::Object   ::  ~  =:  :=  =             （万物之源）
-//   std::Number   + - * / % < > <= >= == != to_string repeat_
+//   std::Number   + - * / % < > <= >= == != to_string
 //                 =:  :=  =
-//   std::Boolean  if_  while_  =:  :=  =
+//   std::Boolean  =:  :=  =
 //   std::String   +  upper  lower  reverse  length  get  contains  slice
 //                 =:  :=  =
 //   std::Array    push_back  get  size  pop_back  remove  insert  clear
@@ -127,10 +127,10 @@
 // 4. Zero-value law (Spec Section 4.4):
 // 4. 零值法则（文档第 4.4 节）：
 //    number 0, empty string, false, empty array / dict / tuple. The
-//    loop state of while_ / repeat_ starts from the zero value
+//    loop state of std::while / std::repeat starts from the zero value
 //    (Number 0).
-//    数字 0、空串、false、空数组 / 字典 / 元组。while_ /
-//    repeat_ 的循环状态 state 从零值（Number 0）开始。
+//    数字 0、空串、false、空数组 / 字典 / 元组。std::while /
+//    std::repeat 的循环状态 state 从零值（Number 0）开始。
 //
 // 5. Smart negotiation (Spec Section 3.3):
 // 5. 智能协商（文档第 3.3 节）：
@@ -260,6 +260,9 @@ namespace rt_builtin {
     inline rt_basic::ClsProtoPtr PT_stdArray;
     inline rt_basic::ClsProtoPtr PT_stdDict;
     inline rt_basic::ClsProtoPtr PT_stdTuple;
+    inline rt_basic::ClsProtoPtr PT_stdIf;
+    inline rt_basic::ClsProtoPtr PT_stdWhile;
+    inline rt_basic::ClsProtoPtr PT_stdRepeat;
 
 
     // ========================================================
@@ -532,6 +535,23 @@ namespace rt_builtin {
     ) {
         auto found = env.find(VALUE_KEY);
         return found == env.end() ? nullptr : found->second;
+    }
+
+    // Returns the receiver instance currently executing a native method.
+    // 返回当前正在执行原生方法的接收实例。
+    //
+    // Synth-OOP forwards the receiver instance to native closures through the
+    // thread-local rt_basic::g_native_self (set/reset by Callable::call). This
+    // is the only way a fluent built-in (std::If / std::While / std::Repeat)
+    // can return *itself* for chaining (then().else()...). Captured at method
+    // entry because nested call_behavior invocations may transiently overwrite
+    // the thread-local. See runtime.hpp (g_native_self).
+    // Synth-OOP 经线程局部 rt_basic::g_native_self 把接收实例转发给原生闭包
+    // （由 Callable::call 设/复位）。这是流式内置对象返回「自身」以支持链式
+    // （then().else()...）的唯一途径。须在方法入口捕获，因嵌套 call_behavior
+    // 可能短暂改写该线程局部。见 runtime.hpp（g_native_self）。
+    inline runtime::RuntimeObjectPtr current_self() {
+        return rt_basic::g_native_self;
     }
 
     // ========================================================
@@ -1583,47 +1603,6 @@ namespace rt_builtin {
         );
     }
 
-    // Number.repeat_(body) -> (value) —— loop (Spec 7.3). self is the loop
-    // count; body has the shape [(state) -> (state)]; state starts from the
-    // zero value (Number 0); returns the last body return value.
-    // Number.repeat_(body) -> (value) —— 循环（文档 7.3）。
-    // self 为循环次数；body 形如 [(state) -> (state)]；
-    // state 从零值（Number 0）开始；返回最后一次 body 的返回值。
-    inline rt_basic::Callable method_Number_repeat_() {
-        return native_method(
-            [](
-                rt_basic::InstanceMap& env,
-                rt_basic::InstanceListPtr paras
-            ) {
-                auto self = self_value_of(env);
-                auto count = number_of(self);
-                if (!count) {
-                    return list_of({native_error(
-                        make_int(0),
-                        "repeat_ receiver must be std::Number"
-                    )});
-                }
-                auto rounds = static_cast<long long>(*count);
-                if (rounds < 0) {
-                    rounds = 0;
-                }
-
-                auto state = list_of({make_int(0)});
-                for (long long i = 0; i < rounds; ++i) {
-                    auto next =
-                        call_behavior(para_at(paras, 0), env, state);
-                    if (auto head = first_of(next)) {
-                        state = list_of({head});
-                    }
-                }
-                return state;
-            },
-            make_sign(
-                "repeat_", {{"body", "@"}}, {{"value", "value"}}
-            )
-        );
-    }
-
     // Number.=:() ~> (std::Number) —— publish value capsule (overrides base,
     // output signature precise to std::Number for compile-time flow-type
     // checking).
@@ -1670,75 +1649,8 @@ namespace rt_builtin {
 
 
     // ========================================================
-    // std::Boolean —— control flow (Spec 2.3.2 / Chapter 7)
+    // std::Boolean —— boolean (publisher/receiver for control flow)
     // ========================================================
-
-    // Boolean.if_(true_branch, false_branch) -> (value) (Spec 7.1). self true
-    // executes true_branch, else false_branch; value is the executed
-    // branch's output.
-    // Boolean.if_(true_branch, false_branch) -> (value)（文档 7.1）。
-    // self 为真时执行 true_branch，否则执行 false_branch；
-    // value 为所执行分支的输出。
-    inline rt_basic::Callable method_Boolean_if_() {
-        return native_method(
-            [](
-                rt_basic::InstanceMap& env,
-                rt_basic::InstanceListPtr paras
-            ) {
-                auto self = self_value_of(env);
-                bool flag = boolean_of(self).value_or(false);
-                return call_behavior(
-                    flag ? para_at(paras, 0) : para_at(paras, 1),
-                    env,
-                    empty_result()
-                );
-            },
-            make_sign(
-                "if_",
-                {{"true_branch", "@"}, {"false_branch", "@"}},
-                {{"value", "value"}}
-            )
-        );
-    }
-
-    // Boolean.while_(body, condition_check) -> (value) (Spec 7.2). self is the
-    // initial condition; body has the shape [(state) -> (state)],
-    // condition_check has the shape [(state) ~> (flag)] (condition checked
-    // after); state starts from the zero value; returns the last body return
-    // value.
-    // Boolean.while_(body, condition_check) -> (value)（文档 7.2）。
-    // self 为初始条件；body 形如 [(state) -> (state)]，
-    // condition_check 形如 [(state) ~> (flag)]（条件检查在后）；
-    // state 从零值开始；返回最后一次 body 的返回值。
-    inline rt_basic::Callable method_Boolean_while_() {
-        return native_method(
-            [](
-                rt_basic::InstanceMap& env,
-                rt_basic::InstanceListPtr paras
-            ) {
-                auto self = self_value_of(env);
-                bool flag = boolean_of(self).value_or(false);
-
-                auto state = list_of({make_int(0)});
-                while (flag) {
-                    auto stepped =
-                        call_behavior(para_at(paras, 0), env, state);
-                    if (auto head = first_of(stepped)) {
-                        state = list_of({head});
-                    }
-                    auto checked =
-                        call_behavior(para_at(paras, 1), env, state);
-                    flag = boolean_of(first_of(checked)).value_or(false);
-                }
-                return state;
-            },
-            make_sign(
-                "while_",
-                {{"body", "@"}, {"condition_check", "@"}},
-                {{"value", "value"}}
-            )
-        );
-    }
 
     // Boolean.=:() ~> (std::Boolean) —— publish value capsule (precise sign).
     // Boolean.=:() ~> (std::Boolean) —— 公布值胶囊（精确签名）。
@@ -2758,11 +2670,214 @@ namespace rt_builtin {
     // 最终都注入运行环境 stdRT。
     // ========================================================
 
-    inline void init_prototypes() {
+    // ========================================================
+    // std::If / std::While / std::Repeat —— 流式控制流对象
+    // （控制流抽离为可存储、可传参、可延迟执行的独立对象）
+    // ========================================================
 
-        // ----------------------------------------------------
-        // std::Object —— the root of all things
-        // ----------------------------------------------------
+    // std::If —— if(cond_closure).then(then_body).else(else_body)...
+    // 构造函数缓存条件闭包并求值；then/else 链式返回自身，
+    // 内部隐私状态 _step / _value 记录当前进行到的分支与返回值。
+    inline rt_basic::Callable method_If_ctor() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                auto cond = para_at(paras, 0);
+                env["_clos"]  = cond ? cond : nullptr;
+                env["_taken"] = make_boolean(false);
+                env["_value"] = nullptr;
+                env["_step"]  = make_number(0);
+                bool ok = false;
+                if (cond) {
+                    auto r = call_behavior(cond, env, empty_result());
+                    auto b = boolean_of(first_of(r));
+                    ok = b && *b;
+                }
+                env["_cond"] = make_boolean(ok);
+                return list_of({self});
+            },
+            make_sign("::", {{"cond", "@"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_If_then() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                bool taken = boolean_of(env["_taken"]).value_or(false);
+                bool cond  = boolean_of(env["_cond"]).value_or(false);
+                if (!taken && cond) {
+                    auto body = para_at(paras, 0);
+                    if (body) {
+                        auto r = call_behavior(body, env, empty_result());
+                        env["_value"] = r ? first_of(r) : nullptr;
+                    }
+                    env["_taken"] = make_boolean(true);
+                    env["_step"]  = make_number(1);
+                }
+                return list_of({self});
+            },
+            make_sign("then", {{"body", "@"}}, {{"self", "std::If"}})
+        );
+    }
+    inline rt_basic::Callable method_If_else() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                bool taken = boolean_of(env["_taken"]).value_or(false);
+                bool cond  = boolean_of(env["_cond"]).value_or(false);
+                if (!taken && !cond) {
+                    auto body = para_at(paras, 0);
+                    if (body) {
+                        auto r = call_behavior(body, env, empty_result());
+                        env["_value"] = r ? first_of(r) : nullptr;
+                    }
+                    env["_taken"] = make_boolean(true);
+                    env["_step"]  = make_number(2);
+                }
+                return list_of({self});
+            },
+            make_sign("else", {{"body", "@"}}, {{"self", "std::If"}})
+        );
+    }
+    inline rt_basic::Callable method_If_value() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                auto found = env.find("_value");
+                return list_of({found == env.end() ? nullptr : found->second});
+            },
+            make_sign("value", {}, {{"value", "value"}})
+        );
+    }
+    inline rt_basic::Callable method_If_done() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                auto found = env.find("_taken");
+                return list_of({found == env.end() ? nullptr : found->second});
+            },
+            make_sign("done", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // std::While —— while(cond_closure).then(body_closure)
+    // 每次迭代先求值条件闭包，为真则执行 body，链式返回自身。
+    inline rt_basic::Callable method_While_ctor() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                env["_clos"]  = para_at(paras, 0);
+                env["_value"] = nullptr;
+                return list_of({self});
+            },
+            make_sign("::", {{"cond", "@"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_While_then() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                auto cond = env["_clos"];
+                auto body = para_at(paras, 0);
+                runtime::RuntimeObjectPtr last = nullptr;
+                if (cond) {
+                    for (;;) {
+                        auto r = call_behavior(cond, env, empty_result());
+                        auto b = boolean_of(first_of(r));
+                        if (!(b && *b)) break;
+                        if (body) last = first_of(call_behavior(body, env, empty_result()));
+                    }
+                }
+                env["_value"] = last;
+                return list_of({self});
+            },
+            make_sign("then", {{"body", "@"}}, {{"self", "std::While"}})
+        );
+    }
+    inline rt_basic::Callable method_While_value() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                auto found = env.find("_value");
+                return list_of({found == env.end() ? nullptr : found->second});
+            },
+            make_sign("value", {}, {{"value", "value"}})
+        );
+    }
+
+    // std::Repeat —— repeat(n).then(body_closure)
+    // 按计数 n 次执行 body，链式返回自身。
+    inline rt_basic::Callable method_Repeat_ctor() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                auto n = number_of(para_at(paras, 0));
+                env["_n"] = make_number(n ? *n : 0.0);
+                env["_value"] = nullptr;
+                return list_of({self});
+            },
+            make_sign("::", {{"count", "std::Number"}}, {})
+        );
+    }
+    inline rt_basic::Callable method_Repeat_then() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto self = current_self();
+                auto nv = number_of(env["_n"]);
+                long long n = nv ? static_cast<long long>(*nv) : 0;
+                auto body = para_at(paras, 0);
+                runtime::RuntimeObjectPtr last = nullptr;
+                if (body) {
+                    for (long long i = 0; i < n; ++i)
+                        last = first_of(call_behavior(body, env, empty_result()));
+                }
+                env["_value"] = last;
+                return list_of({self});
+            },
+            make_sign("then", {{"body", "@"}}, {{"self", "std::Repeat"}})
+        );
+    }
+    inline rt_basic::Callable method_Repeat_value() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr /*paras*/) {
+                auto found = env.find("_value");
+                return list_of({found == env.end() ? nullptr : found->second});
+            },
+            make_sign("value", {}, {{"value", "value"}})
+        );
+    }
+
+    // 控制流对象（If/While/Repeat）的公布 / 接收：直接公布 / 拷贝实例本身，
+    // 使 `-(std::If f) << std::if([...])` 能把构造出来的实例状态搬进 f，
+    // 从而支持「把链式对象存进变量、之后再继续调用」。
+    // Publish / receive for control-flow objects: stream the INSTANCE itself,
+    // so `-(std::If f) << std::if([...])` copies the constructed instance's
+    // state into f and the chain can be resumed from the variable.
+    inline rt_basic::Callable method_cf_publish() {
+        return native_method(
+            [](rt_basic::InstanceMap& /*env*/,
+               rt_basic::InstanceListPtr /*paras*/) {
+                return list_of({current_self()});
+            },
+            make_sign("=:", {}, {{"result", "std::Object"}})
+        );
+    }
+    inline rt_basic::Callable method_cf_receive() {
+        return native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto src = first_of(paras);
+                if (src) {
+                    auto* cls =
+                        dynamic_cast<runtime::RuntimeClass*>(src.get());
+                    if (cls) {
+                        auto& sa = cls->get_attributes();
+                        for (auto& kv : sa) env[kv.first] = kv.second;
+                    }
+                }
+                return empty_result();
+            },
+            make_sign(":=", {{"value", "std::Object"}}, {})
+        );
+    }
+
+    inline void init_prototypes() {
 
         PT_stdObject = std::make_shared<rt_basic::ClsProto>();
 
@@ -2808,7 +2923,6 @@ namespace rt_builtin {
         PT_stdNumber->set_method("==", method_Number_eq());
         PT_stdNumber->set_method("!=", method_Number_ne());
         PT_stdNumber->set_method("to_string", method_Number_to_string());
-        PT_stdNumber->set_method("repeat_", method_Number_repeat_());
         // "=:" overrides the base reserved method: signature precise to
         // std::Number. ":=" overrides the base reserved method: set_method
         // binds generically (the @! guard is removed — modifiers are checked
@@ -2839,14 +2953,12 @@ namespace rt_builtin {
 
 
         // ----------------------------------------------------
-        // std::Boolean —— boolean (if_ / while_ control flow)
+        // std::Boolean —— boolean scalar type
         // ----------------------------------------------------
 
         PT_stdBoolean =
             std::make_shared<rt_basic::ClsProto>(PT_stdObject);
 
-        PT_stdBoolean->set_method("if_", method_Boolean_if_());
-        PT_stdBoolean->set_method("while_", method_Boolean_while_());
         PT_stdBoolean->set_method("=:", method_Boolean_publish());
         PT_stdBoolean->set_method(":=", method_Boolean_receive());
         PT_stdBoolean->set_method("=", method_Boolean_assign());
@@ -2859,6 +2971,41 @@ namespace rt_builtin {
         PT_stdBoolean->set_attribute(VALUE_KEY, cap_boolean(false));
 
         stdPT.regcls("Boolean", PT_stdBoolean);
+
+
+        // ----------------------------------------------------
+        // std::If / std::While / std::Repeat —— 流式控制流对象
+        // （控制流抽离为独立的流式对象）
+        // ----------------------------------------------------
+
+        PT_stdIf = std::make_shared<rt_basic::ClsProto>(PT_stdObject);
+        PT_stdIf->set_method("::",     method_If_ctor());
+        PT_stdIf->set_method("then",   method_If_then());
+        PT_stdIf->set_method("else",   method_If_else());
+        PT_stdIf->set_method("value",  method_If_value());
+        PT_stdIf->set_method("done",   method_If_done());
+        PT_stdIf->set_method("=:",     method_cf_publish());
+        PT_stdIf->set_method(":=",     method_cf_receive());
+        stdPT.regcls("If", PT_stdIf);
+        stdPT.regcls("if", PT_stdIf);   // lowercase alias (std::if)
+
+        PT_stdWhile = std::make_shared<rt_basic::ClsProto>(PT_stdObject);
+        PT_stdWhile->set_method("::",    method_While_ctor());
+        PT_stdWhile->set_method("then",  method_While_then());
+        PT_stdWhile->set_method("value", method_While_value());
+        PT_stdWhile->set_method("=:",    method_cf_publish());
+        PT_stdWhile->set_method(":=",    method_cf_receive());
+        stdPT.regcls("While", PT_stdWhile);
+        stdPT.regcls("while", PT_stdWhile);   // lowercase alias (std::while)
+
+        PT_stdRepeat = std::make_shared<rt_basic::ClsProto>(PT_stdObject);
+        PT_stdRepeat->set_method("::",    method_Repeat_ctor());
+        PT_stdRepeat->set_method("then",  method_Repeat_then());
+        PT_stdRepeat->set_method("value", method_Repeat_value());
+        PT_stdRepeat->set_method("=:",    method_cf_publish());
+        PT_stdRepeat->set_method(":=",    method_cf_receive());
+        stdPT.regcls("Repeat", PT_stdRepeat);
+        stdPT.regcls("repeat", PT_stdRepeat);   // lowercase alias (std::repeat)
 
 
         // ----------------------------------------------------

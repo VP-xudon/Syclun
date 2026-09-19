@@ -1,0 +1,87 @@
+&io;
+// 猪国杀（洛谷 P2482）简化可运行版 / Simplified runnable "Zhu Guo Sha" (Luogu P2482).
+//
+// 仅实现核心循环演示：两名玩家（猪），每人 4 点体力；牌堆循环发牌，出牌结算
+// 杀(1)/闪(2)/桃(3)/决斗(4)。体力 <= 0 的一方落败。规则为演示性简化，非完整赛制。
+// Core loop only: two pigs, 4 HP each; deck dealt round-robin; cards
+// Kill(1)/Flash(2)/Peach(3)/Duel(4) are resolved; first to 0 HP loses.
+// Rules are demonstratively simplified, not the full contest format.
+
+$Program {
+  @::[{
+    // 玩家体力 / player HP
+    -(std::Number hp0) << std::Number(4);
+    -(std::Number hp1) << std::Number(4);
+    // 牌堆：1=杀 2=闪 3=桃 4=决斗（循环使用）/ deck: 1=Kill 2=Flash 3=Peach 4=Duel
+    -(std::Array deck) << std::Array((1, 2, 3, 1, 4, 2, 1, 3));
+    -(std::Number turn) << std::Number(0);
+    -(std::Number di) << std::Number(0);   // deck cursor / 牌堆游标
+
+    io::out.push_line("=== 猪国杀开始 / game start ===");
+
+    std::while([()->(Boolean){ Boolean << turn.<(std::Number(60)); }])
+      .then([{
+        // 任一方体力归零则结束（用 alive 旗标，避免逻辑与/或）/ stop when a pig dies
+        -(std::Number alive) << std::Number(1);
+        std::if([()->(Boolean){ Boolean << hp0.<=(std::Number(0)); }])
+          .then([{ alive << std::Number(0); }]);
+        std::if([()->(Boolean){ Boolean << hp1.<=(std::Number(0)); }])
+          .then([{ alive << std::Number(0); }]);
+
+        std::if([()->(Boolean){ Boolean << alive.==(std::Number(1)); }])
+          .then([{
+            -(std::Number cur) << turn.% (std::Number(2));       // 当前玩家 / current
+            // 对手体力变量在下方按 cur 分支赋值 / opponent HP assigned below
+            // 取当前玩家体力变量 / current HP holder
+            -(std::Number curhp) << std::Number(0);
+            -(std::Number opphp) << std::Number(0);
+            std::if([()->(Boolean){ Boolean << cur.==(std::Number(0)); }])
+              .then([{ curhp << hp0; opphp << hp1; }])
+              .else([{ curhp << hp1; opphp << hp0; }]);
+
+            -(std::Number card) << deck.get(di);                 // 摸牌 / draw
+            di << di.+(std::Number(1));
+            std::if([()->(Boolean){ Boolean << di.>=(deck.size()); }]).then([{ di << std::Number(0); }]);
+
+            io::out.push_line(("回合 ").+(turn.to_string()).+("：玩家 ").+(cur.to_string()).+(" 出牌码 ").+(card.to_string()));
+
+            // 结算 / resolve
+            std::if([()->(Boolean){ Boolean << card.==(std::Number(1)); }])   // 杀
+              .then([{
+                opphp << opphp.-(std::Number(1));
+                io::out.push_line("  杀！对手 -1 HP");
+              }])
+              .else([{
+                std::if([()->(Boolean){ Boolean << card.==(std::Number(3)); }]) // 桃
+                  .then([{
+                    curhp << curhp.+(std::Number(1));
+                    io::out.push_line("  桃！自己 +1 HP");
+                  }])
+                  .else([{
+                    std::if([()->(Boolean){ Boolean << card.==(std::Number(4)); }]) // 决斗
+                      .then([{
+                        curhp << curhp.-(std::Number(1));
+                        opphp << opphp.-(std::Number(1));
+                        io::out.push_line("  决斗！双方各 -1 HP");
+                      }])
+                      .else([{
+                        io::out.push_line("  闪！无效果 / Flash: no effect");
+                      }]);
+                  }]);
+              }]);
+
+            // 写回体力 / write HP back
+            std::if([()->(Boolean){ Boolean << cur.==(std::Number(0)); }])
+              .then([{ hp0 << curhp; hp1 << opphp; }])
+              .else([{ hp1 << curhp; hp0 << opphp; }]);
+
+            turn << turn.+(std::Number(1));
+          }])
+          .else([{ turn << std::Number(60); }]);   // 结束 / stop
+      }]);
+
+    io::out.push_line("=== 结束 / game over ===");
+    io::out.push_line(("玩家0 HP = ").+(hp0.to_string()));
+    io::out.push_line(("玩家1 HP = ").+(hp1.to_string()));
+  }];
+}

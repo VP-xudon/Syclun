@@ -247,10 +247,14 @@ The full, layered, plain-spoken **wiki** holds the complete introduction (this R
 
 ## 标准库一览 / Standard libraries
 
-用 **`&module;`** 导入（模块名小写）；类名为模块名首字母大写，并以 `module::Class` 形式引用
-（如 `&maths;` → `maths::Maths`）。
-Import with **`&module;`** (lower-case); the class is the capitalized module name,
-referenced as `module::Class` (e.g. `&maths;` → `maths::Maths`).
+用 **`&module;`** 导入（模块名小写）。多数库会随附一个**预置实例**，可直接调用其方法（如
+`&maths;` 带来无状态的 `maths::math`，写成 `maths::math.clamp(5,0,3)` 即可）；其底层类名是
+模块名首字母大写，如需自建实例可用 `module::Class` 形式引用（如 `maths::Maths`）。
+Import with **`&module;`** (lower-case). Most libraries also ship a **preset
+instance** you can call directly (e.g. `&maths;` brings the stateless `maths::math`,
+so `maths::math.clamp(5,0,3)` just works); the underlying class name is the
+capitalized module name, referenced as `module::Class` if you want your own
+instance (e.g. `maths::Maths`).
 
 | Import | Classes / 类 | 用途 / What it does |
 |--------|--------------|---------------------|
@@ -281,12 +285,12 @@ referenced as `module::Class` (e.g. `&maths;` → `maths::Maths`).
 
 [`vscode-synth-oop/`](./vscode-synth-oop/) 是纯 TextMate 语法的 **VS Code 语法高亮插件**，
 只高亮、不编译不运行，因此绝不与解释器冲突。识别 `.syn` / `.synl` / `.syni` 三种文件，
-高亮 `@ $ # !` 标记、模块导入（`&io;`）、控制方法（`if_`/`while_`/`repeat_`）、流运算符
-（`<< >> =: :=`）等。每个 Release 附 `synth-oop-<version>.vsix`；插件采用 **MIT** 许可。
+高亮 `@ $ # !` 标记、模块导入（`&io;`）、流式控制流对象（`std::If`/`std::While`/`std::Repeat`）、流运算符
+（`<< >> =: :=`）、方法绑定（`@名[闭包]`）等。每个 Release 附 `synth-oop-<version>.vsix`；插件采用 **MIT** 许可。
 [`vscode-synth-oop/`](./vscode-synth-oop/) is a pure-TextMate **VS Code syntax
 extension** — it highlights only, never compiles or runs, so it never fights the
 interpreter. It recognizes `.syn`/`.synl`/`.syni`, highlights `@ $ # !` markers,
-imports (`&io;`), control methods, and flow operators. Every release attaches
+imports (`&io;`), streaming control-flow objects (`std::If`/`std::While`/`std::Repeat`), method binding (`@name[behavior]`), and flow operators. Every release attaches
 `synth-oop-<version>.vsix`; the extension is **MIT**-licensed.
 
 ---

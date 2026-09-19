@@ -1,0 +1,31 @@
+&io;
+&structs;
+// 最小生成树模板 / Minimum Spanning Tree template.
+// 直接用 std::Graph 的 mst()（Kruskal 实现）即可，无需手写板子。
+// Just call std::Graph.mst() (Kruskal) — no need to write the boilerplate.
+
+$Program {
+  @::[{
+    -(std::Graph g);
+    // 建图：加点、加带权边 / build: nodes + weighted edges
+    g.add_node(std::Number(1));
+    g.add_node(std::Number(2));
+    g.add_node(std::Number(3));
+    g.add_node(std::Number(4));
+    g.add_edge(std::Number(1), std::Number(2), std::Number(1));
+    g.add_edge(std::Number(2), std::Number(3), std::Number(2));
+    g.add_edge(std::Number(3), std::Number(4), std::Number(3));
+    g.add_edge(std::Number(1), std::Number(4), std::Number(4));
+    g.add_edge(std::Number(1), std::Number(3), std::Number(5));
+
+    io::out.push_line("MST (edge = [u, v, w]):");
+    io::out.push_line(g.mst());
+
+    io::out.push_line("shortest path 1 -> 4:");
+    io::out.push_line(g.shortest_path(std::Number(1), std::Number(4)));
+    io::out.push_line("shortest distance 1 -> 4:");
+    io::out.push_line(g.shortest_distance(std::Number(1), std::Number(4)));
+
+    g.dispose();
+  }];
+}

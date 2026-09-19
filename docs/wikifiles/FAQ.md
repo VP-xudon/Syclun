@@ -27,7 +27,7 @@
 构造之后仍是活的：可运行期注入方法（`obj:@m[{…}]`）、加私有属性（`obj:-(T v) << init`）、用 `obj.#()` 永久冻结。冻结后永不可解冻。见 [基本语法 §9 / Basic Syntax §9](Basic-Syntax)。
 
 ### Q7. 怎么用标准库？/ How do I use a library?
-在文件顶部 `&模块;` 导入，例如 `&io;` `&maths;` `&re;`。导入后类（如 `maths::Maths`）即可用；`io` 还会随带常数对象 `io::out`/`io::in`。见 [标准库总览 / Standard Libraries](Standard-Libraries) 与 [对象使用 / Using StdLib Objects](Standard-Library-Objects)。
+在文件顶部 `&模块;` 导入，例如 `&io;` `&maths;` `&re;`。导入后库常附带一个**预置实例**可直接调用（如 `maths::math.clamp(5,0,3)`）；若想自建实例，用底层类名（如 `maths::Maths`）。`io` 还会随带常数对象 `io::out`/`io::in`。见 [标准库总览 / Standard Libraries](Standard-Libraries) 与 [对象使用 / Using StdLib Objects](Standard-Library-Objects)。
 
 ### Q8. 我写的 `.syn` 程序受 GPL 约束吗？/ Are my .syn programs under GPL?
 **不受**。你用 Synth-OOP 编写的程序（`.syn`/`.synl`/`.syni` 及其输出）是**独立作品**，不是本解释器的演绎作品，可自行选择任何许可证（含专有）。仅本仓库源码为 GPL-3.0-or-later；VS Code 插件为 MIT。

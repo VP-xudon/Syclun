@@ -17,7 +17,7 @@
 | ---- | ---- | ---- |
 | 关键字标记 | `@` `$` `#` `!` 及组合 `@!` `@#` `@!#` | `keyword` |
 | 模块导入 | `&io;` `&maths;` | `keyword` |
-| 控制方法 | `if_` `while_` `repeat_` | `keyword.control` |
+| 控制流对象 | `std::if` `std::while` `std::repeat`（构造调用 + `.then`/`.else`/`.value` 链式） | `support.type` / `entity.name.function` |
 | 箭头 / 流 / 赋值运算符 | `=> ~> -> << >> =: :=` 及 `+ - * / % < >` | `keyword.operator` |
 | 布尔 / 非有限字面量 | `true` `false` `inf` `NaN` `Infinity` | `constant.language.boolean` |
 | **类名 / 类型**（含 `$` 后、命名空间、库限定） | `$Program` `#Comparable` `std::Number` `maths::Maths` `io::OStream` `std::Number!` | `entity.name.type` / `support.type` |
@@ -104,7 +104,7 @@ file icon in the Explorer.
 | -------- | -------- | ----------------------------------------------------- |
 | Keyword markers | `@` `$` `#` `!` and combos `@!` `@#` `@!#` | `keyword` |
 | Module import | `&io;` `&maths;` | `keyword` |
-| Control methods | `if_` `while_` `repeat_` | `keyword.control` |
+| Control-flow objects | `std::if` `std::while` `std::repeat` (ctor call + `.then`/`.else`/`.value` chain) | `support.type` / `entity.name.function` |
 | Arrow / stream / assignment operators | `=> ~> -> << >> =: :=` and `+ - * / % < >` | `keyword.operator` |
 | Boolean / non-finite literals | `true` `false` `inf` `NaN` `Infinity` | `constant.language.boolean` |
 | Class / type names (incl. `$`-prefixed, namespaces, libs) | `$Program` `#Comparable` `std::Number` `maths::Maths` `io::OStream` `std::Number!` | `entity.name.type` / `support.type` |

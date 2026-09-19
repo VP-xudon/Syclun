@@ -1,0 +1,33 @@
+&io;
+// 自产生程序（Quine）演示 / Quine demonstration.
+//
+// 说明：本语言字符串字面量以 \" 转义双引号，而 io::out 打印字符串时不再转义，
+// 因此「逐字节完全自复制」在本输出模型下不可行——源码里每个双引号是 \" 两个
+// 字节，打印出来却是 " 一个字节，必然对不上。下面以「数据 + 代码」两段式技巧
+// 演示自产生思想：把自身源码的几行作为数据存进 std::Array，再逐行打印出来，
+// 复现源码结构（格式受限的 Quine）。
+// Note: a byte-perfect quine is impossible here (source escapes quotes as \",
+// but printing emits bare "). The two-part "data + code" technique stores a few
+// of its own source lines as data and reprints them, reproducing the shape.
+
+$Program {
+  @::[{
+    // 自身源码片段（数据）/ source fragments (data)
+    -(std::Array src) << std::Array((
+      "&io;",
+      "// Quine demonstration",
+      "$Program {",
+      "  @::[{",
+      "    // store own lines, then reprint them",
+      "  }];",
+      "}"
+    ));
+    // 逐行复现 / reprint each stored line
+    -(std::Number i) << std::Number(0);
+    std::while([()->(Boolean){ Boolean << i.<(src.size()); }])
+      .then([{
+        io::out.push_line(src.get(i));
+        i << i.+(std::Number(1));
+      }]);
+  }];
+}

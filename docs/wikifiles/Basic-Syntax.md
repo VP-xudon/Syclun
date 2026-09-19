@@ -92,8 +92,8 @@ The basic unit of executable logic, written with brackets. *Functions, closures,
 
 ## 5. 方法 / Methods
 
-方法用 `@方法名 << 行为` 声明，三形态：
-Declare methods with `@name << behavior`; three shapes:
+方法用 `@方法名 [行为]` 声明（注意：行为用方括号 `[...]` 包住，不再是 `<<`），三形态：
+Declare methods with `@name [behavior]` (the behavior is wrapped in `[...]`, not `<<`); three shapes:
 
 ```text
 @get[() ~> (result) { result << value; }];        # 读 / getter
@@ -125,24 +125,31 @@ $Counter {
 
 ## 7. 控制流 / Control flow
 
-`if_` / `while_` / `repeat_` 是布尔值 / 数字的方法，接收「条件检查行为」和「循环体行为」：
-`if_`/`while_`/`repeat_` are methods on Booleans/Numbers, taking a *condition* behavior and a *body* behavior:
+条件分支与循环是**流式控制流对象**（`std::If` / `std::While` / `std::Repeat`），不再挂在布尔 / 数字上。用构造函数喂入「条件闭包」或「循环次数」，再用 `.then(...)` / `.else(...)` 挂上分支或循环体；每个方法都返回对象自身，可写成一条链。
+Control flow is expressed by **streaming control-flow objects** (`std::If` / `std::While` / `std::Repeat`), not as methods on Booleans/Numbers. Feed a *condition closure* or a *count* to the constructor, then attach branches / loop bodies with `.then(...)` / `.else(...)`; each call returns the object itself so you can chain.
 
 ```text
 &io;
 $Program {
-    @::[{
-        -(std::Boolean ok) << true;
-        ok.if_([{ io::out << "yes"; }], [{ io::out << "no"; }]);   # if_ 条件, 真分支, 假分支
+    @::[() -> () {
+        -(io::OStream out);
+        // std::If：条件闭包返回布尔，then/else 各最多命中其一
+        std::If([() -> (b) { b << true; }])
+            .then([() -> () { out << "yes\n"; }])
+            .else([() -> () { out << "no\n"; }]);
+        // std::While：每次迭代前求值条件闭包，为真则执行体
         -(std::Number i) << 0;
-        i.while_([{ i.<(3); }], [{ io::out << i; i << i.+(1); }]); # while_ 条件, 体
-        (5).repeat_([{ io::out << "x"; }]);                         # repeat_ 次数
+        std::While([() -> (c) { c << (i.<(3)); }])
+            .then([() -> () { out << i; out << " "; i << i.+(1); }]);
+        out << "\n";
+        // std::Repeat：按计数执行体 n 次
+        std::Repeat(5).then([() -> () { out << "x"; }]);   # 打印 xxxxx
     }];
 }
 ```
 
-> 行为参数会被**参数严格性**检查：条件/循环体行为的签名必须匹配。
-> Behavior arguments are checked for **parameter strictness**: their signatures must match.
+> 分支 / 循环体都是**行为**；其返回的值经 `.value()` 取回。条件闭包必须返回布尔。
+> Branches / loop bodies are **behaviors**; their published value is retrieved with `.value()`. The condition closure must return a Boolean.
 
 ---
 
@@ -233,10 +240,10 @@ obj.#();                # 永久冻结 / freeze forever
 | 符号 | 含义 |
 |------|------|
 | `-(T v)` | 实例化对象 / instantiate |
-| `<<` `>>` | 左/右向流（含赋值、方法绑定） |
+| `<<` `>>` | 左/右向流（值流动 / 赋值，不再用于绑定闭包） |
 | `=>` `~>` `->` | 行为模式：零副作用 / 常数 / 非常数 |
 | `[ … ]` | 行为界定 / behavior |
-| `@名` | 方法声明 / method decl |
+| `@名[闭包]` | 方法声明 / method decl（把行为绑定到名字） |
 | `!`（类型后） | 常数变量 / const var |
 | `#` | 约束前缀 / constraint |
 | `&模块;` | 导入库 / import |
