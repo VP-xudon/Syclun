@@ -106,6 +106,18 @@ inline void apply_nsstyle(gui_ctrl c, NSView* v) {
     }
 }
 
+// NSButton has no -setTextColor: (that selector belongs to NSText/NSTextField).
+// Tint the button's title through its attributed string so the theme's fg color
+// applies on every SDK version. / NSButton 没有 -setTextColor:（那是 NSText /
+// NSTextField 的方法）。改用属性字符串给按钮标题着色，使主题 fg 色在任意 SDK 都生效。
+inline void set_button_title_color(NSButton* v, NSColor* col) {
+    NSMutableAttributedString* attr =
+        [[NSMutableAttributedString alloc] initWithAttributedString:[v attributedTitle]];
+    [attr addAttribute:NSForegroundColorAttributeName value:col
+                range:NSMakeRange(0, [attr length])];
+    [v setAttributedTitle:attr];
+}
+
 // Trampoline object: bridges an NSControl action back to a gui_cb.
 @interface GuiTarget : NSObject
 @property (nonatomic) gui_cb cb;
@@ -216,7 +228,7 @@ gui_ctrl gui_add_button(gui_win win, const char* text, int x, int y, int w, int 
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
     auto* c = add_ctrl(win, 1, (__bridge_retained void*)v, st);
-    if (c) { c->cb = cb; c->user = user; [v setFont:make_nsfont(c->font_family, c->font_size)]; }
+    if (c) { c->cb = cb; c->user = user; [v setFont:make_nsfont(c->font_family, c->font_size)]; set_button_title_color(v, ns_color(c->fg)); }
     return c;
 }
 
@@ -247,7 +259,7 @@ gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y, int check
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
     auto* c = add_ctrl(win, 2, (__bridge_retained void*)v, st);
-    if (c) { [v setFont:make_nsfont(c->font_family, c->font_size)]; [v setTextColor:ns_color(c->fg)]; }
+    if (c) { [v setFont:make_nsfont(c->font_family, c->font_size)]; set_button_title_color(v, ns_color(c->fg)); }
     return c;
 }
 

@@ -44,6 +44,7 @@
 #  include <sys/wait.h>
 #  include <fcntl.h>
 #  include <signal.h>
+#  include <sys/utsname.h>   // uname() + struct utsname (POSIX, not in <unistd.h> on glibc)
 #  if defined(__APPLE__)
 #    include <crt_externs.h>
 #  endif
