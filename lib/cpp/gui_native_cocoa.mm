@@ -2,13 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // See LICENSE in the project root for the full license text.
 //
-// gui_native_cocoa.mm - macOS/Cocoa backend for the `gui` library.
-// gui_native_cocoa.mm —— `gui` 库的 macOS/Cocoa 后端（使用原生 AppKit 控件）。
+// gui_native_cocoa.mm - macOS/Cocoa backend for the `gui` library (D9 themed).
+// gui_native_cocoa.mm —— `gui` 库的 macOS/Cocoa 后端（D9 主题化，使用原生
+// AppKit 控件）。
 //
 // Compiled with -fobjc-arc. Each control wraps a native NSView and routes its
 // action to the stored gui_cb via a small GuiTarget trampoline.
 // 以 -fobjc-arc 编译。每个控件包一个原生 NSView，经由轻量 GuiTarget 跳板把动作
 // 分派给保存的 gui_cb。
+//
+// Themability (D9): a global GuiTheme plus an optional per-control GuiStyle
+// override are applied as native NSFont / NSColor / layer corner radius. Cocoa
+// controls keep their system look, so the theme refines (font, accent, radius)
+// rather than replacing the whole chrome.
+// 主题化（D9）：全局 GuiTheme 叠加每控件可选的 GuiStyle 覆盖，应用为原生 NSFont /
+// NSColor / 图层圆角。Cocoa 控件保留系统外观，故主题「精修」（字体、强调色、圆角）
+// 而非整体替换。
 
 #include "gui_native.h"
 
@@ -26,6 +35,13 @@ struct gui_ctrl_s {
     gui_cb   cb = nullptr;
     void*    user = nullptr;
     std::string textbuf;
+    // Resolved visual style for this control. / 本控件解析后的视觉样式。
+    std::string font_family;
+    double   font_size = 13;
+    double   corner    = 0;
+    GuiColor bg   = {255,255,255,255};
+    GuiColor fg   = {0,0,0,255};
+    GuiColor accent = {0,120,215,255};
 };
 
 struct gui_win_s {
@@ -38,6 +54,57 @@ struct gui_win_s {
 
 std::vector<gui_win_s*> g_windows;
 bool g_quit = false;
+
+// ---- global theme / 全局主题 ----
+static std::string g_theme_font = "Helvetica";
+static GuiTheme g_theme = {
+    "Helvetica",  // font_family
+    13,           // font_size
+    6,            // corner_radius
+    {255,255,255,255}, // bg
+    {0,0,0,255},      // fg
+    {0,120,215,255},  // accent
+    0             // dark
+};
+static bool g_theme_set = false;
+
+inline NSColor* ns_color(GuiColor c) {
+    return [NSColor colorWithCalibratedRed:(c.r/255.0) green:(c.g/255.0) blue:(c.b/255.0) alpha:1.0];
+}
+inline NSFont* make_nsfont(const std::string& fam, double size) {
+    NSString* name = [NSString stringWithUTF8String:(fam.empty() ? "Helvetica" : fam.c_str())];
+    NSFont* f = [NSFont fontWithName:name size:(size > 0 ? size : 13)];
+    if (!f) f = [NSFont systemFontOfSize:(size > 0 ? size : 13)];
+    return f;
+}
+
+// Resolve an override style on top of the global theme.
+// 在全局主题之上解析覆盖样式。
+inline void resolve(const GuiStyle* st, std::string& fam, double& fsz, double& cor,
+                    GuiColor& bg, GuiColor& fg, GuiColor& ac) {
+    fam = (st && (st->flags & GUI_STYLE_FONT_FAMILY) && st->font_family && *st->font_family)
+              ? st->font_family : g_theme.font_family;
+    fsz = (st && (st->flags & GUI_STYLE_FONT_SIZE) && st->font_size > 0)
+              ? st->font_size : g_theme.font_size;
+    cor = (st && (st->flags & GUI_STYLE_CORNER)) ? st->corner_radius : g_theme.corner_radius;
+    bg  = (st && (st->flags & GUI_STYLE_BG))   ? st->bg    : g_theme.bg;
+    fg  = (st && (st->flags & GUI_STYLE_FG))   ? st->fg    : g_theme.fg;
+    ac  = (st && (st->flags & GUI_STYLE_ACCENT)) ? st->accent : g_theme.accent;
+}
+
+// Apply the resolved style to an NSView (font, bg, fg, corner radius).
+// 把解析后的样式应用到 NSView（字体、背景、前景、圆角）。
+inline void apply_nsstyle(gui_ctrl c, NSView* v) {
+    if (c->font_size > 0) {
+        NSFont* f = make_nsfont(c->font_family, c->font_size);
+        if ([v respondsToSelector:@selector(setFont:)]) [(id)v setFont:f];
+    }
+    if (c->corner > 0) {
+        v.wantsLayer = YES;
+        v.layer.cornerRadius = c->corner;
+        v.layer.masksToBounds = YES;
+    }
+}
 
 // Trampoline object: bridges an NSControl action back to a gui_cb.
 @interface GuiTarget : NSObject
@@ -53,6 +120,28 @@ bool g_quit = false;
 @end
 
 extern "C" {
+
+void gui_set_theme(const GuiTheme* theme) {
+    if (!theme) {
+        g_theme = GuiTheme{"Helvetica", 13, 6,
+                           {255,255,255,255}, {0,0,0,255}, {0,120,215,255}, 0};
+        g_theme_font = "Helvetica";
+        g_theme_set = false;
+        return;
+    }
+    if (theme->font_family) g_theme_font = theme->font_family;
+    else g_theme_font = "Helvetica";
+    g_theme = *theme;
+    g_theme.font_family = g_theme_font.c_str();   // persist inside g_theme_font
+    g_theme_set = true;
+}
+
+void gui_window_apply_theme(gui_win win, const GuiTheme* theme) {
+    // Native AppKit controls re-theme via the system appearance; nothing to do
+    // here beyond acknowledging the call. / 原生 AppKit 控件随系统外观自定主题，
+    // 此处无需额外动作。
+    (void)win; (void)theme;
+}
 
 gui_win gui_window_create(const char* title, int w, int h) {
     if (NSApp == nil) {
@@ -94,43 +183,52 @@ void gui_window_on_close(gui_win win, gui_cb cb, void* user) {
     if (win) { win->close_cb = cb; win->close_user = user; }
 }
 
-static gui_ctrl add_ctrl(gui_win win, int kind, void* view) {
+static gui_ctrl add_ctrl(gui_win win, int kind, void* view, const GuiStyle* st) {
     if (!win || !view) return nullptr;
     auto* c = new gui_ctrl_s();
     c->kind = kind; c->view = view;
+    resolve(st, c->font_family, c->font_size, c->corner, c->bg, c->fg, c->accent);
     win->children.push_back(c);
     return c;
 }
 
-gui_ctrl gui_add_label(gui_win win, const char* text, int x, int y) {
+gui_ctrl gui_add_label(gui_win win, const char* text, int x, int y,
+                       const GuiStyle* st) {
     NSTextField* v = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 240, 18)];
     [v setBezeled:NO]; [v setDrawsBackground:NO]; [v setEditable:NO]; [v setSelectable:NO];
     [v setStringValue:(text ? [NSString stringWithUTF8String:text] : @"")];
     NSWindow* w = (__bridge NSWindow*)win->wnd;
     [w.contentView addSubview:v];
-    return add_ctrl(win, 7, (__bridge_retained void*)v);
+    auto* c = add_ctrl(win, 7, (__bridge_retained void*)v, st);
+    if (c) { [v setTextColor:ns_color(c->fg)]; apply_nsstyle(c, v); }
+    return c;
 }
 
-gui_ctrl gui_add_button(gui_win win, const char* text, int x, int y, int w, int h, gui_cb cb, void* user) {
+gui_ctrl gui_add_button(gui_win win, const char* text, int x, int y, int w, int h, gui_cb cb, void* user,
+                        const GuiStyle* st) {
     NSButton* v = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, w > 0 ? w : 100, h > 0 ? h : 28)];
     [v setTitle:(text ? [NSString stringWithUTF8String:text] : @"")];
     [v setBezelStyle:NSBezelStyleRounded];
+    [v setBezelColor:ns_color(g_theme.accent)];
     GuiTarget* t = [[GuiTarget alloc] init];
     t.cb = cb; t.user = user;
     v.target = t; v.action = @selector(fire:);
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
-    auto* c = add_ctrl(win, 1, (__bridge_retained void*)v);
-    if (c) { c->cb = cb; c->user = user; }
+    auto* c = add_ctrl(win, 1, (__bridge_retained void*)v, st);
+    if (c) { c->cb = cb; c->user = user; [v setFont:make_nsfont(c->font_family, c->font_size)]; }
     return c;
 }
 
-gui_ctrl gui_add_entry(gui_win win, const char* placeholder, int x, int y, int w, int h) {
+gui_ctrl gui_add_entry(gui_win win, const char* placeholder, int x, int y, int w, int h,
+                       const GuiStyle* st) {
     NSTextField* v = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, w > 0 ? w : 160, h > 0 ? h : 22)];
     [v setPlaceholderString:(placeholder ? [NSString stringWithUTF8String:placeholder] : @"")];
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
-    return add_ctrl(win, 5, (__bridge_retained void*)v);
+    auto* c = add_ctrl(win, 5, (__bridge_retained void*)v, st);
+    if (c) { [v setTextColor:ns_color(c->fg)]; [v setBackgroundColor:ns_color(c->bg)]; apply_nsstyle(c, v); }
+    return c;
 }
 
 const char* gui_entry_text(gui_ctrl ctrl) {
@@ -140,14 +238,17 @@ const char* gui_entry_text(gui_ctrl ctrl) {
     return ctrl->textbuf.c_str();
 }
 
-gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y, int checked) {
+gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y, int checked,
+                          const GuiStyle* st) {
     NSButton* v = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 200, 18)];
     [v setButtonType:NSButtonTypeSwitch];
     [v setTitle:(text ? [NSString stringWithUTF8String:text] : @"")];
     [v setState:checked ? NSControlStateValueOn : NSControlStateValueOff];
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
-    return add_ctrl(win, 2, (__bridge_retained void*)v);
+    auto* c = add_ctrl(win, 2, (__bridge_retained void*)v, st);
+    if (c) { [v setFont:make_nsfont(c->font_family, c->font_size)]; [v setTextColor:ns_color(c->fg)]; }
+    return c;
 }
 
 int gui_checkbox_checked(gui_ctrl ctrl) {
@@ -156,12 +257,13 @@ int gui_checkbox_checked(gui_ctrl ctrl) {
     return [v state] == NSControlStateValueOn ? 1 : 0;
 }
 
-gui_ctrl gui_add_slider(gui_win win, int x, int y, int w, int minv, int maxv, int val) {
+gui_ctrl gui_add_slider(gui_win win, int x, int y, int w, int minv, int maxv, int val,
+                        const GuiStyle* st) {
     NSSlider* v = [[NSSlider alloc] initWithFrame:NSMakeRect(x, y, w > 0 ? w : 160, 20)];
     [v setMinValue:minv]; [v setMaxValue:maxv]; [v setDoubleValue:val];
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
-    return add_ctrl(win, 3, (__bridge_retained void*)v);
+    return add_ctrl(win, 3, (__bridge_retained void*)v, st);
 }
 
 int gui_slider_value(gui_ctrl ctrl) {
@@ -170,14 +272,17 @@ int gui_slider_value(gui_ctrl ctrl) {
     return (int)[v doubleValue];
 }
 
-gui_ctrl gui_add_listbox(gui_win win, const char* const* items, int n, int x, int y, int w, int h) {
+gui_ctrl gui_add_listbox(gui_win win, const char* const* items, int n, int x, int y, int w, int h,
+                         const GuiStyle* st) {
     NSPopUpButton* v = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(x, y, w > 0 ? w : 160, h > 0 ? h : 26)
                                                   pullsDown:NO];
     for (int i = 0; i < n; ++i)
         [v addItemWithTitle:[NSString stringWithUTF8String:items && items[i] ? items[i] : ""]];
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:v];
-    return add_ctrl(win, 4, (__bridge_retained void*)v);
+    auto* c = add_ctrl(win, 4, (__bridge_retained void*)v, st);
+    if (c) apply_nsstyle(c, v);
+    return c;
 }
 
 int gui_listbox_selection(gui_ctrl ctrl) {
@@ -186,7 +291,8 @@ int gui_listbox_selection(gui_ctrl ctrl) {
     return (int)[v indexOfSelectedItem];
 }
 
-gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y, int w, int h) {
+gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y, int w, int h,
+                          const GuiStyle* st) {
     NSScrollView* scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(x, y, w > 0 ? w : 200, h > 0 ? h : 100)];
     [scroll setHasVerticalScroller:YES];
     NSTextView* v = [[NSTextView alloc] initWithFrame:[[scroll contentView] bounds]];
@@ -194,7 +300,13 @@ gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y, int w, in
     [scroll setDocumentView:v];
     NSWindow* wnd = (__bridge NSWindow*)win->wnd;
     [wnd.contentView addSubview:scroll];
-    return add_ctrl(win, 6, (__bridge_retained void*)scroll);
+    auto* c = add_ctrl(win, 6, (__bridge_retained void*)scroll, st);
+    if (c) {
+        [v setTextColor:ns_color(c->fg)];
+        [v setBackgroundColor:ns_color(c->bg)];
+        [v setFont:make_nsfont(c->font_family, c->font_size)];
+    }
+    return c;
 }
 
 const char* gui_textarea_text(gui_ctrl ctrl) {

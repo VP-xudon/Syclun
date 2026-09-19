@@ -34,3 +34,6 @@
 #include "bt.hpp"
 #include "gui.hpp"
 #include "windows.hpp"
+#include "error.hpp"
+#include "warning.hpp"
+#include "sysapi.hpp"

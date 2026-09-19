@@ -46,4 +46,15 @@ $System {
     @argv[() ~> (args[std::Array]) { }];
     @argc[() ~> (count[std::Number]) { }];
     @exit[(code[std::Number]) ~> () { }];
+
+    // ---- Runtime / environment introspection (D8) ----
+    // 运行期 / 环境内省（D8）
+    @is_windows[() ~> (ok[std::Boolean]) { }];
+    @is_linux[() ~> (ok[std::Boolean]) { }];
+    @is_macos[() ~> (ok[std::Boolean]) { }];
+    @is_64bit[() ~> (ok[std::Boolean]) { }];
+    @running_in_terminal[() ~> (ok[std::Boolean]) { }];
+    @os_version[() ~> (ver[std::String]) { }];
+    @env_has[(name[std::String]) ~> (ok[std::Boolean]) { }];
+    @supports[(capability[std::String]) ~> (ok[std::Boolean]) { }];
 }

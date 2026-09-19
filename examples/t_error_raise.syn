@@ -1,0 +1,9 @@
+&error;
+// Should terminate the process with a fatal diagnostic:
+//   ERROR: something went wrong.
+$Program {
+    @::[{
+        error::Raise("ERROR", "something went wrong.");
+        io::out << "this line must NOT print\n";
+    }];
+}

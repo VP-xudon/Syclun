@@ -1,0 +1,20 @@
+&sysapi;
+&io;
+$Program {
+    @::[{
+        -(sysapi::SysAPI api);
+
+        // Available built-in APIs / 内建可用 API
+        io::out.push_line("supports(open_url)=");
+        io::out.push_line(api.supports("open_url"));
+        io::out.push_line("supports(does_not_exist)=");
+        io::out.push_line(api.supports("does_not_exist"));
+
+        // Call a real API: sleep for 50ms / 调用真实 API：休眠 50ms
+        -(std::Dict r);
+        -(std::Dict p);
+        p.set("ms", 50);
+        r << api.call("sleep", p);
+        io::out.push_line(r);   // -> {ok: true}
+    }];
+}

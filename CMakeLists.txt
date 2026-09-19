@@ -180,7 +180,7 @@ elseif(WIN32)
     # default like user32/gdi32. ComCtl32 提供 GUI 后端使用的公共控件
     # （滑块、列表框等，经 InitCommonControlsEx）。列出在 synth_native 上，
     # 使链接器把它排在静态归档之后——MinGW 不像 user32/gdi32 那样默认附带它。
-    target_link_libraries(synth_native PRIVATE comctl32)
+    target_link_libraries(synth_native PRIVATE comctl32 dwmapi)
 endif()
 
 

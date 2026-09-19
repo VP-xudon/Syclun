@@ -26,36 +26,46 @@
 $Window {
     // Create the window. / 创建窗口。
     @open[(title[std::String], width[std::Number], height[std::Number]) ~> () { }];
+    // Install a global visual theme and apply it to this window. The theme is a
+    // Dict with optional fields: font_family, font_size, corner_radius, dark,
+    // bg{r,g,b}, fg{r,g,b}, accent{r,g,b}. Omitted fields keep platform defaults.
+    // 安装全局视觉主题并应用到本窗口。theme 是 Dict，可选字段：font_family、
+    // font_size、corner_radius、dark，以及 bg{r,g,b}、fg{r,g,b}、accent{r,g,b}。
+    // 缺省字段沿用平台默认。
+    @set_theme[(theme[std::Dict]) ~> () { }];
     // Change the window title. / 修改窗口标题。
     @set_title[(title[std::String]) ~> () { }];
-    // Add a static text label at (x, y). / 在 (x, y) 加静态文本标签。
-    @label[(text[std::String], x[std::Number], y[std::Number]) ~> () { }];
+    // Add a static text label at (x, y). `style` is an optional per-control
+    // theme override Dict (same shape as set_theme's argument).
+    // 在 (x, y) 加静态文本标签。style 为可选的每控件主题覆盖 Dict（同 set_theme
+    // 的字段形态）。
+    @label[(text[std::String], x[std::Number], y[std::Number], style[std::Dict]) ~> () { }];
     // Add a push button wired to a Synth-OOP closure (fires on click).
     // 添加按钮，接回 Synth-OOP 闭包（点击时触发）。
-    @button[(text[std::String], x[std::Number], y[std::Number], width[std::Number], height[std::Number], action[behavior]) ~> () { }];
+    @button[(text[std::String], x[std::Number], y[std::Number], width[std::Number], height[std::Number], action[behavior], style[std::Dict]) ~> () { }];
     // Add a single-line text box; returns its index (read with entry_text).
     // 添加单行文本框；返回其索引（用 entry_text 读取）。
-    @entry[(x[std::Number], y[std::Number], width[std::Number], height[std::Number]) ~> (out[std::Number]) { }];
+    @entry[(x[std::Number], y[std::Number], width[std::Number], height[std::Number], style[std::Dict]) ~> (out[std::Number]) { }];
     // Read the current text of an entry box by index. / 按索引读文本框当前内容。
     @entry_text[(index[std::Number]) ~> (out[std::String]) { }];
     // Add a checkbox; returns its index (state via checkbox_checked).
     // 添加复选框；返回其索引（状态用 checkbox_checked 读取）。
-    @checkbox[(text[std::String], x[std::Number], y[std::Number]) ~> (out[std::Number]) { }];
+    @checkbox[(text[std::String], x[std::Number], y[std::Number], style[std::Dict]) ~> (out[std::Number]) { }];
     // Read a checkbox state by index. / 按索引读取复选框状态。
     @checkbox_checked[(index[std::Number]) ~> (out[std::Boolean]) { }];
     // Add a slider (min..max, initial value); returns its index.
     // 添加滑块（min..max，初值）；返回其索引。
-    @slider[(x[std::Number], y[std::Number], width[std::Number], min[std::Number], max[std::Number], value[std::Number]) ~> (out[std::Number]) { }];
+    @slider[(x[std::Number], y[std::Number], width[std::Number], min[std::Number], max[std::Number], value[std::Number], style[std::Dict]) ~> (out[std::Number]) { }];
     // Read a slider value by index. / 按索引读取滑块值。
     @slider_value[(index[std::Number]) ~> (out[std::Number]) { }];
     // Add a list box from an Array of strings; returns its index.
     // 从字符串数组添加列表框；返回其索引。
-    @listbox[(items[std::Array], x[std::Number], y[std::Number], width[std::Number], height[std::Number]) ~> (out[std::Number]) { }];
+    @listbox[(items[std::Array], x[std::Number], y[std::Number], width[std::Number], height[std::Number], style[std::Dict]) ~> (out[std::Number]) { }];
     // Read the selected index (-1 if none). / 读取选中索引（-1 表示无）。
     @listbox_selection[(index[std::Number]) ~> (out[std::Number]) { }];
     // Add a multi-line text area; returns its index (read with textarea_text).
     // 添加多行文本框；返回其索引（用 textarea_text 读取）。
-    @textarea[(text[std::String], x[std::Number], y[std::Number], width[std::Number], height[std::Number]) ~> (out[std::Number]) { }];
+    @textarea[(text[std::String], x[std::Number], y[std::Number], width[std::Number], height[std::Number], style[std::Dict]) ~> (out[std::Number]) { }];
     // Read a text area's content by index. / 按索引读取多行文本框内容。
     @textarea_text[(index[std::Number]) ~> (out[std::String]) { }];
     // Show a message dialog. kind: 0 info, 1 warning, 2 error.

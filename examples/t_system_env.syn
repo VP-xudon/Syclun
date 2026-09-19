@@ -1,0 +1,28 @@
+&system;
+&io;
+$Program {
+    @::[{
+        -(system::System s);
+
+        io::out.push_line("windows=");
+        io::out.push_line(s.is_windows());
+        io::out.push_line("linux=");
+        io::out.push_line(s.is_linux());
+        io::out.push_line("macos=");
+        io::out.push_line(s.is_macos());
+        io::out.push_line("64bit=");
+        io::out.push_line(s.is_64bit());
+        io::out.push_line("terminal=");
+        io::out.push_line(s.running_in_terminal());
+        io::out.push_line("os_version=");
+        io::out.push_line(s.os_version());
+        io::out.push_line("env_has(PATH)=");
+        io::out.push_line(s.env_has("PATH"));
+        io::out.push_line("supports(gui)=");
+        io::out.push_line(s.supports("gui"));
+        io::out.push_line("supports(clipboard)=");
+        io::out.push_line(s.supports("clipboard"));
+        io::out.push_line("supports(nope)=");
+        io::out.push_line(s.supports("nope"));
+    }];
+}

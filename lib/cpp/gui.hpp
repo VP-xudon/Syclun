@@ -82,6 +82,81 @@ namespace rt_lib_gui {
         return (gui_win)(uintptr_t)std::stoull(*s);
     }
 
+    // ---- theme / style helpers (D9) / 主题与样式辅助 ----
+    // A user Theme/Style is a std::Dict; its fields are stored under the
+    // #v:<key> slots, so we read them through the public Dict encoding rather
+    // than by attribute name.
+    // 用户传入的 Theme/Style 是 std::Dict，字段存于 #v:<key> 槽位，故按公开的
+    // Dict 编码读取，而非以属性名直接读取。
+    static std::string dict_get_str(const RuntimeObjectPtr& o, const std::string& key,
+                                   const std::string& def) {
+        auto* am = rb::attributes_of(o);
+        if (!am) return def;
+        auto it = am->find(rb::DICT_VALPRE + key);
+        if (it == am->end()) return def;
+        auto s = rb::string_of(it->second);
+        return s ? *s : def;
+    }
+    static long dict_get_num(const RuntimeObjectPtr& o, const std::string& key, long def) {
+        auto* am = rb::attributes_of(o);
+        if (!am) return def;
+        auto it = am->find(rb::DICT_VALPRE + key);
+        if (it == am->end()) return def;
+        auto n = rb::number_of(it->second);
+        return n ? (long)*n : def;
+    }
+    // Reads a nested {r,g,b} color field; returns false if absent/invalid.
+    // 读取嵌套的 {r,g,b} 颜色字段；缺失或非法时返回 false。
+    static bool dict_get_color(const RuntimeObjectPtr& o, const std::string& key,
+                               GuiColor& out) {
+        auto* am = rb::attributes_of(o);
+        if (!am) return false;
+        auto it = am->find(rb::DICT_VALPRE + key);
+        if (it == am->end()) return false;
+        long r = dict_get_num(it->second, "r", -1);
+        long g = dict_get_num(it->second, "g", -1);
+        long b = dict_get_num(it->second, "b", -1);
+        if (r < 0 || g < 0 || b < 0) return false;
+        out = GuiColor{(unsigned char)r, (unsigned char)g, (unsigned char)b, 255};
+        return true;
+    }
+
+    // Build a GuiTheme from a (possibly null) Dict, keeping a persistent copy of
+    // the font name in `fambuf` so the C struct's const char* stays valid.
+    // 从（可能为空的）Dict 构造 GuiTheme，并把字体名持久副本存于 fambuf，
+    // 使 C 结构里的 const char* 始终有效。
+    static void build_theme(const RuntimeObjectPtr& o, GuiTheme& t, std::string& fambuf) {
+        t = GuiTheme{"Segoe UI", 11, 8, {240,240,240,255}, {32,32,32,255},
+                     {0,120,215,255}, 0};
+        if (!o) return;
+        fambuf = dict_get_str(o, "font_family", "");
+        t.font_family = fambuf.c_str();
+        long fs = dict_get_num(o, "font_size", 0); if (fs > 0) t.font_size = (int)fs;
+        long cr = dict_get_num(o, "corner_radius", -1); if (cr >= 0) t.corner_radius = (int)cr;
+        GuiColor tmp;
+        if (dict_get_color(o, "bg", tmp))     t.bg = tmp;
+        if (dict_get_color(o, "fg", tmp))     t.fg = tmp;
+        if (dict_get_color(o, "accent", tmp)) t.accent = tmp;
+        long dk = dict_get_num(o, "dark", -1); if (dk >= 0) t.dark = (int)dk;
+    }
+
+    // Build a per-control GuiStyle override from a (possibly null) Dict.
+    // 从（可能为空的）Dict 构造每控件 GuiStyle 覆盖。
+    static void build_style(const RuntimeObjectPtr& o, GuiStyle& st, std::string& fambuf) {
+        st.flags = 0;
+        if (!o) return;
+        std::string ff = dict_get_str(o, "font_family", "");
+        if (!ff.empty()) { fambuf = ff; st.font_family = fambuf.c_str(); st.flags |= GUI_STYLE_FONT_FAMILY; }
+        long fs = dict_get_num(o, "font_size", 0);
+        if (fs > 0) { st.font_size = (int)fs; st.flags |= GUI_STYLE_FONT_SIZE; }
+        long cr = dict_get_num(o, "corner_radius", -1);
+        if (cr >= 0) { st.corner_radius = (int)cr; st.flags |= GUI_STYLE_CORNER; }
+        GuiColor tmp;
+        if (dict_get_color(o, "bg", tmp))     { st.bg = tmp; st.flags |= GUI_STYLE_BG; }
+        if (dict_get_color(o, "fg", tmp))     { st.fg = tmp; st.flags |= GUI_STYLE_FG; }
+        if (dict_get_color(o, "accent", tmp)) { st.accent = tmp; st.flags |= GUI_STYLE_ACCENT; }
+    }
+
     // --------------------------------------------------------
     // Window methods / Window 方法
     // --------------------------------------------------------
@@ -104,6 +179,26 @@ namespace rt_lib_gui {
                 {{"title", "std::String"}, {"width", "std::Number"}, {"height", "std::Number"}}, {}));
     }
 
+    // set_theme(theme: std::Dict) — install a global theme (font family / size,
+    // corner radius, bg / fg / accent colors, dark flag) and apply it to this
+    // window. Any omitted field inherits the platform default.
+    // set_theme(theme: std::Dict) — 安装全局主题（字体族 / 字号、圆角、背景 /
+    // 前景 / 强调色、暗色标志）并应用到本窗口；缺省字段沿用平台默认。
+    inline rt_basic::Callable method_window_set_theme() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                gui_win win = win_of(env);
+                auto theme = rb::para_at(paras, 0);
+                GuiTheme t{};
+                std::string fam;
+                build_theme(theme, t, fam);
+                gui_set_theme(&t);
+                if (win) gui_window_apply_theme(win, &t);
+                return rb::empty_result();
+            },
+            rb::make_sign("set_theme", {{"theme", "std::Dict"}}, {}));
+    }
+
     inline rt_basic::Callable method_window_set_title() {
         return rb::native_method(
             [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
@@ -124,11 +219,15 @@ namespace rt_lib_gui {
                 auto x = rb::number_of(rb::para_at(paras, 1));
                 auto y = rb::number_of(rb::para_at(paras, 2));
                 if (!win || !text || !x || !y) return rb::empty_result();
-                gui_add_label(win, text->c_str(), (int)*x, (int)*y);
+                auto style = rb::para_at(paras, 3);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
+                gui_add_label(win, text->c_str(), (int)*x, (int)*y, style ? &st : nullptr);
                 return rb::empty_result();
             },
             rb::make_sign("label",
-                {{"text", "std::String"}, {"x", "std::Number"}, {"y", "std::Number"}}, {}));
+                {{"text", "std::String"}, {"x", "std::Number"}, {"y", "std::Number"},
+                 {"style", "std::Dict"}}, {}));
     }
 
     inline rt_basic::Callable method_window_button() {
@@ -145,13 +244,17 @@ namespace rt_lib_gui {
                     return rb::list_of({rb::native_error(
                         "gui.button requires (text, x, y, width, height, action)")});
                 GuiCb* cb = make_cb(action);
+                auto style = rb::para_at(paras, 6);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
                 gui_add_button(win, text->c_str(), (int)*x, (int)*y, (int)*w, (int)*h,
-                               &gui_invoke, cb);
+                               &gui_invoke, cb, style ? &st : nullptr);
                 return rb::empty_result();
             },
             rb::make_sign("button",
                 {{"text", "std::String"}, {"x", "std::Number"}, {"y", "std::Number"},
-                 {"width", "std::Number"}, {"height", "std::Number"}, {"action", "@"}}, {}));
+                 {"width", "std::Number"}, {"height", "std::Number"}, {"action", "@"},
+                 {"style", "std::Dict"}}, {}));
     }
 
     // entry(x, y, width, height) -> index
@@ -165,14 +268,19 @@ namespace rt_lib_gui {
                 auto h = rb::number_of(rb::para_at(paras, 3));
                 if (!win || !x || !y || !w || !h)
                     return rb::list_of({rb::native_error("gui.entry requires (x, y, width, height)")});
-                gui_ctrl c = gui_add_entry(win, "", (int)*x, (int)*y, (int)*w, (int)*h);
+                auto style = rb::para_at(paras, 4);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
+                gui_ctrl c = gui_add_entry(win, "", (int)*x, (int)*y, (int)*w, (int)*h,
+                                          style ? &st : nullptr);
                 auto& v = ctrls_of(win);
                 v.push_back(c);
                 return rb::list_of({rb::make_int(static_cast<int64_t>(v.size() - 1))});
             },
             rb::make_sign("entry",
                 {{"x", "std::Number"}, {"y", "std::Number"},
-                 {"width", "std::Number"}, {"height", "std::Number"}},
+                 {"width", "std::Number"}, {"height", "std::Number"},
+                 {"style", "std::Dict"}},
                 {{"out", "std::Number"}}));
     }
 
@@ -200,12 +308,17 @@ namespace rt_lib_gui {
                 auto y = rb::number_of(rb::para_at(paras, 2));
                 if (!win || !text || !x || !y)
                     return rb::list_of({rb::native_error("gui.checkbox requires (text, x, y)")});
-                gui_ctrl c = gui_add_checkbox(win, text->c_str(), (int)*x, (int)*y, 0);
+                auto style = rb::para_at(paras, 3);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
+                gui_ctrl c = gui_add_checkbox(win, text->c_str(), (int)*x, (int)*y, 0,
+                                              style ? &st : nullptr);
                 auto& v = ctrls_of(win); v.push_back(c);
                 return rb::list_of({rb::make_int(static_cast<int64_t>(v.size() - 1))});
             },
             rb::make_sign("checkbox",
-                {{"text", "std::String"}, {"x", "std::Number"}, {"y", "std::Number"}},
+                {{"text", "std::String"}, {"x", "std::Number"}, {"y", "std::Number"},
+                 {"style", "std::Dict"}},
                 {{"out", "std::Number"}}));
     }
 
@@ -237,14 +350,19 @@ namespace rt_lib_gui {
                 if (!win || !x || !y || !w || !mn || !mx || !val)
                     return rb::list_of({rb::native_error(
                         "gui.slider requires (x, y, width, min, max, value)")});
+                auto style = rb::para_at(paras, 6);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
                 gui_ctrl c = gui_add_slider(win, (int)*x, (int)*y, (int)*w,
-                                           (int)*mn, (int)*mx, (int)*val);
+                                           (int)*mn, (int)*mx, (int)*val,
+                                           style ? &st : nullptr);
                 auto& v = ctrls_of(win); v.push_back(c);
                 return rb::list_of({rb::make_int(static_cast<int64_t>(v.size() - 1))});
             },
             rb::make_sign("slider",
                 {{"x", "std::Number"}, {"y", "std::Number"}, {"width", "std::Number"},
-                 {"min", "std::Number"}, {"max", "std::Number"}, {"value", "std::Number"}},
+                 {"min", "std::Number"}, {"max", "std::Number"}, {"value", "std::Number"},
+                 {"style", "std::Dict"}},
                 {{"out", "std::Number"}}));
     }
 
@@ -289,14 +407,19 @@ namespace rt_lib_gui {
                 }
                 std::vector<const char*> ptrs;
                 for (auto& s : strs) ptrs.push_back(s.c_str());
+                auto style = rb::para_at(paras, 5);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
                 gui_ctrl c = gui_add_listbox(win, ptrs.empty() ? nullptr : ptrs.data(),
-                                            (int)ptrs.size(), (int)*x, (int)*y, (int)*w, (int)*h);
+                                            (int)ptrs.size(), (int)*x, (int)*y, (int)*w, (int)*h,
+                                            style ? &st : nullptr);
                 auto& v = ctrls_of(win); v.push_back(c);
                 return rb::list_of({rb::make_int(static_cast<int64_t>(v.size() - 1))});
             },
             rb::make_sign("listbox",
                 {{"items", "std::Array"}, {"x", "std::Number"}, {"y", "std::Number"},
-                 {"width", "std::Number"}, {"height", "std::Number"}},
+                 {"width", "std::Number"}, {"height", "std::Number"},
+                 {"style", "std::Dict"}},
                 {{"out", "std::Number"}}));
     }
 
@@ -326,13 +449,18 @@ namespace rt_lib_gui {
                 if (!win || !text || !x || !y || !w || !h)
                     return rb::list_of({rb::native_error(
                         "gui.textarea requires (text, x, y, width, height)")});
-                gui_ctrl c = gui_add_textarea(win, text->c_str(), (int)*x, (int)*y, (int)*w, (int)*h);
+                auto style = rb::para_at(paras, 5);
+                GuiStyle st{}; std::string fam;
+                if (style) build_style(style, st, fam);
+                gui_ctrl c = gui_add_textarea(win, text->c_str(), (int)*x, (int)*y, (int)*w, (int)*h,
+                                              style ? &st : nullptr);
                 auto& v = ctrls_of(win); v.push_back(c);
                 return rb::list_of({rb::make_int(static_cast<int64_t>(v.size() - 1))});
             },
             rb::make_sign("textarea",
                 {{"text", "std::String"}, {"x", "std::Number"}, {"y", "std::Number"},
-                 {"width", "std::Number"}, {"height", "std::Number"}},
+                 {"width", "std::Number"}, {"height", "std::Number"},
+                 {"style", "std::Dict"}},
                 {{"out", "std::Number"}}));
     }
 
@@ -403,6 +531,7 @@ namespace rt_lib_gui {
     inline void init_gui_stdlib() {
         auto proto = std::make_shared<rt_basic::ClsProto>(::stdRT.getcls("Object"));
         proto->set_method("open",            method_window_open());
+        proto->set_method("set_theme",       method_window_set_theme());
         proto->set_method("set_title",       method_window_set_title());
         proto->set_method("label",           method_window_label());
         proto->set_method("button",          method_window_button());

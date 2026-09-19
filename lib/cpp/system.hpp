@@ -759,6 +759,149 @@ namespace rt_lib_system {
         );
     }
 
+    // system.is_windows() ~> (ok) —— true when running on Windows.
+    // system.is_windows() ~> (ok) —— 运行于 Windows 时为 true。
+    inline rt_basic::Callable method_system_is_windows() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(_WIN32)
+                bool v = true;
+#else
+                bool v = false;
+#endif
+                return rb::list_of({rb::make_boolean(v)});
+            },
+            rb::make_sign("is_windows", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // system.is_linux() ~> (ok) —— true when running on Linux.
+    // system.is_linux() ~> (ok) —— 运行于 Linux 时为 true。
+    inline rt_basic::Callable method_system_is_linux() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(__linux__)
+                bool v = true;
+#else
+                bool v = false;
+#endif
+                return rb::list_of({rb::make_boolean(v)});
+            },
+            rb::make_sign("is_linux", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // system.is_macos() ~> (ok) —— true when running on macOS.
+    // system.is_macos() ~> (ok) —— 运行于 macOS 时为 true。
+    inline rt_basic::Callable method_system_is_macos() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(__APPLE__)
+                bool v = true;
+#else
+                bool v = false;
+#endif
+                return rb::list_of({rb::make_boolean(v)});
+            },
+            rb::make_sign("is_macos", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // system.is_64bit() ~> (ok) —— true when the process is 64-bit.
+    // system.is_64bit() ~> (ok) —— 进程为 64 位时为 true。
+    inline rt_basic::Callable method_system_is_64bit() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+                return rb::list_of({rb::make_boolean(sizeof(void*) == 8)});
+            },
+            rb::make_sign("is_64bit", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // system.running_in_terminal() ~> (ok) —— true when stdout is a TTY.
+    // system.running_in_terminal() ~> (ok) —— 标准输出为终端时为 true。
+    inline rt_basic::Callable method_system_in_terminal() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(_WIN32)
+                DWORD mode = 0;
+                bool tty = GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE),
+                                         &mode) != 0;
+#else
+                bool tty = ::isatty(fileno(stdout)) != 0;
+#endif
+                return rb::list_of({rb::make_boolean(tty)});
+            },
+            rb::make_sign("running_in_terminal", {}, {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // system.os_version() ~> (ver) —— best-effort OS version string.
+    // system.os_version() ~> (ver) —— 尽力而为的 OS 版本串。
+    inline rt_basic::Callable method_system_os_version() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr /*paras*/) {
+#if defined(_WIN32)
+                std::string ver = "windows";
+#else
+                std::string ver = "unknown";
+                struct utsname u;
+                if (::uname(&u) == 0) {
+                    ver = std::string(u.sysname) + " " + u.release + " " +
+                          u.version + " " + u.machine;
+                }
+#endif
+                return rb::list_of({rb::make_string(ver)});
+            },
+            rb::make_sign("os_version", {}, {{"ver", "std::String"}})
+        );
+    }
+
+    // system.env_has(name) ~> (ok) —— true when the env var is set.
+    // system.env_has(name) ~> (ok) —— 环境变量已设置时为 true。
+    inline rt_basic::Callable method_system_env_has() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto name = rb::string_of(rb::para_at(paras, 0));
+                if (!name) return rb::list_of({rb::make_boolean(false)});
+                const char* v = std::getenv(name->c_str());
+                return rb::list_of({rb::make_boolean(v != nullptr)});
+            },
+            rb::make_sign("env_has", {{"name", "std::String"}},
+                          {{"ok", "std::Boolean"}})
+        );
+    }
+
+    // system.supports(capability) ~> (ok) —— capability probe. Recognised names:
+    //   "gui"        — the cross-platform gui library is available
+    //   "sysapi"     — the sysapi dispatch library is available
+    //   "clipboard"  — system clipboard access (Windows only today)
+    // system.supports(capability) ~> (ok) —— 能力探测。已识别名称：
+    //   "gui"        跨平台 gui 库可用
+    //   "sysapi"     sysapi 派发库可用
+    //   "clipboard"  系统剪贴板访问（当前仅 Windows）
+    inline rt_basic::Callable method_system_supports() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& /*env*/, rt_basic::InstanceListPtr paras) {
+                auto name = rb::string_of(rb::para_at(paras, 0));
+                bool ok = false;
+                if (name) {
+                    if (*name == "gui" || *name == "sysapi") ok = true;
+                    else if (*name == "clipboard") {
+#if defined(_WIN32)
+                        ok = true;
+#else
+                        ok = false;
+#endif
+                    }
+                }
+                return rb::list_of({rb::make_boolean(ok)});
+            },
+            rb::make_sign("supports", {{"capability", "std::String"}},
+                          {{"ok", "std::Boolean"}})
+        );
+    }
+
     // ---- registration / 登记 ----
     inline void init_system_stdlib() {
         auto proto = std::make_shared<rt_basic::ClsProto>(
@@ -783,6 +926,14 @@ namespace rt_lib_system {
         proto->set_method("argv",      method_system_argv());
         proto->set_method("argc",      method_system_argc());
         proto->set_method("exit",      method_system_exit());
+        proto->set_method("is_windows",          method_system_is_windows());
+        proto->set_method("is_linux",            method_system_is_linux());
+        proto->set_method("is_macos",            method_system_is_macos());
+        proto->set_method("is_64bit",           method_system_is_64bit());
+        proto->set_method("running_in_terminal", method_system_in_terminal());
+        proto->set_method("os_version",         method_system_os_version());
+        proto->set_method("env_has",            method_system_env_has());
+        proto->set_method("supports",           method_system_supports());
 
         runtime::Prototypes p;
         p.regcls("System", proto);

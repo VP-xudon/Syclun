@@ -1,6 +1,23 @@
 &io;
+&gui;
 $Program {
     @::[()->() {
-        std::If([()->(){}]).then([{io::out<<"666";}]);
+        -(gui::Window win);
+        win.open("Smoke Test", 400, 300);
+        win.label("Hello, World!", 10, 10);
+        win.button("Click Me", 10, 40, 100, 30, [()->() {
+            win.message("Button Clicked", "You clicked the button!", 0);
+        }]);
+        -(std::Number entry_index);
+        entry_index.=(win.entry(10, 80, 200, 30));
+        win.button("Read Entry", 10, 120, 100, 30, [()->() {
+            -(std::String text);
+            text.=(win.entry_text(entry_index));
+            win.message("Entry Text", text, 0);
+        }]);
+        win.on_close([()->() {
+            win.close();
+        }]);
+        win.mainloop();
     }];
 };

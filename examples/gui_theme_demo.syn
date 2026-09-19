@@ -1,0 +1,77 @@
+&gui;
+&io;
+&system;
+&sysapi;
+// gui_theme_demo.syn — modern, ttk-like theming + cross-platform system libraries.
+// gui_theme_demo.syn —— 现代、类 ttk 的主题化，配合跨平台系统库。
+//
+// Requires a graphical session. It opens a window styled with a global dark
+// theme and a per-control accent override, then wires a button that queries the
+// runtime environment, opens a URL through the system API layer, and shows how
+// error::Raise / warning::Raise behave.
+// 需图形会话。打开的窗口采用全局暗色主题、并给按钮叠加每控件强调色覆盖；
+// 按钮动作会查询运行环境、经系统 API 层打开 URL，并演示 error::Raise /
+// warning::Raise 的行为。
+$Program {
+    @::[() -> () {
+        -(io::OStream out);
+        -(gui::Window w);
+
+        // ---- global theme / 全局主题 ----
+        // Build a Dict theme (font, radius, dark, colors). Any omitted field
+        // keeps the platform default. 构造 Dict 主题（字体、圆角、暗色、配色），
+        // 缺省字段沿用平台默认。
+        -(std::Dict bg);   bg.set("r", 32);  bg.set("g", 32);  bg.set("b", 34);
+        -(std::Dict fg);   fg.set("r", 235); fg.set("g", 235); fg.set("b", 235);
+        -(std::Dict accent); accent.set("r", 0); accent.set("g", 120); accent.set("b", 215);
+
+        -(std::Dict theme);
+        theme.set("font_family", "Segoe UI");
+        theme.set("font_size", 12);
+        theme.set("corner_radius", 10);
+        theme.set("dark", 1);
+        theme.set("bg", bg);
+        theme.set("fg", fg);
+        theme.set("accent", accent);
+        w.set_theme(theme);
+
+        w.open("Synth-OOP · Themed Demo", 360, 240);
+        w.label("Modern themed window", 20, 18);
+
+        // ---- per-control style override / 每控件样式覆盖 ----
+        // A brighter accent just for this button. 仅本按钮使用更亮的强调色。
+        -(std::Dict btnStyle);
+        btnStyle.set("corner_radius", 14);
+        -(std::Dict btnAccent); btnAccent.set("r", 80); btnAccent.set("g", 200); btnAccent.set("b", 120);
+        btnStyle.set("accent", btnAccent);
+
+        -(sysapi::SysAPI api);
+        -(system::System env);
+
+        w.button("Open Docs", 20, 60, 140, 34, [() -> () {
+            // Inspect the runtime environment (D8). / 检查运行环境（D8）。
+            out << "is_windows="; out.push_line(env.is_windows());
+            // Use the extensible system-API layer (D9). / 使用可扩展系统 API 层（D9）。
+            -(std::Dict p);
+            p.set("url", "https://github.com/");
+            out << "open_url supported="; out.push_line(api.supports("open_url"));
+            -(std::Dict r) << api.call("open_url", p);
+            out << r; out << "\n";
+        }], btnStyle);
+
+        // A warning is a special kind of output (stderr, non-fatal).
+        // 警告是特定输出（标准错误流，不致命）。
+        w.button("Warn", 180, 60, 100, 34, [() -> () {
+            warning::Raise("DEPRECATED", "This button is a demo only.");
+            out << "continues after warning\n";
+        }]);
+
+        w.label("Enter something:", 20, 120);
+        -(std::Number idx) << w.entry(20, 150, 220, 26);
+        w.button("Echo", 250, 150, 90, 26, [() -> () {
+            out << "you typed: "; out << w.entry_text(idx); out << "\n";
+        }]);
+
+        w.mainloop();
+    }];
+}

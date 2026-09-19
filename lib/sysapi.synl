@@ -1,0 +1,43 @@
+// lib/sysapi.synl
+//
+// Standard library: sysapi (Synth-OOP interface).
+// 标准库：sysapi（Synth-OOP 接口）。
+//
+// The behavioral face of the `sysapi` library; the real work is done by the
+// C++ backend in lib/cpp/sysapi.hpp. Importing `&sysapi;` registers the native
+// class, then interprets this file — the class is already registered, so the
+// definition here documents the public shape. Any `$Program` class in a
+// library is ignored.
+// `sysapi` 库的行为形态；真实工作由 lib/cpp/sysapi.hpp 的 C++ 底层完成。
+// `&sysapi;` 导入时登记原生类，再解释本文件——该类已登记，故此定义
+// 仅作为公开形态的文档。库中的 `$Program` 类会被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary. The authoritative enforced signature
+// lives in lib/cpp/sysapi.hpp's make_sign; this file mirrors it.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查。强制检查的权威签名
+// 位于 lib/cpp/sysapi.hpp 的 make_sign；本文件是其可读镜像。
+
+$SysAPI {
+    // Dispatch a named API with a Dict of parameters; return a Dict of results.
+    // An unknown name or a platform-incompatible implementation auto-reports an
+    // error (the call never silently no-ops). Built-in APIs:
+    //   open_url(url)          open `url` in the default browser
+    //   beep(freq, duration_ms) emit a system beep
+    //   sleep(ms)              sleep for `ms` milliseconds
+    //   clipboard_set(text)    put `text` on the system clipboard (Windows)
+    //   clipboard_get()        read the system clipboard (Windows)
+    // 以参数字典派发具名 API，返回结果字典。未知名称或不兼容当前平台的处理器
+    // 会自动报错（调用绝不静默空转）。内建 API：
+    //   open_url(url)          用默认浏览器打开 url
+    //   beep(freq, duration_ms) 发出系统蜂鸣
+    //   sleep(ms)              休眠 ms 毫秒
+    //   clipboard_set(text)    把 text 写入系统剪贴板（Windows）
+    //   clipboard_get()        读取系统剪贴板（Windows）
+    @call[(api[std::String], params[std::Dict]) ~> (result[std::Dict]) { }];
+
+    // Report whether an API name is registered (and thus available on the
+    // current platform) without calling it.
+    // 在不调用的前提下报告某 API 名是否已注册（即当前平台是否可用）。
+    @supports[(api[std::String]) ~> (ok[std::Boolean]) { }];
+}

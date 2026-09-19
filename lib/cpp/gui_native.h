@@ -16,6 +16,12 @@
 // Cocoa）实现同一套 C ABI；按平台只编译对应的 .cpp/.mm，故二进制恰好链接
 // 一个实现。面向 Synth 的 gui.hpp 封装这些调用，并把 Synth-OOP 闭包桥接进
 // `gui_cb` 回调。
+//
+// Themability (D9): a global GuiTheme plus an optional per-control GuiStyle
+// override give the library a modern, ttk-like look — global font / corner
+// radius / color scheme, each widget optionally overriding those.
+// 主题化（D9）：全局 GuiTheme 叠加每控件可选的 GuiStyle 覆盖，赋予本库现代、
+// 类 ttk 的外观——全局字体 / 圆角 / 配色，各控件可选择性覆盖。
 
 #ifndef SYNTH_GUI_NATIVE_H
 #define SYNTH_GUI_NATIVE_H
@@ -33,6 +39,62 @@ typedef struct gui_ctrl_s* gui_ctrl;
 // 并在 UI 线程上调用。
 typedef void (*gui_cb)(void* user);
 
+// ---- Colors / 颜色 --------------------------------------------------------
+// 0..255 RGBA. `a` is currently unused (kept for future alpha support).
+// 0..255 的 RGBA。a 当前未用（为未来 alpha 支持预留）。
+typedef struct GuiColor {
+    unsigned char r, g, b, a;
+} GuiColor;
+
+// ---- Theme / 主题 --------------------------------------------------------
+// Global visual scheme. A NULL field means "inherit platform default" where
+// applicable; for fonts an empty string falls back to the system UI font.
+// 全局视觉方案。适用处 NULL 字段表示「继承平台默认」；字体空串回退到系统 UI 字体。
+typedef struct GuiTheme {
+    const char* font_family;   // e.g. "Segoe UI" / "Helvetica" / NULL=default
+    int         font_size;     // px; 0 = default
+    int         corner_radius; // px; 0 = square corners
+    GuiColor    bg;            // window / control background
+    GuiColor    fg;            // text color
+    GuiColor    accent;        // primary / highlight color
+    int         dark;          // 0 = light, 1 = dark
+} GuiTheme;
+
+// ---- Per-control style override / 每控件样式覆盖 ---------------------------
+// Optional override applied on top of the global theme. Each field is only used
+// when its flag bit is set (so an override can change just the corner radius,
+// leaving everything else inherited from the theme).
+// 叠加在全局主题之上的可选覆盖。仅当对应标志位被置位时才生效（故覆盖可只改
+// 圆角，其余沿用主题）。
+#define GUI_STYLE_FONT_FAMILY (1u << 0)
+#define GUI_STYLE_FONT_SIZE   (1u << 1)
+#define GUI_STYLE_CORNER      (1u << 2)
+#define GUI_STYLE_BG          (1u << 3)
+#define GUI_STYLE_FG          (1u << 4)
+#define GUI_STYLE_ACCENT      (1u << 5)
+
+typedef struct GuiStyle {
+    unsigned int flags;        // OR of GUI_STYLE_* bits
+    const char*  font_family;  // valid if GUI_STYLE_FONT_FAMILY
+    int          font_size;    // valid if GUI_STYLE_FONT_SIZE
+    int          corner_radius;// valid if GUI_STYLE_CORNER
+    GuiColor     bg;           // valid if GUI_STYLE_BG
+    GuiColor     fg;           // valid if GUI_STYLE_FG
+    GuiColor     accent;       // valid if GUI_STYLE_ACCENT
+} GuiStyle;
+
+// ---- Theme management / 主题管理 ------------------------------------------
+// Install a global theme used by all subsequently created windows and controls.
+// Pass NULL to reset to platform defaults. The storage is copied; the caller
+// may free its own copy immediately.
+// 安装全局主题，作用于此后创建的全部窗口与控件。传 NULL 复位为平台默认。
+// 数据会被复制，调用方可立即释放自己的副本。
+void gui_set_theme(const GuiTheme* theme);
+
+// Apply a theme to an already-created window (dark mode, corner radius, bg).
+// 把主题应用到已创建的窗口（暗色模式、圆角、背景）。
+void gui_window_apply_theme(gui_win win, const GuiTheme* theme);
+
 // ---- Window ----------------------------------------------------------------
 // Create a top-level window. The app/event-loop is managed internally.
 // 创建顶层窗口；应用 / 事件循环在内部托管。
@@ -42,32 +104,39 @@ void    gui_window_close(gui_win win);
 void    gui_window_on_close(gui_win win, gui_cb cb, void* user);
 
 // ---- Widgets ---------------------------------------------------------------
-// All coordinates are in window pixels (top-left origin).
-// 所有坐标均为窗口像素（左上原点）。
-gui_ctrl gui_add_label(gui_win win, const char* text, int x, int y);
+// All coordinates are in window pixels (top-left origin). `st` is an optional
+// per-control style override (NULL = inherit the global theme).
+// 所有坐标均为窗口像素（左上原点）。st 为可选的每控件样式覆盖（NULL = 沿用
+// 全局主题）。
+gui_ctrl gui_add_label(gui_win win, const char* text, int x, int y,
+                       const GuiStyle* st);
 
 gui_ctrl gui_add_button(gui_win win, const char* text, int x, int y,
-                        int w, int h, gui_cb cb, void* user);
+                        int w, int h, gui_cb cb, void* user,
+                        const GuiStyle* st);
 
 gui_ctrl gui_add_entry(gui_win win, const char* placeholder,
-                       int x, int y, int w, int h);
+                       int x, int y, int w, int h, const GuiStyle* st);
 // Returns an internal buffer; copy it immediately (not guaranteed stable).
 // 返回内部缓冲；请立即拷贝（不保证长期稳定）。
 const char* gui_entry_text(gui_ctrl ctrl);
 
-gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y, int checked);
+gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y,
+                           int checked, const GuiStyle* st);
 int      gui_checkbox_checked(gui_ctrl ctrl);
 
-gui_ctrl gui_add_slider(gui_win win, int x, int y, int w, int minv, int maxv, int val);
+gui_ctrl gui_add_slider(gui_win win, int x, int y, int w, int minv, int maxv,
+                         int val, const GuiStyle* st);
 int      gui_slider_value(gui_ctrl ctrl);
 
 // items: array of n NUL-terminated strings (may be NULL for empty list).
 // items：长度为 n 的 NUL 结尾字符串数组（空列表可传 NULL）。
 gui_ctrl gui_add_listbox(gui_win win, const char* const* items, int n,
-                         int x, int y, int w, int h);
+                         int x, int y, int w, int h, const GuiStyle* st);
 int      gui_listbox_selection(gui_ctrl ctrl);   // -1 if none
 
-gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y, int w, int h);
+gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y,
+                          int w, int h, const GuiStyle* st);
 const char* gui_textarea_text(gui_ctrl ctrl);
 
 // kind: 0 = info, 1 = warning, 2 = error. Returns 0/1/2.

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // See LICENSE in the project root for the full license text.
 //
-// gui_native_x11.cpp - X11 backend for the `gui` library.
-// gui_native_x11.cpp —— `gui` 库的 X11 后端。
+// gui_native_x11.cpp - X11 backend for the `gui` library (D9 themed).
+// gui_native_x11.cpp —— `gui` 库的 X11 后端（D9 主题化）。
 //
 // Xlib has no native controls, so this backend implements a small retained
 // widget layer: each control is a rectangle with a type, drawn on Expose and
@@ -12,6 +12,13 @@
 // Xlib 没有原生控件，故本后端实现一个轻量保留式控件层：每个控件是一个带类型
 // 的矩形，在 Expose 时绘制、在鼠标 / 键盘输入时命中测试。刻意保持精简但功能
 // 完整（可点击按钮、可输入文本框、可选项列表等）。
+//
+// Themability (D9): a global GuiTheme plus an optional per-control GuiStyle
+// override drive font size, corner radius and colors. X11 has no true rounded
+// rectangles, so corner_radius is approximated by erasing the four corner
+// pixels with the window background color.
+// 主题化（D9）：全局 GuiTheme 叠加每控件可选的 GuiStyle 覆盖，驱动字号、圆角与
+// 配色。X11 无真正的圆角矩形，故圆角以窗口背景色擦除四角像素来近似。
 
 #include "gui_native.h"
 
@@ -35,6 +42,13 @@ struct gui_ctrl_s {
     bool     focused = false;
     gui_cb   cb = nullptr;
     void*    user = nullptr;
+    // Resolved visual style for this control. / 本控件解析后的视觉样式。
+    std::string font_family;
+    int      font_size = 16;
+    int      corner    = 0;
+    GuiColor bg   = {255,255,255,255};
+    GuiColor fg   = {0,0,0,255};
+    GuiColor accent = {0,120,215,255};
 };
 
 struct gui_win_s {
@@ -61,29 +75,85 @@ Atom          g_wmDel = 0;
 std::vector<gui_win_s*> g_windows;
 bool          g_quit = false;
 
+// ---- global theme / 全局主题 ----
+static std::string g_theme_font = "fixed";
+static GuiTheme g_theme = {
+    "fixed",     // font_family
+    16,          // font_size
+    0,           // corner_radius
+    {255,255,255,255}, // bg
+    {0,0,0,255},      // fg
+    {0,120,215,255},  // accent
+    0             // dark
+};
+static bool g_theme_set = false;
+
 gui_win_s* find_win(Window w) {
     for (auto* win : g_windows) if (win->wnd == w) return win;
     return nullptr;
 }
 
+// 24-bit pixel for TrueColor visuals (matches the convention used elsewhere).
+// 针对 TrueColor 视觉的 24 位像素（与全库约定一致）。
+inline unsigned long gcolor(GuiColor c) {
+    return ((unsigned long)c.r << 16) | ((unsigned long)c.g << 8) | (unsigned long)c.b;
+}
+
+// Resolve an override style on top of the global theme.
+// 在全局主题之上解析覆盖样式。
+inline void resolve(const GuiStyle* st, std::string& fam, int& fsz, int& cor,
+                    GuiColor& bg, GuiColor& fg, GuiColor& ac) {
+    fam = (st && (st->flags & GUI_STYLE_FONT_FAMILY) && st->font_family && *st->font_family)
+              ? st->font_family : g_theme.font_family;
+    fsz = (st && (st->flags & GUI_STYLE_FONT_SIZE) && st->font_size > 0)
+              ? st->font_size : g_theme.font_size;
+    cor = (st && (st->flags & GUI_STYLE_CORNER)) ? st->corner_radius : g_theme.corner_radius;
+    bg  = (st && (st->flags & GUI_STYLE_BG))   ? st->bg    : g_theme.bg;
+    fg  = (st && (st->flags & GUI_STYLE_FG))   ? st->fg    : g_theme.fg;
+    ac  = (st && (st->flags & GUI_STYLE_ACCENT)) ? st->accent : g_theme.accent;
+}
+
+// Fill a rect, then (when corner>0) erase the four corners with `erase`
+// to fake rounded corners on a backend without real round-rect support.
+// 填充矩形，随后（corner>0 时）以 erase 色擦除四角，在没有真圆角的后端里
+// 近似圆角。
+inline void fill_round(Window w, int x, int y, int ww, int hh,
+                       unsigned long col, int corner, unsigned long erase) {
+    XSetForeground(g_disp, g_gc, col);
+    XFillRectangle(g_disp, w, g_gc, x, y, ww, hh);
+    if (corner > 0) {
+        int s = corner < 6 ? corner : 6;  // keep visible, don't eat the control
+        XSetForeground(g_disp, g_gc, erase);
+        XFillRectangle(g_disp, w, g_gc, x, y, s, s);
+        XFillRectangle(g_disp, w, g_gc, x + ww - s, y, s, s);
+        XFillRectangle(g_disp, w, g_gc, x, y + hh - s, s, s);
+        XFillRectangle(g_disp, w, g_gc, x + ww - s, y + hh - s, s, s);
+    }
+}
+
 void redraw(gui_win_s* win) {
-    XSetForeground(g_disp, g_gc, WhitePixel(g_disp, g_screen));
+    unsigned long wbg = WhitePixel(g_disp, g_screen);
+    XSetForeground(g_disp, g_gc, wbg);
     XFillRectangle(g_disp, win->wnd, g_gc, 0, 0, win->w, win->h);
     XSetForeground(g_disp, g_gc, BlackPixel(g_disp, g_screen));
     for (auto* c : win->children) {
-        int tx = c->x + 4, ty = c->y + FONT_H - 3;
+        int tx = c->x + 4, ty = c->y + c->font_size - 3;
+        unsigned long bgpx = gcolor(c->bg);
+        unsigned long fgpx = gcolor(c->fg);
+        unsigned long acpx = gcolor(c->accent);
         switch (c->kind) {
             case 7: // label
+                XSetForeground(g_disp, g_gc, fgpx);
                 XDrawString(g_disp, win->wnd, g_gc, tx, ty, c->text.c_str(), (int)c->text.size());
                 break;
             case 1: // button
-                XSetForeground(g_disp, g_gc, 0xDDDDDD);
-                XFillRectangle(g_disp, win->wnd, g_gc, c->x, c->y, c->w, c->h);
-                XSetForeground(g_disp, g_gc, BlackPixel(g_disp, g_screen));
+                fill_round(win->wnd, c->x, c->y, c->w, c->h, bgpx, c->corner, wbg);
+                XSetForeground(g_disp, g_gc, fgpx);
                 XDrawRectangle(g_disp, win->wnd, g_gc, c->x, c->y, c->w, c->h);
                 XDrawString(g_disp, win->wnd, g_gc, tx, ty, c->text.c_str(), (int)c->text.size());
                 break;
             case 2: { // checkbox
+                XSetForeground(g_disp, g_gc, fgpx);
                 XDrawRectangle(g_disp, win->wnd, g_gc, c->x, c->y, 14, 14);
                 if (c->checked) {
                     XDrawLine(g_disp, win->wnd, g_gc, c->x + 2, c->y + 7, c->x + 6, c->y + 12);
@@ -97,21 +167,22 @@ void redraw(gui_win_s* win) {
                 XDrawLine(g_disp, win->wnd, g_gc, c->x, trackY, c->x + c->w, trackY);
                 int span = c->maxv - c->minv;
                 int px = c->w; if (span > 0) px = (int)((double)(c->value - c->minv) / span * c->w);
+                XSetForeground(g_disp, g_gc, acpx);
                 XFillRectangle(g_disp, win->wnd, g_gc, c->x + px - 4, c->y, 8, c->h);
                 XDrawRectangle(g_disp, win->wnd, g_gc, c->x + px - 4, c->y, 8, c->h);
+                XSetForeground(g_disp, g_gc, BlackPixel(g_disp, g_screen));
                 break;
             }
             case 4: { // listbox
-                XSetForeground(g_disp, g_gc, WhitePixel(g_disp, g_screen));
-                XFillRectangle(g_disp, win->wnd, g_gc, c->x, c->y, c->w, c->h);
-                XSetForeground(g_disp, g_gc, BlackPixel(g_disp, g_screen));
+                fill_round(win->wnd, c->x, c->y, c->w, c->h, bgpx, c->corner, wbg);
+                XSetForeground(g_disp, g_gc, fgpx);
                 XDrawRectangle(g_disp, win->wnd, g_gc, c->x, c->y, c->w, c->h);
                 for (size_t i = 0; i < c->items.size(); ++i) {
-                    int ly = c->y + FONT_H - 3 + (int)(i * FONT_H);
+                    int ly = c->y + c->font_size - 3 + (int)(i * c->font_size);
                     if ((int)i == c->selection) {
-                        XSetForeground(g_disp, g_gc, 0xCCCCFF);
-                        XFillRectangle(g_disp, win->wnd, g_gc, c->x + 1, c->y + (int)(i * FONT_H), c->w - 2, FONT_H);
-                        XSetForeground(g_disp, g_gc, BlackPixel(g_disp, g_screen));
+                        XSetForeground(g_disp, g_gc, acpx);
+                        XFillRectangle(g_disp, win->wnd, g_gc, c->x + 1, c->y + (int)(i * c->font_size), c->w - 2, c->font_size);
+                        XSetForeground(g_disp, g_gc, fgpx);
                     }
                     XDrawString(g_disp, win->wnd, g_gc, c->x + 4, ly, c->items[i].c_str(), (int)c->items[i].size());
                 }
@@ -119,9 +190,8 @@ void redraw(gui_win_s* win) {
             }
             case 5: // entry
             case 6: // textarea
-                XSetForeground(g_disp, g_gc, WhitePixel(g_disp, g_screen));
-                XFillRectangle(g_disp, win->wnd, g_gc, c->x, c->y, c->w, c->h);
-                XSetForeground(g_disp, g_gc, BlackPixel(g_disp, g_screen));
+                fill_round(win->wnd, c->x, c->y, c->w, c->h, bgpx, c->corner, wbg);
+                XSetForeground(g_disp, g_gc, fgpx);
                 XDrawRectangle(g_disp, win->wnd, g_gc, c->x, c->y, c->w, c->h);
                 if (c->kind == 5)
                     XDrawString(g_disp, win->wnd, g_gc, tx, ty, c->text.c_str(), (int)c->text.size());
@@ -131,7 +201,7 @@ void redraw(gui_win_s* win) {
                     while (pos < c->text.size()) {
                         size_t nl = c->text.find('\n', pos);
                         std::string ln = (nl == std::string::npos) ? c->text.substr(pos) : c->text.substr(pos, nl - pos);
-                        XDrawString(g_disp, win->wnd, g_gc, tx, c->y + FONT_H - 3 + line * FONT_H, ln.c_str(), (int)ln.size());
+                        XDrawString(g_disp, win->wnd, g_gc, tx, c->y + c->font_size - 3 + line * c->font_size, ln.c_str(), (int)ln.size());
                         if (nl == std::string::npos) break;
                         pos = nl + 1; ++line;
                     }
@@ -169,6 +239,30 @@ void dispose_win(gui_win_s* win) {
 
 extern "C" {
 
+void gui_set_theme(const GuiTheme* theme) {
+    if (!theme) {
+        g_theme = GuiTheme{"fixed", 16, 0,
+                           {255,255,255,255}, {0,0,0,255}, {0,120,215,255}, 0};
+        g_theme_font = "fixed";
+        g_theme_set = false;
+        return;
+    }
+    if (theme->font_family) g_theme_font = theme->font_family;
+    else g_theme_font = "fixed";
+    g_theme = *theme;
+    g_theme.font_family = g_theme_font.c_str();   // persist inside g_theme_font
+    g_theme_set = true;
+}
+
+void gui_window_apply_theme(gui_win win, const GuiTheme* theme) {
+    // X11 backend is fully retained-mode: a redraw reflects the (already
+    // resolved) per-control styles. Newly created controls pick up the global
+    // theme automatically. / X11 后端为全保留式：重绘即反映（已解析的）每控件
+    // 样式；新创建的控件自动采用全局主题。
+    if (win) redraw(win);
+    (void)theme;
+}
+
 gui_win gui_window_create(const char* title, int w, int h) {
     ensure_init();
     auto* win = new gui_win_s();
@@ -196,35 +290,40 @@ void gui_window_on_close(gui_win win, gui_cb cb, void* user) {
     if (win) { win->close_cb = cb; win->close_user = user; }
 }
 
-static gui_ctrl add_ctrl(gui_win win, int kind, int x, int y, int w, int h, const char* text) {
+static gui_ctrl add_ctrl(gui_win win, int kind, int x, int y, int w, int h, const char* text, const GuiStyle* st) {
     if (!win) return nullptr;
     auto* c = new gui_ctrl_s();
     c->kind = kind; c->x = x; c->y = y; c->w = w; c->h = h;
     if (text) c->text = text;
+    resolve(st, c->font_family, c->font_size, c->corner, c->bg, c->fg, c->accent);
     win->children.push_back(c);
     return c;
 }
 
-gui_ctrl gui_add_label(gui_win win, const char* text, int x, int y) {
-    return add_ctrl(win, 7, x, y, 240, FONT_H, text);
+gui_ctrl gui_add_label(gui_win win, const char* text, int x, int y,
+                       const GuiStyle* st) {
+    return add_ctrl(win, 7, x, y, 240, FONT_H, text, st);
 }
 
-gui_ctrl gui_add_button(gui_win win, const char* text, int x, int y, int w, int h, gui_cb cb, void* user) {
-    auto* c = add_ctrl(win, 1, x, y, w > 0 ? w : 100, h > 0 ? h : 28, text);
+gui_ctrl gui_add_button(gui_win win, const char* text, int x, int y, int w, int h, gui_cb cb, void* user,
+                        const GuiStyle* st) {
+    auto* c = add_ctrl(win, 1, x, y, w > 0 ? w : 100, h > 0 ? h : 28, text, st);
     if (c) { c->cb = cb; c->user = user; }
     return c;
 }
 
-gui_ctrl gui_add_entry(gui_win win, const char* placeholder, int x, int y, int w, int h) {
-    return add_ctrl(win, 5, x, y, w > 0 ? w : 160, h > 0 ? h : FONT_H + 6, placeholder);
+gui_ctrl gui_add_entry(gui_win win, const char* placeholder, int x, int y, int w, int h,
+                       const GuiStyle* st) {
+    return add_ctrl(win, 5, x, y, w > 0 ? w : 160, h > 0 ? h : FONT_H + 6, placeholder, st);
 }
 
 const char* gui_entry_text(gui_ctrl ctrl) {
     return ctrl ? ctrl->text.c_str() : "";
 }
 
-gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y, int checked) {
-    auto* c = add_ctrl(win, 2, x, y, 200, 18, text);
+gui_ctrl gui_add_checkbox(gui_win win, const char* text, int x, int y, int checked,
+                          const GuiStyle* st) {
+    auto* c = add_ctrl(win, 2, x, y, 200, 18, text, st);
     if (c) c->checked = checked != 0;
     return c;
 }
@@ -233,8 +332,9 @@ int gui_checkbox_checked(gui_ctrl ctrl) {
     return (ctrl && ctrl->checked) ? 1 : 0;
 }
 
-gui_ctrl gui_add_slider(gui_win win, int x, int y, int w, int minv, int maxv, int val) {
-    auto* c = add_ctrl(win, 3, x, y, w > 0 ? w : 160, 20, "");
+gui_ctrl gui_add_slider(gui_win win, int x, int y, int w, int minv, int maxv, int val,
+                        const GuiStyle* st) {
+    auto* c = add_ctrl(win, 3, x, y, w > 0 ? w : 160, 20, "", st);
     if (c) { c->minv = minv; c->maxv = maxv; c->value = val; }
     return c;
 }
@@ -243,8 +343,9 @@ int gui_slider_value(gui_ctrl ctrl) {
     return ctrl ? ctrl->value : 0;
 }
 
-gui_ctrl gui_add_listbox(gui_win win, const char* const* items, int n, int x, int y, int w, int h) {
-    auto* c = add_ctrl(win, 4, x, y, w > 0 ? w : 160, h > 0 ? h : 120, "");
+gui_ctrl gui_add_listbox(gui_win win, const char* const* items, int n, int x, int y, int w, int h,
+                         const GuiStyle* st) {
+    auto* c = add_ctrl(win, 4, x, y, w > 0 ? w : 160, h > 0 ? h : 120, "", st);
     if (c && items) for (int i = 0; i < n; ++i) c->items.push_back(items[i] ? items[i] : "");
     return c;
 }
@@ -253,8 +354,9 @@ int gui_listbox_selection(gui_ctrl ctrl) {
     return ctrl ? ctrl->selection : -1;
 }
 
-gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y, int w, int h) {
-    return add_ctrl(win, 6, x, y, w > 0 ? w : 200, h > 0 ? h : 100, text);
+gui_ctrl gui_add_textarea(gui_win win, const char* text, int x, int y, int w, int h,
+                          const GuiStyle* st) {
+    return add_ctrl(win, 6, x, y, w > 0 ? w : 200, h > 0 ? h : 100, text, st);
 }
 
 const char* gui_textarea_text(gui_ctrl ctrl) {
@@ -294,7 +396,7 @@ void gui_run(void) {
                     if (c->cb) c->cb(c->user);
                 }
                 else if (c->kind == 4) {
-                    int idx = (my - c->y) / FONT_H;
+                    int idx = (my - c->y) / c->font_size;
                     if (idx >= 0 && idx < (int)c->items.size()) { c->selection = idx; if (c->cb) c->cb(c->user); }
                 }
                 else if (c->kind == 5 || c->kind == 6) {

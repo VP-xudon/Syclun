@@ -1,0 +1,29 @@
+// lib/warning.synl
+//
+// Standard library: warning (Synth-OOP interface).
+// 标准库：warning（Synth-OOP 接口）。
+//
+// The behavioral face of the `warning` library; the real work is done by the
+// C++ backend in lib/cpp/warning.hpp. Importing `&warning;` registers the
+// native class, then interprets this file — the class is already registered,
+// so the definition here documents the public shape. Any `$Program` class in a
+// library is ignored.
+// `warning` 库的行为形态；真实工作由 lib/cpp/warning.hpp 的 C++ 底层完成。
+// `&warning;` 导入时登记原生类，再解释本文件——该类已登记，故此定义
+// 仅作为公开形态的文档。库中的 `$Program` 类会被忽略。
+//
+// Method signatures below carry their type constraints; the interpreter
+// enforces them at the call boundary. The authoritative enforced signature
+// lives in lib/cpp/warning.hpp's make_sign; this file mirrors it.
+// 下列方法签名均带类型约束；解释器在调用边界强制检查。强制检查的权威签名
+// 位于 lib/cpp/warning.hpp 的 make_sign；本文件是其可读镜像。
+
+$Raise {
+    // The constructor emits a non-fatal warning to the standard error stream
+    // (prefixed `[WARNING]`) and returns an empty Raise object. Execution
+    // continues afterwards — warnings are treated as specific output, not as
+    // fatal conditions.
+    // 构造函数向标准错误流输出非致命警告（带 `[WARNING]` 前缀）并返回空的
+    // Raise 对象。其后执行继续——警告被视为特定输出，而非致命状况。
+    @::[(code[std::String], message[std::String]) ~> () { }];
+}
