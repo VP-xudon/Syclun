@@ -89,3 +89,17 @@ $File {
     // write_atomic：临时文件 + rename，崩溃时不损坏原文件。
     @write_atomic[(text[std::String]) ~> (ok[std::Boolean]) { }];
 }
+
+// ------------------------------------------------------------
+// Preset object / 预置对象
+//
+// One ready-made entry point comes with the import. Declared in THIS file, so it
+// uses the BARE name `File`; the `file::` package index is added centrally by the
+// `&file;` import, so external code calls it as `file::File` (e.g. `-(file::File f)`,
+// `file::File.read(...)`). The `::`-prefixed part is a package locator, not part
+// of the name.
+// 导入即附带一个成品入口。因声明在本文件内，使用裸名 `File`；`file::` 包索引由
+// `&file;` 导入集中添加，故外部以 `file::File` 调用（如 `-(file::File f)`、
+// `file::File.read(...)`）。`::` 前缀是包定位符，而非名字的一部分。
+// ------------------------------------------------------------
+-(file::File! file::File);

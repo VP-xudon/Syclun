@@ -1,0 +1,9 @@
+&io; &warning;
+$Program {
+  @::[() -> () {
+    -(io::OStream out);
+    -(warning::Raise(-(std::String c) << "DEP001", -(std::String m) << "thing deprecated") w);
+    out << "WCODE="; out << w.code;
+    out << " WMSG="; out << w.message;
+  }];
+};

@@ -1,0 +1,12 @@
+&io; &file;
+$Program {
+  @::[() -> () {
+    -(io::OStream out);
+    -(file::File f);
+    f.open("V:/SynthOOP/Syclun/verify/unit/_dbg_file_tmp.txt", -(std::String m) << "w");
+    f.push(-(std::String a) << "hi");
+    f.push_line(-(std::String b) << "there");
+    f.format(-(std::String fmt) << "val={}x={}", -(std::Array((42, 7)) args));
+    out << "FILECONTENT="; out << f.read();
+  }];
+};

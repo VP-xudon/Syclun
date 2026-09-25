@@ -1,0 +1,4 @@
+&json;
+$Program {
+  @::[() -> () { json::Json.parse(-(std::String s) << "{bad}"); }];
+};

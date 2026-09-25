@@ -586,7 +586,7 @@ namespace rt_lib_re {
     // 依据捕获区间构造 `Match` 对象。
     inline RuntimeObjectPtr make_match(const std::string& s,
                                        const std::vector<int>& saved, int nsave) {
-        auto match = ::stdRT.make("Match");
+        auto match = ::stdRT.make("re::Match");
         auto* cls = dynamic_cast<RuntimeClass*>(match.get());
         if (!cls) return match;
         auto& am = cls->get_attributes();
@@ -620,7 +620,7 @@ namespace rt_lib_re {
     // flow boundary). 依据属性表克隆一个 Match（供公布侧 `=:` 使用，使
     // `-(re::Match m) << r.match(...)` 能把结果的字段跨越流边界传递）。
     inline RuntimeObjectPtr clone_match_from_env(rt_basic::InstanceMap& env) {
-        auto match = ::stdRT.make("Match");
+        auto match = ::stdRT.make("re::Match");
         auto* cls = dynamic_cast<RuntimeClass*>(match.get());
         if (!cls) return match;
         auto& am = cls->get_attributes();
@@ -912,7 +912,7 @@ namespace rt_lib_re {
                 std::string err;
                 auto re = compile(*pat, err, flags);
                 if (!re) return rb::list_of({rb::native_error(err)});
-                auto pobj = ::stdRT.make("Pattern");
+                auto pobj = ::stdRT.make("re::Pattern");
                 long long id = 0;
                 { std::lock_guard<std::recursive_mutex> lk(g_re_mux);
                   id = ++g_re_id; g_patterns[id] = re; }
@@ -1318,7 +1318,7 @@ namespace rt_lib_re {
             // 被销毁；任何析构钩子都会抹掉这个被共享的缓存项，使 `p` 指向已失效
             // 的 id。正则缓存经由显式 dispose()（以及进程结束时）回收即可，足以
             // 满足工业化审计“状态可回收”的要求，又不会破坏公布/接收机制。
-            runtime::Prototypes p; p.regcls("Pattern", proto); ::stdRT.add_protos(p);
+            runtime::Prototypes p; p.regcls("re::Pattern", proto); ::stdRT.add_protos(p);
         }
         // Match (result object) / 匹配结果
         {
@@ -1339,7 +1339,7 @@ namespace rt_lib_re {
             proto->set_attribute("char_end",   rb::make_number(0, true));
             proto->set_method("=:",         method_match_publish());
             proto->set_method(":=",         method_match_receive());
-            runtime::Prototypes p; p.regcls("Match", proto); ::stdRT.add_protos(p);
+            runtime::Prototypes p; p.regcls("re::Match", proto); ::stdRT.add_protos(p);
         }
         // re (static convenience) / 静态便捷入口
         {
@@ -1353,7 +1353,7 @@ namespace rt_lib_re {
             proto->set_method("replace_fn", method_re_replace_fn());
             proto->set_method("split",    method_re_split());
             proto->set_method("test",     method_re_test());
-            runtime::Prototypes p; p.regcls("Re", proto); ::stdRT.add_protos(p);
+            runtime::Prototypes p; p.regcls("re::Re", proto); ::stdRT.add_protos(p);
         }
     }
 

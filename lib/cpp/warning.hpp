@@ -92,13 +92,14 @@ namespace rt_lib_warning {
         runtime::Prototypes p;
         // Centralized registration MUST carry the package index `warning::` (the
         // "集中的必须加" rule): this is what makes `warning` a known set and lets
-        // `warning::Raise` resolve. The NAME itself is `Raise`; the `::`-prefixed
-        // part is only a package locator. (The warning class is constructed
-        // directly via `-(warning::Raise(...) w)`, so no preset object is needed.)
+        // `warning::Raise` resolve as a value. The authoritative type name is
+        // `warning::Raise` (the `::`-prefixed part is the package locator). The
+        // warning class is constructed directly via `-(warning::Raise(...) w)`,
+        // so no preset object is needed. Mirrors io/json/re/encoding.
         // 集中登记须带包索引 `warning::`（「集中的必须加」）：这才能使 `warning` 成为已知集、
-        // `warning::Raise` 可解析。名字本身仍是 `Raise`，`::` 前缀只是包定位符。
-        // （warning 类经 `-(warning::Raise(...) w)` 直接构造，故无需预置对象。）
-        p.regcls("Raise", proto);
+        // `warning::Raise` 可作值解析。权威类型名即 `warning::Raise`（`::` 前缀是包定位符）。
+        // warning 类经 `-(warning::Raise(...) w)` 直接构造，故无需预置对象。与 io/json/re/encoding 一致。
+        p.regcls("warning::Raise", proto);
         ::stdRT.add_protos(p);
     }
 

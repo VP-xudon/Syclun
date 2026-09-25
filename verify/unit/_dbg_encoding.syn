@@ -1,0 +1,13 @@
+&io; &encoding;
+$Program {
+  @::[() -> () {
+    -(io::OStream out);
+    -(std::String raw) << "Hello, Syclun!";
+    -(std::String b64) << encoding::Encoding.base64_encode(raw);
+    out << "B64="; out << b64;
+    out << " B64DEC="; out << encoding::Encoding.base64_decode(b64);
+    out << " HEX="; out << encoding::Encoding.hex(raw);
+    out << " URL="; out << encoding::Encoding.url_encode(-(std::String u) << "a b~c");
+    out << " URLDEC="; out << encoding::Encoding.url_decode(encoding::Encoding.url_encode(-(std::String u) << "a b~c"));
+  }];
+};

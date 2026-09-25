@@ -277,13 +277,16 @@ namespace rt_lib_encoding {
         runtime::Prototypes p;
         // Centralized registration MUST carry the package index `encoding::` (the
         // "集中的必须加" rule): this is what makes `encoding` a known set and lets
-        // `encoding::Encoding` resolve. The NAME itself is `Encoding`; the `::`-prefixed
-        // part is only a package locator. The module's own lib/encoding.synl declares
-        // the preset object with the BARE name `Encoding`.
+        // `encoding::Encoding` resolve as a value. The authoritative type name is
+        // `encoding::Encoding` (the `::`-prefixed part is the package locator, not a
+        // separate "name"); lib/encoding.synl declares the preset object
+        // `-(encoding::Encoding! encoding::Encoding)` under this SAME name. Mirrors
+        // io/json (which register `io::OStream` / `json::Json`).
         // 集中登记须带包索引 `encoding::`（「集中的必须加」）：这才能使 `encoding` 成为已知集、
-        // `encoding::Encoding` 可解析。名字本身仍是 `Encoding`，`::` 前缀只是包定位符。
-        // 模块自身的 lib/encoding.synl 以裸名 `Encoding` 声明预置对象。
-        p.regcls("Encoding", proto);
+        // `encoding::Encoding` 可作值解析。权威类型名即 `encoding::Encoding`（`::` 前缀是包定位符，
+        // 而非独立“名字”）；lib/encoding.synl 以同一名字声明预置对象 `-(encoding::Encoding! encoding::Encoding)`。
+        // 与 io/json（登记 `io::OStream` / `json::Json`）一致。
+        p.regcls("encoding::Encoding", proto);
         ::stdRT.add_protos(p);
     }
 

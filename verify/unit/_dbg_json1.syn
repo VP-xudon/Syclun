@@ -1,0 +1,14 @@
+&io; &json;
+$Program {
+  @::[() -> () {
+    -(io::OStream out);
+    -(std::Dict v) << json::Json.parse(
+      -(std::String s) << "{\"name\":\"Syclun\",\"n\":42,\"arr\":[1,2,3],\"ok\":true,\"nul\":null}");
+    out << "JSON_KEYS="; out << v.keys();
+    out << " JSON_NAME="; out << v.get(-(std::String k) << "name");
+    out << " JSON_N="; out << v.get(-(std::String k) << "n");
+    out << " JSON_OK="; out << v.get(-(std::String k) << "ok");
+    out << " JSON_NUL="; out << v.get(-(std::String k) << "nul");
+    out << " ROUNDTRIP="; out << json::Json.stringify(v);
+  }];
+};

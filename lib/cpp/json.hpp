@@ -158,8 +158,10 @@ namespace rt_lib_json {
                 attr.compare(0, rb::DICT_VALPRE.size(), rb::DICT_VALPRE) == 0) {
                 std::string enc = attr.substr(rb::DICT_VALPRE.size());
                 auto kit = env.find(rb::DICT_KEYPRE + enc);
-                std::string key = kit != env.end()
-                    ? *rb::string_of(kit->second) : std::string();
+                std::string key;
+                if (kit != env.end()) {
+                    if (auto ko = rb::string_of(kit->second)) key = *ko;
+                }
                 items.push_back({enc, key, val});
             }
         }
@@ -484,15 +486,17 @@ namespace rt_lib_json {
         proto->set_method("pretty",    method_json_pretty());
 
         runtime::Prototypes p;
-        // Centralized registration MUST carry the package index `json::` (the
-        // "集中的必须加" rule): this is what makes `json` a known set and lets
-        // `json::Json` resolve. The NAME itself is `Json`; the `::`-prefixed part
-        // is only a package locator, not part of the name. The module's own
-        // lib/json.synl declares the preset object with the BARE name `Json`.
-        // 集中登记须带包索引 `json::`（「集中的必须加」）：这才能使 `json` 成为已知集、
-        // `json::Json` 可解析。名字本身仍是 `Json`，`::` 前缀只是包定位符，而非名字的
-        // 一部分。模块自身的 lib/json.synl 以裸名 `Json` 声明预置对象。
-        p.regcls("Json", proto);
+        // Centralized registration carries the package index `json::` (the
+        // "集中的必须加" rule): this makes `json` a known set even if the .synl
+        // preset is not yet materialized, so `json::Json` resolves as a value
+        // and `set_exists("json")` holds. The NAME is `Json`; `json::` is only
+        // the package locator. The module's own lib/json.synl declares the
+        // class with the bare name `$Json` and the preset `-(json::Json! json::Json)`.
+        // 集中登记须带包索引 `json::`（「集中的必须加」）：即便 .synl 预置对象尚未
+        // 物化，也使 `json` 成为已知集、`json::Json` 可作值解析、`set_exists("json")`
+        // 成立。名字本身仍是 `Json`，`json::` 仅为包定位符。模块自身的 lib/json.synl
+        // 以裸名 `$Json` 声明类、以 `-(json::Json! json::Json)` 声明预置对象。
+        p.regcls("json::Json", proto);
         ::stdRT.add_protos(p);
     }
 

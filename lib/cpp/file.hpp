@@ -795,7 +795,7 @@ namespace rt_lib_file {
         proto->set_method("write_atomic", method_file_write_atomic());
 
         runtime::Prototypes p;
-        p.regcls("File", proto);
+        p.regcls("file::File", proto);
         ::stdRT.add_protos(p);
     }
 

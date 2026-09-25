@@ -1,0 +1,9 @@
+&io; &json;
+$Program {
+  @::[() -> () {
+    -(io::OStream out);
+    -(std::Array v) << json::Json.parse(-(std::String s) << "[1,2,3]");
+    out << "ARR="; out << v;
+    out << " PRETTY="; out << json::Json.pretty(v);
+  }];
+};

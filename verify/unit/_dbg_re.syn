@@ -1,0 +1,12 @@
+&io; &re;
+$Program {
+  @::[() -> () {
+    -(io::OStream out);
+    -(std::String hay) << "你世好X";
+    -(re::Match m) << re::Re.search(-(std::String p) << "X", hay, -(std::String fl) << "");
+    out << "START="; out << m.start;
+    out << " CHAR_START="; out << m.char_start;
+    out << " END="; out << m.end;
+    out << " CHAR_END="; out << m.char_end;
+  }];
+};
