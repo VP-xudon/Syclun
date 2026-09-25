@@ -56,32 +56,75 @@ static std::map<std::string, std::string> g_config;
 // 本可执行文件的路径，供 REPL 复用于派生子解释器。
 static std::string g_repl_exe;
 
-// Resolve the standard-library directory relative to the executable so that
-// `&module;` works no matter the current working directory.
-// 依可执行文件位置解析标准库目录，使 `&module;` 不受当前工作目录影响。
+// Resolve the standard-library directory so that `&module;` works no matter
+// where the executable, the program file, or the current working directory are.
+// 解析标准库目录，使 `&module;` 不受可执行文件、程序文件或当前工作目录位置影响。
+//
+// Candidates (each tried for both `lib` and `libs`, so either packaging
+// convention works): 候选目录（每个都同时尝试 `lib` 与 `libs` 两种命名，
+// 兼容两种打包约定）：
+//   - $SYNTH_LIB_DIR (env override)        环境变量覆盖
+//   - executable dir / parent / grandparent 可执行文件所在目录及其上两层
+//   - program-file dir / parent            被运行的 .syn 文件所在目录及其上层
+//   - current working directory / parent   当前工作目录及其上层
 static std::string resolve_lib_dir(int argc, char** argv) {
-    std::string lib_dir = "lib";
+    // 0) Environment override. / 环境变量覆盖。
     if (argc > 0 && argv[0] && *argv[0]) {
         if (const char* ov = std::getenv("SYNTH_LIB_DIR")) {
-            if (*ov && std::filesystem::exists(ov)) lib_dir = ov;
+            if (*ov && std::filesystem::exists(ov)) return ov;
         }
-        if (lib_dir == "lib") {
-            std::filesystem::path exe(argv[0]);
-            std::filesystem::path cands[4] = {
-                exe.parent_path() / "lib",
-                exe.parent_path().parent_path() / "lib",
-                exe.parent_path() / "libs",
-                exe.parent_path().parent_path() / "libs",
-            };
-            for (const auto& cand : cands) {
-                if (std::filesystem::exists(cand)) {
-                    lib_dir = cand.string();
-                    break;
-                }
+    }
+
+    std::vector<std::filesystem::path> bases;
+    std::error_code ec;
+
+    // 1) Executable location (dir, parent, grandparent).
+    //    可执行文件位置（本目录、父目录、祖父目录）。
+    if (argc > 0 && argv[0] && *argv[0]) {
+        std::filesystem::path exe(argv[0]);
+        auto p = exe.parent_path();
+        if (!p.empty()) {
+            bases.push_back(p);
+            bases.push_back(p.parent_path());
+            bases.push_back(p.parent_path().parent_path());
+        }
+    }
+
+    // 2) Program-file location (argv[1]) — lets users keep `libs/` next to the
+    //    .syn they run. 程序文件位置（argv[1]）——允许用户把 `libs/` 放在所运行
+    //    的 .syn 旁边。
+    if (argc > 1 && argv[1] && *argv[1]) {
+        std::filesystem::path src(argv[1]);
+        auto sp = src.parent_path();
+        if (!sp.empty()) {
+            bases.push_back(sp);
+            bases.push_back(sp.parent_path());
+        }
+    }
+
+    // 3) Current working directory (and its parent).
+    //    当前工作目录（及其父目录）。
+    auto cwd = std::filesystem::current_path(ec);
+    if (!ec) {
+        bases.push_back(cwd);
+        bases.push_back(cwd.parent_path());
+    }
+
+    const char* names[] = {"lib", "libs"};
+    for (const auto& base : bases) {
+        if (base.empty()) continue;
+        for (const char* n : names) {
+            std::filesystem::path cand = base / n;
+            std::error_code e2;
+            if (std::filesystem::is_directory(cand, e2)) {
+                return cand.string();
             }
         }
     }
-    return lib_dir;
+
+    // Fallback: a plain relative `lib` (resolved against the CWD at open time).
+    // 回退：普通相对路径 `lib`（在打开时相对当前目录解析）。
+    return "lib";
 }
 
 // Apply accumulated --config options to the process environment / state.

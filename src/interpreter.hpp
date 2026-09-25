@@ -650,7 +650,15 @@ namespace interp {
             auto dpos = name.find("::");
             if (dpos != std::string::npos) {
                 std::string prefix = name.substr(0, dpos);
-                bool prefixKnown = ::stdRT.set_exists(prefix);
+                // A library whose C++ backend is registered is a "known set" even
+                // when its .synl face failed to load: this turns the opaque
+                // "unknown set 'io'" into the actionable "undefined variable
+                // 'io::out'" (the preset object simply never got created).
+                // 已注册 C++ 后端的库即为「已知集」，即便其 .synl 面孔未加载：
+                // 把模糊的「未知的集 'io'」转为可操作的「未定义变量 'io::out'」
+                //（预设对象根本未被创建）。
+                bool prefixKnown = ::stdRT.set_exists(prefix)
+                    || rb::native_lib_registry().count(prefix) > 0;
                 if (!prefixKnown) {
                     // The whole set is unknown: anchor on the prefix only.
                     // 整段集未知：只锚定前缀。
@@ -2425,6 +2433,28 @@ namespace interp {
                     "cannot import library '" + name + "' (no such standard "
                     "library; check the name, or install the library)"
                 );
+            }
+            // The native backend registered, but its Synth-OOP face (.synl) was
+            // not found at `path`. Importing still succeeds (the C++ methods are
+            // available), but library-level preset objects declared in the .synl
+            // (e.g. `io::out`, `json::Json`) are NOT created — so a later
+            // `unknown set '<name>'` or `undefined variable '<name>::X'` almost
+            // always means this .synl could not be located. Surface it instead
+            // of failing opaquely downstream.
+            // 原生底层已注册，但其 Synth-OOP 形态（.synl）在 `path` 处未找到。
+            // 导入仍成功（C++ 方法可用），但 .synl 中声明的库级预置对象
+            // （如 `io::out`、`json::Json`）不会被创建——故随后出现的
+            // `unknown set '<name>'` / `undefined variable '<name>::X'` 几乎总是
+            // 意味着此 .synl 未被定位。在此显式提示，而非在下游含糊报错。
+            {
+                static std::unordered_set<std::string> _warned;
+                if (_warned.insert(name).second) {
+                    std::cerr << "[synth] warning: standard-library '" << name
+                              << "' has no Synth-OOP face at '" << path
+                              << "'; preset objects (e.g. " << name
+                              << "::*) are unavailable. Set SYNTH_LIB_DIR or keep "
+                                 "the 'lib'/'libs' directory next to the binary.\n";
+                }
             }
             return;   // native-only lib (e.g. a builtin-backed name with no .synl)
         }
