@@ -168,8 +168,8 @@
 //    std 是预置集合包（文档第 9.2 节）。stdPT 收 Object / Number /
 //    Boolean / String / Array / Dict / Tuple，注入 stdRT（Runtime 运行
 //    环境）。io（OStream / IStream）现为 C++ 底层标准库
-//    （lib/cpp/io.hpp），由 init_stdlibs() 登记（init_builtins() 亦会
-//    调用之）。init_builtins() 是唯一的公开引导入口，供 main.cpp 与
+//    （lib/cpp/io.hpp），由 `&io;` import 经 init_native_lib("io") 登记。
+//    init_builtins() 是唯一的公开引导入口，供 main.cpp 与
 //    验收文件直接调用。
 //
 // 7. Method modifiers and signature constraints (Spec 6.2 / 2.2,
@@ -1473,9 +1473,10 @@ namespace rt_builtin {
     // io 流实例（文档 2.2：必须先实例化才能使用）。
     //
     // io is a C++-backed standard library (lib/cpp/io.hpp) registered by
-    // init_stdlibs(); make instantiates it from the global runtime.
-    // io 现为 C++ 底层标准库（lib/cpp/io.hpp），由 init_stdlibs() 登记；
-    // 此处经全局 runtime 的 make 实例化。
+    // init_native_lib("io") when `&io;` is imported; make instantiates it
+    // from the global runtime.
+    // io 现为 C++ 底层标准库（lib/cpp/io.hpp），经 `&io;` import 由
+    // init_native_lib("io") 登记；此处经全局 runtime 的 make 实例化。
     inline runtime::RuntimeObjectPtr make_ostream() {
         return stdRT.make("io::OStream");
     }
@@ -3294,16 +3295,22 @@ namespace rt_builtin {
     }
 
     // Bootstrap entry: fill the std package and inject into stdRT
-    // (idempotent). The C++-backed standard libraries (including io) are
-    // brought up by init_stdlibs(), which init_builtins() also invokes.
-    // 引导入口：填充 std 集合包并注入 stdRT（幂等）。C++ 底层标准库
-    // （含 io）由 init_stdlibs() 拉起，init_builtins() 亦会调用之。
+    // (idempotent). The C++-backed standard libraries are NOT brought up
+    // here; they load lazily, one at a time, when the program issues a
+    // `&name;` import (Interpreter::import_library -> rt_builtin::init_native_lib
+    // + lib/<name>.synl parse). This keeps every library's symbols out of
+    // scope until explicitly imported, matching the language's import model.
+    // 引导入口：填充 std 集合包并注入 stdRT（幂等）。C++ 底层标准库不再于
+    // 此处拉起；它们按需惰性加载——程序写下 `&name;` import 时，由
+    // Interpreter::import_library 经 rt_builtin::init_native_lib + 解析
+    // lib/<name>.synl 逐个上线。如此未显式导入的库其符号一律不在作用域内，
+    // 与语言的 import 模型一致。
     // 供 main.cpp 与验收文件直接调用。
 
-    // Forward declaration: defined later in this namespace; init_builtins()
-    // invokes it to bring up the C++-backed standard libraries.
-    // 前向声明：本命名空间后文定义；init_builtins() 调用它以拉起
-    // C++ 底层标准库。
+    // Forward declaration: defined later in this namespace. init_builtins()
+    // does NOT call it; per-name library loading lives in import_library.
+    // 前向声明：本命名空间后文定义。init_builtins() 不再调用之；逐库加载
+    // 见 import_library。
     inline void init_stdlibs();
 
     inline void init_builtins() {
@@ -3313,16 +3320,17 @@ namespace rt_builtin {
         }
         ready = true;
         init_prototypes();
-        // Wire the runtime signature enforcer and bring up the C++-backed
-        // standard libraries (including io) so they are available even when
-        // only init_builtins() is invoked (e.g. the runtime acceptance
-        // suite, which does not call init_stdlibs()).
-        // 接线运行时签名约束器，并拉起 C++ 底层标准库（含 io），
-        // 使仅调用 init_builtins() 的场景（如 runtime 验收套件，未调用
-        // init_stdlibs()）亦能使用这些库。
+        // Wire the runtime signature enforcers only. C++-backed standard
+        // libraries are intentionally NOT auto-registered here: they come
+        // online solely via an explicit `&name;` import inside the program
+        // (see run_program's import loop and Interpreter::import_library),
+        // so a library's classes/objects stay unavailable until imported.
+        // 仅接线运行时签名约束器。C++ 底层标准库刻意不在此自动登记：它们
+        // 仅经程序内显式 `&name;` import 上线（见 run_program 的 import
+        // 循环与 Interpreter::import_library），从而未导入的库其类/对象
+        // 一律不可用。
         rt_basic::g_sign_enforcer = enforce_sign;
         rt_basic::g_output_enforcer = enforce_output_sign;
-        init_stdlibs();
     }
 
     // ========================================================

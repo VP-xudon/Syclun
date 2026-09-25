@@ -90,13 +90,6 @@ namespace diag {
         return s;
     }
 
-    // Width of the caret marker (the "^~~~" run). The highlighted span in the
-    // source line uses the same width, so the in-line highlight and the caret
-    // beneath it always cover exactly the same characters.
-    // 插入符（"^~~~"）宽度。源码行中的高亮片段采用同一宽度，使行内高亮与
-    // 其下方插入符始终覆盖完全相同的字符。
-    inline constexpr std::size_t CARET_WIDTH = 4;
-
     // UTF-8-safe slicing helpers: never split a multi-byte sequence. A source
     // line may carry CJK comments, and a highlight/caret that began or ended
     // in the middle of such a character would emit a partial byte (garbling
@@ -172,36 +165,67 @@ namespace diag {
             // site is visible IN the line itself and not only beneath it.
             // 打印该行并高亮出错片段，使错误位置「在行内」即可见，而不仅是
             // 行下方有插入符。
-            std::size_t start = utf8_safe_start(
+            std::size_t startByte = utf8_safe_start(
                 lineText, (std::size_t)((Cc > 1) ? (Cc - 1) : 0));
-            std::size_t wantEnd = start + CARET_WIDTH;
-            if (wantEnd > lineText.size()) wantEnd = lineText.size();
-            std::size_t end = utf8_safe_end(lineText, wantEnd);
+
+            // How much of the line to mark. / 标记多长：
+            //  - a syntax error gets a single '^' pointing at the error site
+            //    (Python-3.10 style: highlight the position, not an element);
+            //  - any other error underlines the WHOLE offending element: we scan
+            //    forward from the error site over identifier / number characters
+            //    so an undefined variable 'bro' is underlined as '~~~'. A one-
+            //    character element falls back to a single '^'.
+            //  - 语法错：单个 '^' 指向出错点（类 Python 3.10：高亮定位而非元素）；
+            //  - 其它错误：划满整个出错元素——自出错点向前扫标识符 / 数字字符；
+            //    但遇到限定名分隔符 '::' 即停笔（不跨过），因为解释器已把插符
+            //    位置锚定到出错的【那一段】（未知集前缀或缺失成员），划满整段
+            //    限定名反而掩盖了真正的错误点；单字符元素回退为单个 ^。
+            bool isSyntaxErr = (type == "SyntaxError");
+            std::size_t wantSpan = 0;
+            if (!isSyntaxErr) {
+                std::size_t i = startByte;
+                while (i < lineText.size()) {
+                    unsigned char c = (unsigned char)lineText[i];
+                    if ((c & 0xC0) == 0x80) { ++i; continue; } // UTF-8 continuation
+                    bool word = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                                (c >= 'a' && c <= 'z') || c == '_' || c == '$';
+                    if (word) { ++wantSpan; ++i; continue; }
+                    // A '::' separator marks the boundary of the offending segment:
+                    // stop underlining here. The interpreter anchors `loc` on the
+                    // precise segment (unknown-set prefix or missing member), so the
+                    // marker must NOT bleed across the separator.
+                    // '::' 是出错段的边界：在此停笔。解释器已把 `loc` 锚到精确的
+                    // 那段（未知集前缀 / 缺失成员），故标记不得越过分隔符。
+                    break;
+                }
+                if (wantSpan == 0) wantSpan = 1;   // punctuation/operator: point only
+            }
+            std::size_t endByte = utf8_safe_end(lineText, startByte + wantSpan);
+            std::size_t spanChars = (endByte > startByte) ? (endByte - startByte) : 1;
+
+            // Inline highlight of exactly the offending element (or the single
+            // error position for a syntax error). / 行内高亮精确覆盖出错元素。
             std::cerr << '\n'
                       << "    " << dimCol << num << R() << " | "
-                      << lineText.substr(0, start)
-                      << hlCol << lineText.substr(start, end - start) << R()
-                      << lineText.substr(end)
+                      << lineText.substr(0, startByte)
+                      << hlCol << lineText.substr(startByte, spanChars) << R()
+                      << lineText.substr(endByte)
                       << '\n';
-            // Caret line alignment: its prefix must be EXACTLY as wide as the
-            // source line's prefix (4 spaces + number + " | "), otherwise the
-            // caret drifts one column left of the real error site. The prefix
-            // built here is  indent(4 + num.size() + 1) + '|' + ' '
-            //   == 4 spaces + number + " | "  (both put '|' at the same column
-            //      and start payload at the same column).
-            // 插入符行对齐：其前缀宽度必须与源码行前缀（4 空格 + 行号 +
-            // " | "）完全一致，否则插入符会相对真实出错位置左偏一列。此处
-            // 前缀为 indent(4 + num.size() + 1) + '|' + ' '
-            //   == 4 空格 + 行号 + " | "（二者把 '|' 与正文起始列对齐）。
+
+            // Caret / underline line. Its prefix width must match the source
+            // line's prefix exactly (4 spaces + number + " | ") so the marker
+            // stays under the highlighted element. The marker is a run of '~'
+            // covering the whole element, a lone '^' for a single character or
+            // for a syntax error.
+            // 插入符 / 下划线行。前缀宽度须与源码行前缀一致（4 空格 + 行号 +
+            // " | "），使标记落在高亮元素正下方。标记是一串覆盖整个元素的 '~'，
+            // 单字符或语法错则用单个 '^'。
             long long caretCol = (loc.col > 1) ? loc.col - 1 : 0;
             std::string indent(4 + num.size() + 1, ' ');
-            // Clip the caret to the highlighted span so both always cover
-            // exactly the same characters (it matters at end-of-line, where
-            // fewer than CARET_WIDTH characters remain after the error site).
-            // 把插入符裁剪到高亮片段长度，使二者始终覆盖完全相同的字符
-            // （行尾在出错点之后不足 CARET_WIDTH 个字符时尤为要紧）。
-            std::size_t spanChars = (end > start) ? (end - start) : 1;
-            std::string marker = "^" + std::string(spanChars - 1, '~');
+            std::string marker;
+            if (isSyntaxErr)         marker = "^";
+            else if (spanChars <= 1) marker = "^";
+            else                     marker = std::string(spanChars, '~');
             std::string caret((size_t)caretCol, ' ');
             caret += sevCol + marker + R();
             std::cerr << indent << dimCol << "|" << R() << " " << caret << '\n';

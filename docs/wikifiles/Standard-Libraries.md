@@ -4,6 +4,16 @@
 > 标准库怎么导入、有哪些模块、哪些是「随导入就存在的对象」。
 > How standard libraries are imported, which modules exist, and which objects "just exist" on import.
 
+> **文档化硬要求：** 所有标准库的用法，以及每一个对象、每一个方法，**都必须**有详细
+> 的参数说明与用法介绍，并附上可运行的示例。新增或改动任何标准库，都要同步更新
+> [标准库对象使用 / Using StdLib Objects](Standard-Library-Objects) 中对应对象的条目
+> 与方法表（签名 + 参数含义 + 行为 + 示例）。
+> **Documentation hard requirement:** the usage of *every* standard library, and of *every*
+> object and *every* method, **must** carry a detailed parameter reference and usage write-up
+> **plus a runnable example**. Any addition or change to a standard library must also update the
+> matching object entry and method table (signature + parameter meaning + behavior + example) in
+> [Using StdLib Objects](Standard-Library-Objects).
+
 ---
 
 ## 1. 导入：一句话 / Import: one statement

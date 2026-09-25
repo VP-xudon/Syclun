@@ -21,6 +21,28 @@
 
 ---
 
+## 库的本质 / The essence of a library
+
+> **库的本质是集，即约束、原型与对象成品的集合。**
+> A library's essence is a *set* — a collection of constraints, prototypes, and
+> ready-made object instances.
+>
+> 一个标准库不是一堆松散的函数，而是三者的聚合：**约束**（方法签名的「点名单」，
+> 规定对象须具备哪些行为）、**原型**（类 / 类型的公开形态，由 `.synl` 与 C++ 底层
+> 共同登记）、以及**对象成品**（随导入到来的常数预置对象，如 `io::out` / `io::in` /
+> `maths::math`）。它们统一居于库命名空间之下，经 `&module;` 一次性导入，访问走普通的
+> 名字解析——库不是命名空间本身，而是命名空间所承载的那一组「约束 + 原型 + 成品」。
+> A standard library is not a loose bag of functions but the above three gathered
+> together: *constraints* (the "roll-call" of method signatures an object must
+> carry), *prototypes* (the public shape of a class/type, registered by both the
+> `.synl` face and the C++ backend), and *finished object instances* (the const
+> presets that arrive with the import, e.g. `io::out` / `io::in` / `maths::math`).
+> All three live under one library namespace, are pulled in together by `&module;`,
+> and resolve through the ordinary name path — a library is not the namespace
+> itself, but the set of *constraints + prototypes + instances* that namespace carries.
+
+---
+
 ## Preset objects / 预置对象
 
 Since then a library face (`.synl`) may create ready-made object instances at

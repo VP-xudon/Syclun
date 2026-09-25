@@ -287,6 +287,21 @@ namespace {
         return run_synth(src, "neg").find(needle) != std::string::npos;
     }
 
+    // Count the longest run of consecutive '~' characters in `s`. The diagnostic
+    // caret underlines the offending segment with '~', so this lets a test pin
+    // down *which* segment of a qualified name was highlighted (e.g. 2 for `io`
+    // vs 7 for the whole `io::out`).
+    // 统计 s 中连续 '~' 的最长游程。诊断插入符用 '~' 划出出错段，故可借此断言
+    // 限定名中究竟哪一段被高亮（如 `io` 为 2，整段 `io::out` 为 7）。
+    std::size_t max_tilde_run(const std::string& s) {
+        std::size_t best = 0, cur = 0;
+        for (char c : s) {
+            if (c == '~') { ++cur; if (cur > best) best = cur; }
+            else cur = 0;
+        }
+        return best;
+    }
+
     // Run a snippet and assert it completes WITHOUT a runtime error. The
     // marker is the real diagnostic header ("Synth-OOP error"); an empty
     // capture (interpreter missing) must NOT silently count as a clean run.
@@ -368,9 +383,16 @@ namespace {
             && stdPT.getcls("Tuple") != nullptr,
             "std package registers Number / Boolean / String / Array / "
             "Dict / Tuple");
+        check(stdRT.getcls("io::OStream") == nullptr
+            && stdRT.getcls("io::IStream") == nullptr,
+            "io package is NOT auto-registered by init_builtins() "
+            "(libraries load lazily on explicit `&name;` import)");
+        // An explicit import brings io's classes online.
+        // 显式导入后 io 的类才上线。
+        rt_builtin::init_native_lib("io");
         check(stdRT.getcls("io::OStream") != nullptr
             && stdRT.getcls("io::IStream") != nullptr,
-            "io package registers OStream / IStream (independent of std)");
+            "io package registers OStream / IStream after an explicit import");
         check(stdPT.getcls("OStream") == nullptr,
             "OStream is not in the std package — io and std are independent");
         check(stdPT.getcls("Nothing") == nullptr,
@@ -2024,6 +2046,45 @@ namespace {
                   "Hello, World!Right."),
               "closure reads io::out from its captured environment; "
               "bare call finds the local closure");
+
+        // ---- Segment-aware diagnostic for qualified names ----
+        // 限定名的分段诊断：
+        //  - 从未导入的集只高亮前缀并报「未知的集 'X'」；
+        //  - 已导入的集下缺失成员只高亮该成员。
+        // 插入符游程长度据此断言高亮的是哪一段。
+        // 注意：本套件在单一进程内顺序运行，先前的用例已导入 `&io;`，故 `io`
+        // 在进程内始终为已知集；这里改用任何用例都不会导入的前缀，使「未导入」
+        // 与用例顺序无关。顶层裸语句会被解析器拒绝（顶层只允许导入 / 类 / 约束），
+        // 故放进程序体内，才能走到运行期解析、触发分段诊断。
+        check(expect_runtime_error(
+                  "$Program {\n"
+                  "  @::[{\n"
+                  "    nonexistent::thing;\n"
+                  "  }];\n"
+                  "};\n",
+                  "unknown set 'nonexistent'"),
+              "unknown set 'nonexistent' is reported (prefix never imported)");
+        check(max_tilde_run(run_synth(
+                  "$Program {\n"
+                  "  @::[{\n"
+                  "    nonexistent::thing;\n"
+                  "  }];\n"
+                  "};\n", "seg1")) == 11,
+              "caret underlines only the unknown prefix 'nonexistent' (11 tildes)");
+        check(expect_runtime_error(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @::[{ io::none; }];\n"
+                  "};\n",
+                  "undefined variable 'io::none'"),
+              "imported set 'io' with missing member 'none' reports undefined "
+              "variable on the full qualified name");
+        check(max_tilde_run(run_synth(
+                  "&io;\n"
+                  "$Program {\n"
+                  "  @::[{ io::none; }];\n"
+                  "};\n", "seg2")) == 4,
+              "caret underlines only the missing member 'none' (4 tildes)");
 
         // v1.32 structural class-constraint: an object whose injected
         // methods cover the constraint class's signs satisfies it — exact

@@ -292,6 +292,7 @@ static int repl(const std::string& lib_dir) {
                 << "  :quit / :q     exit the shell\n"
                 << "  (empty line)   evaluate the accumulated program\n"
                 << "Example:\n"
+                << "  synth> &io;\n"
                 << "  synth> -(io::OStream out); out << \"hi\";\n"
                 << "  synth> :run\n";
             continue;

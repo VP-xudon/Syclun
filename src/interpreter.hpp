@@ -160,7 +160,9 @@ namespace interp {
     RuntimeObjectPtr exec_stmt(Frame& f, AstNodePtr stmt);
     void exec_vardef(Frame& f, AstNodePtr node);
     void call_constructor(Frame& f, RuntimeObjectPtr obj, AstNodePtr argsNode);
-    RuntimeObjectPtr resolve(Frame& f, const std::string& name);
+    RuntimeObjectPtr resolve(
+        Frame& f, const std::string& name, AstNodePtr srcNode = nullptr
+    );
     InstanceListPtr invoke(
         RuntimeObjectPtr object, const std::string& name, InstanceListPtr args
     );
@@ -594,7 +596,14 @@ namespace interp {
     // behavior mode (a `=>` strict behavior may not read the outer scope).
     // 把变量名解析为对象，遵循作用域链与行为模式
     // （`=>` 严格行为不得读取外部环境）。
-    inline RuntimeObjectPtr resolve(Frame& f, const std::string& name) {
+    // `srcNode` carries the originating AST node (when available) so a failed
+    // qualified-name resolution can anchor the diagnostic caret on the exact
+    // offending segment (see the segment-aware block below).
+    // `srcNode` 携带来源 AST 节点（若可得），使限定名解析失败时能把诊断插入符
+    // 精确锚定到出错的那一段（见下方分段诊断块）。
+    inline RuntimeObjectPtr resolve(
+        Frame& f, const std::string& name, AstNodePtr srcNode
+    ) {
         if (name == "self") {
             // `self` refers to the instance whose method is currently running.
             // `self.method(args)` resolves the receiver here; bare `method()`
@@ -628,6 +637,39 @@ namespace interp {
         auto global = ::stdRT.getobj(name);
         if (global) {
             return global;
+        }
+        // ---- Segment-aware diagnostic for qualified names (X::Y / X::Y::Z) ----
+        // 限定名的分段诊断（X::Y / X::Y::Z）：
+        //  - 前缀集 X 从未导入 / 注册（运行时无任何 `X::*` 原型或对象）→ 只高亮
+        //    X，报错「未知的集 'X'」；
+        //  - X 已知但整名仍不可解析 → 只高亮缺失的成员（首段 `::` 之后的部分），
+        //    报错「未定义变量 'X::Y'」；
+        //  - 普通（不含 '::'）名字沿用默认整名高亮（见 exception_throw.hpp）。
+        // 仅当携带来源节点时才做分段锚定；否则退回默认整名高亮。
+        if (srcNode) {
+            auto dpos = name.find("::");
+            if (dpos != std::string::npos) {
+                std::string prefix = name.substr(0, dpos);
+                bool prefixKnown = ::stdRT.set_exists(prefix);
+                if (!prefixKnown) {
+                    // The whole set is unknown: anchor on the prefix only.
+                    // 整段集未知：只锚定前缀。
+                    diag::set_locus(
+                        diag::source_file(), srcNode->line, srcNode->col);
+                    interp_error("InterException",
+                        "unknown set '" + prefix + "'");
+                }
+                // X is known but X::Y is missing: anchor on the member segment
+                // (right after the first "::"). The reporter stops the underline
+                // at the next "::", so only that member is marked.
+                // X 已知但 X::Y 缺失：锚定到成员段（首个 "::" 之后）。上报器会在
+                // 下一个 "::" 处停笔，故只标出该成员。
+                diag::set_locus(
+                    diag::source_file(), srcNode->line,
+                    srcNode->col + (long long)prefix.size() + 2);
+                interp_error("InterException",
+                    "undefined variable '" + name + "'");
+            }
         }
         interp_error("InterException", "undefined variable '" + name + "'");
         return nullptr;          // unreachable: interp_error exits the process
@@ -1113,7 +1155,7 @@ namespace interp {
                 // 对象注册表——库形态把预置对象按声明时的全限定名（如
                 // `io::out`）登记于此。库对象没有任何专用通路：`io::out`
                 // 就是它的名字，而这是一切名字唯一的查找路径。
-                receiverObj = resolve(f, name);
+                receiverObj = resolve(f, name, recvNode);
             }
             // v1.32: a closure is NOT a class object but a separate major
             // category, with no methods of its own — a flow cannot receive
@@ -1386,7 +1428,7 @@ namespace interp {
                 return rb::make_float(
                     std::numeric_limits<double>::infinity());
             }
-            return resolve(f, node->value);
+            return resolve(f, node->value, node);
         }
         if (k == "inst") {
             // Instantiation expression: create the object, bind it to its
@@ -2430,7 +2472,13 @@ namespace interp {
         try {
         rb::init_builtins();
         rb::stdlib_dir() = lib_dir;
-        rb::init_stdlibs();          // bring C++-backed standard libs online
+        // Standard libraries are NOT auto-loaded here. Each `&name;` import
+        // statement in the program triggers import_library(), which brings
+        // that one library's C++ backend + lib/<name>.synl online. A library
+        // is therefore unusable until explicitly imported.
+        // 标准库不在此自动加载。程序中每条 `&name;` import 触发
+        // import_library()，仅把该库 C++ 底层 + lib/<name>.synl 上线；
+        // 故未显式导入的库不可用。
 
         // Feed source text to the diagnostic reporter so runtime errors can
         // print the offending line (g++-style). The program is always the

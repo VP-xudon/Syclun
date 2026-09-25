@@ -678,6 +678,15 @@ namespace runtime {
             }
             return protos[name];
         }
+        // Is any registered prototype a qualified name beginning with `key`?
+        // Used to decide whether a namespace prefix is "known".
+        // 是否存在以 `key` 开头的限定名原型（用于判断命名空间前缀是否已知）。
+        bool has_prefix(const std::string& key) {
+            for (auto &kv : protos) {
+                if (kv.first.rfind(key, 0) == 0) return true;
+            }
+            return false;
+        }
     };
 
     class Runtime {
@@ -700,6 +709,24 @@ namespace runtime {
                 return nullptr; // WARN: Throwing Task will give to Interpreter;
             }
             return objs[name];
+        }
+
+        // Is `prefix` a known set (namespace)? A set is "known" if the runtime
+        // has registered any prototype OR object instance whose qualified name
+        // begins with `prefix::` — e.g. importing `&io;` registers `io::OStream`
+        // / `io::out`, so `io` becomes a known set. Used by the interpreter for
+        // segment-aware diagnostics: an unimported `io::out` is reported as an
+        // "unknown set 'io'" rather than an opaque "undefined variable 'io::out'".
+        // `prefix` 是否为已知集（命名空间）？若运行时已注册任意以 `prefix::`
+        // 开头的原型或对象实例，则该集已知（如 `&io;` 导入会登记 `io::OStream`
+        // / `io::out`，于是 `io` 成为已知集）。解释器据此做分段诊断：未导入的
+        // `io::out` 会被报为「未知的集 'io'」，而非模糊的「未定义变量 'io::out'」。
+        bool set_exists(const std::string &prefix) {
+            std::string key = prefix + "::";
+            for (auto &kv : objs) {
+                if (kv.first.rfind(key, 0) == 0) return true;
+            }
+            return protos.has_prefix(key);
         }
 
         // Public prototype lookup (used by the interpreter when resolving a
