@@ -53,6 +53,26 @@ $Pattern {
 
 $Match {
     // matched: Boolean, text: String, groups: Array of String,
-    // start/end: Number (byte offsets).
-    // matched：Boolean，text：String，groups：String 数组，start/end：Number（偏移）。
+    // start/end: Number (byte offsets),
+    // char_start/char_end: Number (UTF-8 code-point offsets, parallel to start/end).
+    // matched：Boolean，text：String，groups：String 数组，
+    // start/end：Number（字节偏移），char_start/char_end：Number（UTF-8 码点偏移，与 start/end 平行）。
 }
+
+// ------------------------------------------------------------
+// v1.30 preset object / v1.30 预置对象
+//
+// One ready-made entry point comes with the import. Declared in THIS file, so it
+// uses the BARE name `Re`; the `re::` package index is added centrally by the
+// `&re;` import, so external code calls it as `re::Re` — stateless convenience
+// methods (match/search/findall/replace/split/test/escape/compile) are called on
+// it directly, e.g. `re::Re.search(pattern, text, flags)`. For a reusable matcher,
+// call `re::Re.compile(...)` which returns a `re::Pattern`. The `::`-prefixed part
+// is a package locator, not part of the name.
+// 导入即附带一个成品入口。因声明在本文件内，使用裸名 `Re`；`re::` 包索引由 `&re;`
+// 导入集中添加，故外部以 `re::Re` 调用——无状态便捷方法（match/search/findall/
+// replace/split/test/escape/compile）直接在其上调用，如
+// `re::Re.search(pattern, text, flags)`。要复用匹配器，调用 `re::Re.compile(...)`
+// 返回 `re::Pattern`。`::` 前缀是包定位符，而非名字的一部分。
+// ------------------------------------------------------------
+-(re::Re! re::Re);

@@ -3,6 +3,10 @@
 // Standard library: warning (Synth-OOP interface).
 // 标准库：warning（Synth-OOP 接口）。
 //
+// [EXPERIMENTAL / 实验性] The public shape of this library may change without
+// notice before the 1.0 freeze. Pin a commit if you depend on it.
+// 本库公开形态在 1.0 冻结前可能未经预告即变更。依赖时请锁定提交。
+//
 // The behavioral face of the `warning` library; the real work is done by the
 // C++ backend in lib/cpp/warning.hpp. Importing `&warning;` registers the
 // native class, then interprets this file — the class is already registered,
@@ -20,10 +24,14 @@
 
 $Raise {
     // The constructor emits a non-fatal warning to the standard error stream
-    // (prefixed `[WARNING]`) and returns an empty Raise object. Execution
-    // continues afterwards — warnings are treated as specific output, not as
-    // fatal conditions.
-    // 构造函数向标准错误流输出非致命警告（带 `[WARNING]` 前缀）并返回空的
-    // Raise 对象。其后执行继续——警告被视为特定输出，而非致命状况。
+    // (prefixed `[WARNING]`) and stores `code` / `message` on the instance so
+    // callers can query them afterwards (e.g. `warn.code`, `warn.message`,
+    // or `w := warning::Raise(...)`). Execution continues — warnings are
+    // treated as specific output, not as fatal conditions.
+    // 构造函数向标准错误流输出非致命警告（带 `[WARNING]` 前缀），并把 `code` /
+    // `message` 存到实例上，供调用方随后查询（如 `warn.code`、`warn.message`、
+    // 或 `w := warning::Raise(...)`）。其后执行继续——警告被视为特定输出，
+    // 而非致命状况。
     @::[(code[std::String], message[std::String]) ~> () { }];
+    // Queryable fields / 可查询字段：code[std::String], message[std::String]
 }

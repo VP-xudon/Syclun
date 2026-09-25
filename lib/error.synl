@@ -3,6 +3,10 @@
 // Standard library: error (Synth-OOP interface).
 // 标准库：error（Synth-OOP 接口）。
 //
+// [EXPERIMENTAL / 实验性] The public shape of this library may change without
+// notice before the 1.0 freeze. Pin a commit if you depend on it.
+// 本库公开形态在 1.0 冻结前可能未经预告即变更。依赖时请锁定提交。
+//
 // The behavioral face of the `error` library; the real work is done by the
 // C++ backend in lib/cpp/error.hpp. Importing `&error;` registers the native
 // class, then interprets this file — the class is already registered, so the

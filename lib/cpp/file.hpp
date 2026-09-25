@@ -638,6 +638,114 @@ namespace rt_lib_file {
         );
     }
 
+    // Substitute "{}" placeholders in `fmt` with the elements of `args` (an
+    // Array). Mirrors io's formatter so `File.format` and `io::OStream.format`
+    // share the same `{...}` mini-language.
+    // 用 `args`（Array）的元素替换 `fmt` 中的 "{}" 占位符，与 io 的格式化器
+    // 一致，使 File.format 与 io::OStream.format 共用同一套 {…} 迷你语言。
+    inline std::string file_format_str(
+        const std::string& fmt, const RuntimeObjectPtr& args
+    ) {
+        auto* aam = args ? rb::attributes_of(args) : nullptr;
+        std::size_t asz = aam ? rb::container_size(*aam) : 0;
+        std::size_t idx = 0;
+        std::string out;
+        for (std::size_t i = 0; i < fmt.size(); ++i) {
+            if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                if (idx < asz) {
+                    auto it = aam->find(rb::elem_key(idx));
+                    if (it != aam->end()) out += rb::display(it->second, 0);
+                }
+                ++idx; ++i;   // skip the '}'
+            } else {
+                out += fmt[i];
+            }
+        }
+        return out;
+    }
+
+    // file.push(value) -> (void) —— append the rendered value(s) with no newline.
+    // Interface twin of io::OStream.push, but the sink is the file itself
+    // (opened in append mode, binary so newlines stay literal across platforms).
+    // file.push(value) -> (void) —— 追加渲染后的值，不换行。io::OStream.push
+    // 的接口孪生，但汇聚点是文件本身（以追加、二进制模式打开，换行逐字节一致）。
+    inline rt_basic::Callable method_file_push() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto path = rb::string_of(env["path"]);
+                if (!path || path->empty()) {
+                    return rb::list_of({rb::native_error(
+                        "file.push: no path set")});
+                }
+                std::ofstream fout(*path, std::ios::app | std::ios::binary);
+                if (!fout) {
+                    return rb::list_of({rb::native_error(
+                        "file.push: cannot open '" + *path + "'")});
+                }
+                if (paras) {
+                    for (const auto& item : *paras) fout << rb::display(item);
+                }
+                return rb::empty_result();
+            },
+            rb::make_sign("push", {{"value", "std::Object"}}, {})
+        );
+    }
+
+    // file.push_line(value) -> (void) —— append the rendered value(s) + "\n".
+    // file.push_line(value) -> (void) —— 追加渲染后的值并换行。
+    inline rt_basic::Callable method_file_push_line() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto path = rb::string_of(env["path"]);
+                if (!path || path->empty()) {
+                    return rb::list_of({rb::native_error(
+                        "file.push_line: no path set")});
+                }
+                std::ofstream fout(*path, std::ios::app | std::ios::binary);
+                if (!fout) {
+                    return rb::list_of({rb::native_error(
+                        "file.push_line: cannot open '" + *path + "'")});
+                }
+                if (paras) {
+                    for (const auto& item : *paras) fout << rb::display(item);
+                }
+                fout << "\n";
+                return rb::empty_result();
+            },
+            rb::make_sign("push_line", {{"value", "std::Object"}}, {})
+        );
+    }
+
+    // file.format(fmt, args) -> (void) —— append fmt with "{}" replaced by the
+    // Array elements of args. Same mini-language as io::OStream.format.
+    // file.format(fmt, args) -> (void) —— 把 fmt 中的 "{}" 替换为 args（数组）
+    // 各元素后追加。与 io::OStream.format 同一迷你语言。
+    inline rt_basic::Callable method_file_format() {
+        return rb::native_method(
+            [](rt_basic::InstanceMap& env, rt_basic::InstanceListPtr paras) {
+                auto path = rb::string_of(env["path"]);
+                if (!path || path->empty()) {
+                    return rb::list_of({rb::native_error(
+                        "file.format: no path set")});
+                }
+                auto fmt = rb::string_of(rb::para_at(paras, 0));
+                if (!fmt) {
+                    return rb::list_of({rb::native_error(
+                        "file.format requires a format string")});
+                }
+                std::ofstream fout(*path, std::ios::app | std::ios::binary);
+                if (!fout) {
+                    return rb::list_of({rb::native_error(
+                        "file.format: cannot open '" + *path + "'")});
+                }
+                fout << file_format_str(*fmt, rb::para_at(paras, 1));
+                return rb::empty_result();
+            },
+            rb::make_sign("format",
+                {{"fmt", "std::String"}, {"args", "std::Array"}}, {})
+        );
+    }
+
     // ---- registration / 登记 ----
     inline void init_file_stdlib() {
         // Inherit Object's reserved methods, then add file-specific members
@@ -654,6 +762,10 @@ namespace rt_lib_file {
         proto->set_method("write",    method_file_write());
         proto->set_method("append",   method_file_append());
         proto->set_method("write_lines", method_file_write_lines());
+        // io-compatible streaming aliases / io 兼容的流式别名
+        proto->set_method("push",      method_file_push());
+        proto->set_method("push_line", method_file_push_line());
+        proto->set_method("format",    method_file_format());
         proto->set_method("exists",   method_file_exists());
         proto->set_method("remove",   method_file_remove());
         proto->set_method("size",     method_file_size());

@@ -2119,6 +2119,141 @@ namespace {
                   "ConstraintException"),
               "Number still rejected by the Addable class constraint");
     }
+    // --------------------------------------------------------
+    // 20. Standard-library industrialization fixes (json / encoding / re /
+    //     file io / warning) — end-to-end through the real interpreter.
+    // 20. 标准库工业化缺陷修复（json / encoding / re / file io / warning）
+    //     —— 经真实解释器端到端验收。
+    // --------------------------------------------------------
+    }
+
+    void test_stdlib_json_encoding_re_file() {
+        section("Standard-library industrialization (json / encoding / re / file / warning)");
+
+        // ---- json: parse -> native Dict/Array/String/Number/Boolean, stringify round-trip ----
+        // json：解析->原生 Dict/Array/String/Number/Boolean，stringify 往返。
+        check(expect_program_output(
+                  "&io; &json;\n"
+                  "$Program {\n"
+                  "  @::[() -> () {\n"
+                  "    -(io::OStream out);\n"
+                  "    -(std::Dict v) << json::Json.parse(\n"
+                  "      -(std::String s) << \"{\\\"name\\\":\\\"Syclun\\\",\\\"n\\\":42,\\\"arr\\\":[1,2,3],\\\"ok\\\":true,\\\"nul\\\":null}\");\n"
+                  "    out << \"JSON_KEYS=\"; out << v.keys();\n"
+                  "    out << \" JSON_NAME=\"; out << v.get(-(std::String k) << \"name\");\n"
+                  "    out << \" JSON_N=\"; out << v.get(-(std::String k) << \"n\");\n"
+                  "    out << \" JSON_OK=\"; out << v.get(-(std::String k) << \"ok\");\n"
+                  "    out << \" JSON_NUL=\"; out << v.get(-(std::String k) << \"nul\");\n"
+                  "    out << \" ROUNDTRIP=\"; out << json::Json.stringify(v);\n"
+                  "  }];\n"
+                  "};\n",
+                  "JSON_KEYS=[arr, n, name, nul, ok]"),
+              "json.parse decodes an object into a Dict with all value kinds");
+
+        check(expect_program_output(
+                  "&io; &json;\n"
+                  "$Program {\n"
+                  "  @::[() -> () {\n"
+                  "    -(io::OStream out);\n"
+                  "    -(std::Array v) << json::Json.parse(-(std::String s) << \"[1,2,3]\");\n"
+                  "    out << \"ARR=\"; out << v;\n"
+                  "    out << \" PRETTY=\"; out << json::Json.pretty(v);\n"
+                  "  }];\n"
+                  "};\n",
+                  "PRETTY=[\n  1,\n  2,\n  3\n]"),
+              "json.pretty produces 2-space indented output");
+
+        // malformed JSON must raise (not silently produce something).
+        // 非法 JSON 必须报错（而非静默产出）。
+        check(expect_runtime_error(
+                  "&json;\n"
+                  "$Program {\n"
+                  "  @::[() -> () { json::Json.parse(-(std::String s) << \"{bad}\"); }];\n"
+                  "};\n",
+                  "json.parse"),
+              "json.parse raises on malformed input");
+
+        // ---- encoding: base64 / hex / url round-trips ----
+        // encoding：base64 / hex / url 往返。
+        check(expect_program_output(
+                  "&io; &encoding;\n"
+                  "$Program {\n"
+                  "  @::[() -> () {\n"
+                  "    -(io::OStream out);\n"
+                  "    -(std::String raw) << \"Hello, Syclun!\";\n"
+                  "    -(std::String b64) << encoding::Encoding.base64_encode(raw);\n"
+                  "    out << \"B64=\"; out << b64;\n"
+                  "    out << \" B64DEC=\"; out << encoding::Encoding.base64_decode(b64);\n"
+                  "    out << \" HEX=\"; out << encoding::Encoding.hex(raw);\n"
+                  "    out << \" URL=\"; out << encoding::Encoding.url_encode(-(std::String u) << \"a b~c\");\n"
+                  "    out << \" URLDEC=\"; out << encoding::Encoding.url_decode(encoding::Encoding.url_encode(-(std::String u) << \"a b~c\"));\n"
+                  "  }];\n"
+                  "};\n",
+                  "B64=SGVsbG8sIFN5Y2x1biE= B64DEC=Hello, Syclun! HEX=48656c6c6f2c205379636c756e21 URL=a%20b~c URLDEC=a b~c"),
+              "encoding base64/hex/url round-trip correctly");
+
+        // ---- re: char_start/char_end are code-point offsets (CJK = 3 bytes) ----
+        // re：char_start/char_end 为码点偏移（CJK 占 3 字节）。
+        // Note: use `search` (not `match`) — `match` requires a full-string match,
+        // which "X" is not. 3 CJK chars ("你世好") precede "X": byte offset of X is 9,
+        // code-point offset is 3.
+        // 注意用 `search`（非 `match`）：`match` 要求整串匹配，"X" 不满足。
+        // 3 个 CJK（"你世好"）在 "X" 之前：X 的字节偏移为 9，码点偏移为 3。
+        check(expect_program_output(
+                  "&io; &re;\n"
+                  "$Program {\n"
+                  "  @::[() -> () {\n"
+                  "    -(io::OStream out);\n"
+                  "    -(std::String hay) << \"\xe4\xbd\xa0\xe4\xb8\x96\xe5\xa5\xbdX\";\n"
+                  "    -(re::Match m) << re::Re.search(-(std::String p) << \"X\", hay, -(std::String fl) << \"\");\n"
+                  "    out << \"START=\"; out << m.start;\n"
+                  "    out << \" CHAR_START=\"; out << m.char_start;\n"
+                  "    out << \" END=\"; out << m.end;\n"
+                  "    out << \" CHAR_END=\"; out << m.char_end;\n"
+                  "  }];\n"
+                  "};\n",
+                  "START=9 CHAR_START=3 END=10 CHAR_END=4"),
+              "re::Match exposes byte offsets (start/end) and code-point offsets (char_start/char_end)");
+
+        // ---- file: push / push_line / format mirror io ----
+        // file：push / push_line / format 与 io 对齐。
+        fs::path ftmp = test_binary_dir() / "assert_jsonenc_tmp.txt";
+        std::string ftmp_str = ftmp.string();
+        std::replace(ftmp_str.begin(), ftmp_str.end(), '\\', '/');
+        check(expect_program_output(
+                  "&io; &file;\n"
+                  "$Program {\n"
+                  "  @::[() -> () {\n"
+                  "    -(io::OStream out);\n"
+                  "    -(file::File f);\n"
+                  "    f.open(\"" + ftmp_str + "\", -(std::String m) << \"w\");\n"
+                  "    f.push(-(std::String a) << \"hi\");\n"
+                  "    f.push_line(-(std::String b) << \"there\");\n"
+                  "    f.format(-(std::String fmt) << \"val={}x={}\", -(std::Array((42, 7)) args));\n"
+                  "    out << \"FILECONTENT=\"; out << f.read();\n"
+                  "  }];\n"
+                  "};\n",
+                  "FILECONTENT=hithere\nval=42x=7"),
+              "File.push/push_line/format append with the same semantics as io");
+        {
+            std::error_code ec;
+            fs::remove(ftmp, ec);
+        }
+
+        // ---- warning::Raise stores code/message queryable on the instance ----
+        // warning::Raise 把 code/message 存到实例以供查询。
+        check(expect_program_output(
+                  "&io; &warning;\n"
+                  "$Program {\n"
+                  "  @::[() -> () {\n"
+                  "    -(io::OStream out);\n"
+                  "    -(warning::Raise(-(std::String c) << \"DEP001\", -(std::String m) << \"thing deprecated\") w);\n"
+                  "    out << \"WCODE=\"; out << w.code;\n"
+                  "    out << \" WMSG=\"; out << w.message;\n"
+                  "  }];\n"
+                  "};\n",
+                  "WCODE=DEP001 WMSG=thing deprecated"),
+              "warning::Raise exposes code/message on the instance");
     }
 
 int main(int argc, char** argv) {
@@ -2164,6 +2299,7 @@ int main(int argc, char** argv) {
     test_sugar_infix();
     test_stdlib_d1_d5();
     test_stdlib_d6();
+    test_stdlib_json_encoding_re_file();
     test_library_presets();
     test_const_consistency();
 

@@ -559,6 +559,29 @@ namespace rt_lib_re {
     // 前向声明：make_match 在 build_groups 定义之前即可调用它。
     inline RuntimeObjectPtr build_groups(const std::vector<RuntimeObjectPtr>& items);
 
+    // Count UTF-8 code points in `s` from byte 0 up to (but not crossing) the
+    // byte offset `upTo`. Used to expose character (vs byte) offsets on a Match.
+    // 统计 `s` 中自字节 0 到（不含越过）字节偏移 `upTo` 的 UTF-8 码点个数，
+    // 用于在 Match 上提供字符（而非字节）偏移。
+    inline std::size_t utf8_cp_count(const std::string& s, std::size_t upTo) {
+        std::size_t count = 0;
+        std::size_t i = 0;
+        std::size_t limit = std::min(upTo, s.size());
+        while (i < limit) {
+            unsigned char c = static_cast<unsigned char>(s[i]);
+            int len;
+            if      (c < 0x80)                      len = 1;
+            else if ((c & 0xE0) == 0xC0)            len = 2;
+            else if ((c & 0xF0) == 0xE0)            len = 3;
+            else if ((c & 0xF8) == 0xF0)            len = 4;
+            else                                    len = 1;   // invalid lead
+            if (i + static_cast<std::size_t>(len) > upTo) break;  // straddles boundary
+            i += static_cast<std::size_t>(len);
+            ++count;
+        }
+        return count;
+    }
+
     // Build a `Match` object from capture spans.
     // 依据捕获区间构造 `Match` 对象。
     inline RuntimeObjectPtr make_match(const std::string& s,
@@ -573,6 +596,12 @@ namespace rt_lib_re {
         am["text"]    = rb::make_string(text);
         am["start"]   = rb::make_number(static_cast<double>(ok ? saved[0] : 0), true);
         am["end"]     = rb::make_number(static_cast<double>(ok ? saved[1] : 0), true);
+        // Character (code-point) offsets, parallel to start/end (byte offsets).
+        // 字符（码点）偏移，与 start/end（字节偏移）平行。
+        am["char_start"] = rb::make_number(
+            static_cast<double>(ok ? utf8_cp_count(s, static_cast<std::size_t>(saved[0])) : 0), true);
+        am["char_end"]   = rb::make_number(
+            static_cast<double>(ok ? utf8_cp_count(s, static_cast<std::size_t>(saved[1])) : 0), true);
         int ng = nsave / 2 - 1;   // groups excluding whole-match (group 0)
         std::vector<RuntimeObjectPtr> groups;
         for (int i = 0; i <= ng; ++i) {
@@ -595,11 +624,13 @@ namespace rt_lib_re {
         auto* cls = dynamic_cast<RuntimeClass*>(match.get());
         if (!cls) return match;
         auto& am = cls->get_attributes();
-        am["matched"] = env.count("matched") ? env["matched"] : rb::make_boolean(false);
-        am["text"]    = env.count("text")    ? env["text"]    : rb::make_string("");
-        am["groups"]  = env.count("groups")  ? env["groups"]  : build_groups({});
-        am["start"]   = env.count("start")   ? env["start"]   : rb::make_number(0, true);
-        am["end"]     = env.count("end")     ? env["end"]     : rb::make_number(0, true);
+        am["matched"]    = env.count("matched")    ? env["matched"]    : rb::make_boolean(false);
+        am["text"]       = env.count("text")       ? env["text"]       : rb::make_string("");
+        am["groups"]     = env.count("groups")     ? env["groups"]     : build_groups({});
+        am["start"]      = env.count("start")      ? env["start"]      : rb::make_number(0, true);
+        am["end"]        = env.count("end")        ? env["end"]        : rb::make_number(0, true);
+        am["char_start"] = env.count("char_start") ? env["char_start"] : rb::make_number(0, true);
+        am["char_end"]   = env.count("char_end")   ? env["char_end"]   : rb::make_number(0, true);
         return match;
     }
 
@@ -1232,7 +1263,8 @@ namespace rt_lib_re {
                 auto* cls = dynamic_cast<RuntimeClass*>(incoming.get());
                 if (!cls) return rb::empty_result();
                 auto& senv = cls->get_attributes();
-                const char* fields[] = {"matched", "text", "groups", "start", "end"};
+                const char* fields[] = {"matched", "text", "groups", "start", "end",
+                                        "char_start", "char_end"};
                 for (const char* f : fields) {
                     auto it = senv.find(f);
                     if (it != senv.end()) env[f] = it->second;
@@ -1303,6 +1335,8 @@ namespace rt_lib_re {
             // 与 := 接收各自赋予全新的组列表，故无需默认值。
             proto->set_attribute("start",   rb::make_number(0, true));
             proto->set_attribute("end",     rb::make_number(0, true));
+            proto->set_attribute("char_start", rb::make_number(0, true));
+            proto->set_attribute("char_end",   rb::make_number(0, true));
             proto->set_method("=:",         method_match_publish());
             proto->set_method(":=",         method_match_receive());
             runtime::Prototypes p; p.regcls("Match", proto); ::stdRT.add_protos(p);

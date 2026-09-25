@@ -26,6 +26,8 @@
 #include "hash.hpp"
 #include "structs.hpp"
 #include "re.hpp"
+#include "json.hpp"
+#include "encoding.hpp"
 #include "io.hpp"
 #include "assert.hpp"
 #include "sugar.hpp"

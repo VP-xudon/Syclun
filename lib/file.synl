@@ -35,6 +35,13 @@ $File {
     // 二进制模式打开，故各平台 '\n' 原样保留（Windows 下不转 CRLF）。
     @write[(text[std::String]) ~> () { }];
     @append[(text[std::String]) ~> () { }];
+    // io-compatible streaming aliases: append the rendered value(s) (push adds no
+    // newline, push_line adds one), or append `fmt` with "{}" filled from args.
+    // 与 io 兼容的流式别名：追加渲染后的值（push 不换行、push_line 换行），
+    // 或以 args 填充 fmt 的 "{}" 后追加。
+    @push[(value[std::Object]) ~> () { }];
+    @push_line[(value[std::Object]) ~> () { }];
+    @format[(fmt[std::String], args[std::Array]) ~> () { }];
     // Write many lines: elements joined by '\n' and written in one shot.
     // 写入多行：元素以 '\n' 连接后一次性写入。
     @write_lines[(lines[std::Array]) ~> () { }];

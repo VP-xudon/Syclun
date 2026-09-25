@@ -16,7 +16,10 @@
 - [Runtime signature enforcement / 运行期签名强制](#runtime-signature-enforcement--运行期签名强制)
 - [Preset objects / 预置对象](#preset-objects--预置对象)
 - [Method reference / 方法参考](#method-reference--方法参考)
-  - `file` · `system` · `structs` · `re` · `maths` · `async` · `hash` · `io` · `assert`
+  - `file` · `system` · `structs` · `re` · `maths` · `async` · `hash` · `io` · `assert` · `json` · `encoding`
+- [Stability labels / 稳定性分级](#stability-labels--稳定性分级)
+- [Experimental libraries / 实验性标准库](#experimental-libraries--实验性标准库)
+  - `error` · `warning` · `sysapi`
 - [Adding a standard library / 如何新增标准库](#adding-a-standard-library--如何新增标准库)
 
 ---
@@ -177,9 +180,14 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
     `Boolean`.
   - **`Match`** — result object (fields, not methods): `matched` → `Boolean`,
     `text` → `String` (the matched substring), `groups` → `Array` of `String`
-    (capture groups), `start`/`end` → `Number` (byte offsets).
+    (capture groups), `start`/`end` → `Number` (byte offsets), `char_start`/
+    `char_end` → `Number` (UTF-8 code-point offsets, parallel to `start`/`end` —
+    use these when the haystack contains non-ASCII text and you need character
+    positions rather than byte positions).
     / 匹配结果（均为字段而非方法）：matched→Boolean、text→String（命中子串）、
-    groups→String 数组（捕获组）、start/end→Number（偏移）。
+    groups→String 数组（捕获组）、start/end→Number（字节偏移）、char_start/
+    char_end→Number（UTF-8 码点偏移，与 start/end 平行——当待匹配文本含非 ASCII
+    字符、需要字符位置而非字节位置时请用这两个字段）。
 
 - **`sugar` → `Infix`** (C++-backed; per-instance C++ state lives in a
   process-wide registry keyed by a stable instance id, same idiom as the
@@ -315,8 +323,83 @@ type and let it travel as a direct pointer (method argument or `self`) — e.g.
     `c.method.=(beh)` / `c.method << beh` 重绑后，`methods_dirty` 标志被置位）。
   `assert::Checker` replaces the old `_case`/"poison-water" diagnostics: instead
   of a silently-propagating checked value, you assert legality up front.
-  / `assert::Checker` 取代了旧的 `_case`（毒水）诊断：不再依赖静默传播的受检值，
+  /   `assert::Checker` 取代了旧的 `_case`（毒水）诊断：不再依赖静默传播的受检值，
   而是事前显式断言合法性。示例见 `verify/philosophy/checker_demo.syn`。
+
+- **`json` → `Json`** — a dependency-free, hand-written recursive-descent JSON
+  codec that maps JSON values onto native Synth-OOP values and back.
+  / 零依赖、手写的递归下降 JSON 编解码器，把 JSON 值与原生 Synth-OOP 值互映射。
+  - `parse(text)` → `std::Object` — decode a JSON document; `std::Object` here is
+    the universal return type (the actual result is a `std::Dict`, `std::Array`,
+    `std::String`, `std::Number`, `std::Boolean`, or the `std::Object` zero-instance
+    for JSON `null`). Raises an error on malformed input.
+    / 解码 JSON 文档；`std::Object` 此处为通用返回类型（实际结果为 `std::Dict` /
+    `std::Array` / `std::String` / `std::Number` / `std::Boolean`，JSON `null` 对应
+    `std::Object` 零实例）。输入非法时抛错。
+  - `stringify(value)` → `std::String` — compact one-line JSON (no whitespace).
+    / 紧凑单行 JSON（无空白）。
+  - `pretty(value)` → `std::String` — human-readable JSON with 2-space indentation.
+    / 带 2 空格缩进的可读 JSON。
+  - Mapping / 映射：`object → Dict`、`array → Array`、`string → String`、
+    `number → Number`（解析时保留整数性）、`boolean → Boolean`、
+    `null → Object`（万物之源零实例）。
+
+- **`encoding` → `Encoding`** — dependency-free text codecs operating on
+  `std::String` (binary payloads ride as raw byte strings).
+  / 零依赖文本编解码，以 `std::String` 输入输出（二进制载荷以原始字节串承载）。
+  - `base64_encode(data)` / `base64_decode(text)` → `std::String` — RFC 4648
+    base64 (with `=` padding; decode rejects characters outside the alphabet).
+    / RFC 4648 base64（`=` 填充；解码拒绝字母表外字符）。
+  - `hex(data)` / `unhex(text)` → `std::String` — lowercase hex encode; decode
+    tolerates upper/lowercase and rejects odd-length or non-hex input.
+    / 小写 hex 编码；解码容错大小写、拒绝奇数长度或非法十六进制。
+  - `url_encode(text)` / `url_decode(text)` → `std::String` — RFC 3986 percent-
+    encoding (the unreserved set `A-Za-z0-9-_.~` passes through unescaped).
+    / RFC 3986 百分号编码（非保留集 `A-Za-z0-9-_.~` 原样透传）。
+
+---
+
+## Stability labels / 稳定性分级
+
+This project applies informal stability labels so callers know what guarantees a
+library makes. Nothing here is a hard promise — the language itself is pre-1.0 —
+but the labels communicate intent.
+本手册使用非正式的"稳定性"标签，让调用方知晓各库所作的保证。在 1.0 之前这并非硬性
+承诺，但标签传达了维护意图。
+
+- **Stable / 稳定** — the public shape is settled for the current line; breaking
+  changes are avoided and, if unavoidable, are called out in the changelog.
+  / 公开形态在当前版本线内已稳定；尽量避免破坏性变更，若不可避免会在更新日志中明示。
+- **Experimental / 实验性** — the API may change without notice; do not depend on
+  it in shipped code yet. These are `error`, `warning`, and `sysapi` (see below).
+  / 接口可能未经预告即变更；请勿在已发布代码中依赖。包括 `error`、`warning`、
+  `sysapi`（见下）。
+
+See `CHANGELOG.md` for the running list of additions and changes.
+各次新增与变更的运行清单见 `CHANGELOG.md`。
+
+---
+
+## Experimental libraries / 实验性标准库
+
+The following libraries are **experimental** — their surface is still stabilizing
+and may change between commits. They are usable, but pin a commit if you rely on
+them.
+以下标准库为**实验性**——公开形态仍在收敛，可能随提交变更。可用，但依赖时请锁定
+提交。
+
+- **`error` → `Error`** — `error::Raise(code, message)` emits a fatal diagnostic
+  and terminates the program (exit code 1). / `error::Raise(code, message)` 输出
+  致命诊断并终止程序（退出码 1）。
+- **`warning` → `Raise`** — `warning::Raise(code, message)` emits a non-fatal
+  `[WARNING]` line to stderr **and stores `code` / `message` on the instance** so
+  callers can query them afterwards (`warn.code`, `warn.message`, or
+  `w := warning::Raise(...)`). Execution continues.
+  / `warning::Raise(code, message)` 向 stderr 输出非致命 `[WARNING]` 行，**并把
+  `code` / `message` 存到实例**，供随后查询（`warn.code`、`warn.message` 或
+  `w := warning::Raise(...)`）。执行继续。
+- **`sysapi` → dispatcher** — a thin dispatcher over platform system APIs.
+  / 平台系统 API 的轻量派发层。
 
 ---
 
