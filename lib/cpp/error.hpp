@@ -66,6 +66,17 @@ namespace rt_lib_error {
         auto proto = std::make_shared<rt_basic::ClsProto>(::stdRT.getcls("Object"));
         proto->set_method("::", method_raise_ctor());
         runtime::Prototypes p;
+        // Register the bare name `Raise` (the house convention for C++ backends;
+        // see io.hpp / maths.hpp). `error::Raise` then resolves through the
+        // runtime's normal `ns::Name -> Name` fallback. The silent-collision bug
+        // (a different library's documentation `$Raise` being grabbed by that
+        // fallback) is now prevented in define_class, which skips a library's
+        // `$Name` re-declaration when its qualified `lib::Name` is already
+        // registered by the C++ backend.
+        // 以裸名 `Raise` 登记（C++ 底层登记的家规，参见 io.hpp / maths.hpp）；
+        // `error::Raise` 经运行时的 `ns::Name -> Name` 兜底解析。此前的静默碰撞
+        // 缺陷（另一个库的文档类 `$Raise` 被该兜底误捕）现由 define_class 防范：
+        // 当限定名 `lib::Name` 已由 C++ 底层登记时，跳过库的 `$Name` 重声明。
         p.regcls("Raise", proto);
         ::stdRT.add_protos(p);
     }

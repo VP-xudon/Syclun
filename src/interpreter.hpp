@@ -170,7 +170,7 @@ namespace interp {
     RuntimeObjectPtr exec_flow(Frame& f, AstNodePtr flowNode);
     RuntimeObjectPtr make_closure(AstNodePtr behavior, Frame& f);
     RuntimeObjectPtr instantiate(const std::string& typeName);
-    void define_class(AstNodePtr classdef);
+    void define_class(AstNodePtr classdef, const std::string& libname = "");
     void define_contract(AstNodePtr contractdef);
     void import_library(const std::string& name);
 
@@ -2260,7 +2260,7 @@ namespace interp {
     // it. Parent may be a class (inheritance) or a #Contract (satisfaction).
     // 定义 $Class：构建其原型（成员 + 方法）并登记。父类可为类（继承）
     // 或 #Contract（满足）。
-    inline void define_class(AstNodePtr classdef) {
+    inline void define_class(AstNodePtr classdef, const std::string& libname) {
         std::string className = classdef->value;
 
         // Protect already-registered classes (e.g. native standard libraries
@@ -2268,7 +2268,24 @@ namespace interp {
         // methods, so we keep the first registration.
         // 保护已登记的类（如经 import 上线的原生标准库）。重定义会抹掉其原生
         // 方法，故保留首次登记。
-        if (::stdRT.getcls(className)) {
+        //
+        // A library's Synth-OOP face (.synl) may re-declare a class purely to
+        // document its public shape (e.g. `warning.synl`'s `$Raise`); the real
+        // implementation is the C++ backend, which registers under the qualified
+        // name `lib::Name`. Skip such a re-declaration whenever EITHER the bare
+        // name OR the qualified `lib::Name` is already registered. This is what
+        // keeps the documentation class from clobbering another library's
+        // prototype — and, critically, from being picked up by the unqualified-
+        // name fallback in Runtime::getcls, which would otherwise let
+        // `error::Raise` silently resolve to a different library's empty `$Raise`.
+        // 库的 Synth-OOP 形态（.synl）可能出于文档目的重声明某类（如
+        // `warning.synl` 的 `$Raise`）；其真实实现来自以限定名 `lib::Name`
+        // 登记的 C++ 底层。当裸名或限定名 `lib::Name` 已登记时跳过该重声明。
+        // 这既防止文档类覆盖其它库的原型，也避免它被 Runtime::getcls 的非限定
+        // 名兜底误捕——否则 `error::Raise` 会静默解析到另一个库的空 `$Raise`。
+        if (::stdRT.getcls(className)
+                || (!libname.empty()
+                       && ::stdRT.getcls(libname + "::" + className))) {
             return;
         }
 
@@ -2468,7 +2485,13 @@ namespace interp {
                 // become the program entry point.
                 // 库的 $Program 仅作说明，不得成为程序入口。
                 if (item->value == "Program") continue;
-                define_class(item);
+                // Pass the library name so define_class() can skip a library's
+                // documentation-only `$Name` re-declaration when its qualified
+                // `lib::Name` is already registered by the C++ backend. Without
+                // this, a sibling library's empty `$Raise` (e.g. warning.synl)
+                // would claim the bare `Raise` prototype and silently swallow
+                // `error::Raise(...)` calls when `&error;` was never imported.
+                define_class(item, name);
             } else if (item->kind == "contractdef") {
                 define_contract(item);
             } else if (item->kind == "vardef") {
