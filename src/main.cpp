@@ -86,6 +86,37 @@ static std::string g_repl_exe;
 //   - executable dir / parent / grandparent 可执行文件所在目录及其上两层
 //   - program-file dir / parent            被运行的 .syn 文件所在目录及其上层
 //   - current working directory / parent   当前工作目录及其上层
+
+// Resolve the *true* path of the running executable, independent of how it was
+// invoked (relative path, absolute path, or a bare name resolved through PATH).
+// Trusting argv[0] directly is unreliable: when launched via PATH, argv[0] is
+// just the basename (e.g. "synth"), whose parent_path() is empty, so the install
+// directory's `lib`/`libs` is never found. We ask the OS for the real image
+// path instead. 解析*真正*的可执行文件路径，与启动方式无关（相对路径 / 绝对路径 /
+// 经 PATH 解析出的裸名）。直接使用 argv[0] 不可靠：经 PATH 启动时 argv[0] 仅是裸名
+// （如 "synth"），其 parent_path() 为空，导致安装目录里的 `lib`/`libs` 永远找不到。
+// 这里改向操作系统索取真实的映像路径。
+static std::filesystem::path true_exe_path() {
+#ifdef _WIN32
+    DWORD sz = MAX_PATH;
+    std::wstring buf(sz, L'\0');
+    DWORD n = GetModuleFileNameW(nullptr, &buf[0], sz);
+    while (n >= sz) {            // path longer than the buffer: grow and retry
+        sz *= 2;                 // 路径长于缓冲：扩容后重试
+        buf.assign(sz, L'\0');
+        n = GetModuleFileNameW(nullptr, &buf[0], sz);
+    }
+    if (n == 0) return std::filesystem::path();
+    buf.resize(n);
+    return std::filesystem::path(buf);
+#else
+    char buf[4096] = {0};
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n > 0) return std::filesystem::path(std::string(buf, (size_t)n));
+    return std::filesystem::path();   // non-Linux fallbacks omitted / 非 Linux 回退省略
+#endif
+}
+
 static std::string resolve_lib_dir(int argc, char** argv) {
     // 0) Environment override. / 环境变量覆盖。
     if (argc > 0 && argv[0] && *argv[0]) {
@@ -99,13 +130,26 @@ static std::string resolve_lib_dir(int argc, char** argv) {
 
     // 1) Executable location (dir, parent, grandparent).
     //    可执行文件位置（本目录、父目录、祖父目录）。
-    if (argc > 0 && argv[0] && *argv[0]) {
-        std::filesystem::path exe(argv[0]);
-        auto p = exe.parent_path();
-        if (!p.empty()) {
-            bases.push_back(p);
-            bases.push_back(p.parent_path());
-            bases.push_back(p.parent_path().parent_path());
+    //    Use the *true* executable path (OS-resolved) so a PATH-launched `synth`
+    //    still finds the install dir's `lib`/`libs`. Fall back to argv[0] only if
+    //    the OS call is unavailable. 使用*真正*的可执行路径（由 OS 解析），使经
+    //    PATH 启动的 `synth` 仍能找到安装目录里的 `lib`/`libs`；仅在 OS 调用不可用
+    //    时回退到 argv[0]。
+    {
+        std::filesystem::path exe;
+        auto real = true_exe_path();
+        if (!real.empty()) {
+            exe = real;
+        } else if (argc > 0 && argv[0] && *argv[0]) {
+            exe = std::filesystem::path(argv[0]);
+        }
+        if (!exe.empty()) {
+            auto p = exe.parent_path();
+            if (!p.empty()) {
+                bases.push_back(p);
+                bases.push_back(p.parent_path());
+                bases.push_back(p.parent_path().parent_path());
+            }
         }
     }
 
@@ -282,6 +326,16 @@ static int run_file(const std::string& path, const std::string& lib_dir) {
 // ---------------------------------------------------------------------------
 
 static std::string exe_path(int argc, char** argv) {
+    // Prefer the OS-resolved true path so the REPL child invocation also works
+    // when launched via PATH. 优先使用 OS 解析的真实路径，使经 PATH 启动时 REPL
+    // 派生子进程同样可靠。
+    auto real = true_exe_path();
+    if (!real.empty()) {
+        std::error_code ec;
+        auto p = std::filesystem::canonical(real, ec);
+        if (!ec) return p.string();
+        return real.string();
+    }
     if (argc > 0 && argv[0] && *argv[0]) {
         std::error_code ec;
         auto p = std::filesystem::canonical(argv[0], ec);
