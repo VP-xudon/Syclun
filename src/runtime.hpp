@@ -9,6 +9,7 @@
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
 #include <format>
 
 #include "exception_throw.hpp"
@@ -691,7 +692,14 @@ namespace runtime {
 
     class Runtime {
         Prototypes protos;
-        std::unordered_map<std::string, RuntimeObjectPtr> objs;
+        // Library preset objects, stored DOMAIN-first: `objs[domain][member]`.
+        // A library face declares a preset with a BARE name
+        // (`-(io::OStream! out);`) — the library supplies the domain, and
+        // cross-file access resolves `io::out` by splitting the qualified name
+        // into domain `io` + member `out` at lookup time. The object's name and
+        // its domain are kept separate; an object is never stored with the
+        // domain glued onto its name.
+        std::map<std::string, std::map<std::string, RuntimeObjectPtr>> objs;
 
         public:
         Runtime(){}
@@ -700,15 +708,35 @@ namespace runtime {
         void add_protos(Prototypes _protos) {
             protos += _protos;
         }
+        // Split a qualified name into (domain, member) at the FIRST "::".
+        // A bare name (no "::") has an empty domain (the root scope).
+        static void split_qualified(const std::string &name,
+                                    std::string &domain, std::string &member) {
+            auto pos = name.find("::");
+            if (pos == std::string::npos) {
+                domain.clear();
+                member = name;
+            } else {
+                domain = name.substr(0, pos);
+                member = name.substr(pos + 2);
+            }
+        }
         void defobj(const std::string &name, RuntimeObjectPtr _obj) {
             _obj->give_name(name);
-            objs[name] = _obj;
+            std::string dom, mem;
+            split_qualified(name, dom, mem);
+            objs[dom][mem] = _obj;
         }
         RuntimeObjectPtr getobj(const std::string &name) {
-            if (objs.find(name) == objs.end()) {
+            std::string dom, mem;
+            split_qualified(name, dom, mem);
+            auto d = objs.find(dom);
+            if (d == objs.end()) return nullptr;
+            auto m = d->second.find(mem);
+            if (m == d->second.end()) {
                 return nullptr; // WARN: Throwing Task will give to Interpreter;
             }
-            return objs[name];
+            return m->second;
         }
 
         // Is `prefix` a known set (namespace)? A set is "known" if the runtime
@@ -722,11 +750,11 @@ namespace runtime {
         // / `io::out`，于是 `io` 成为已知集）。解释器据此做分段诊断：未导入的
         // `io::out` 会被报为「未知的集 'io'」，而非模糊的「未定义变量 'io::out'」。
         bool set_exists(const std::string &prefix) {
-            std::string key = prefix + "::";
-            for (auto &kv : objs) {
-                if (kv.first.rfind(key, 0) == 0) return true;
-            }
-            return protos.has_prefix(key);
+            // A domain is "known" if it holds any preset object (importing
+            // `&io;` registers presets under domain `io`), or if the runtime
+            // has registered any prototype under `prefix::`.
+            if (objs.count(prefix)) return true;
+            return protos.has_prefix(prefix + "::");
         }
 
         // Public prototype lookup (used by the interpreter when resolving a

@@ -42,4 +42,4 @@ $Encoding {
 // `encoding::Encoding.base64_encode(data)`、`encoding::Encoding.url_decode(text)`）。
 // `::` 前缀是包定位符，而非名字的一部分。
 // ------------------------------------------------------------
--(encoding::Encoding! encoding::Encoding);
+-(encoding::Encoding! Encoding);

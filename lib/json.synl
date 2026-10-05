@@ -53,4 +53,4 @@ $Json {
 // `json::Json.stringify(value)`、`json::Json.pretty(value)`）。`::` 前缀是包定位符，
 // 而非名字的一部分。
 // ------------------------------------------------------------
--(json::Json! json::Json);
+-(json::Json! Json);

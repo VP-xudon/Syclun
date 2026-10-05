@@ -592,6 +592,16 @@ namespace interp {
     // Name resolution / 名字解析
     // ========================================================
 
+    // The library whose face is currently being interpreted. A preset declared
+    // in `lib/http.synl` belongs to domain `http`; inside that file the object
+    // is reachable as `client`, `::client`, or `self::client`.
+    // 当前正在解释其形态的库：该库顶层声明的预置对象属于其限定域；在该文件内可用
+    // 裸名 / `::名` / `self::名` 访问。
+    inline std::string& current_module() {
+        static std::string m;
+        return m;
+    }
+
     // Resolve a variable name to an object, honoring the scope chain and the
     // behavior mode (a `=>` strict behavior may not read the outer scope).
     // 把变量名解析为对象，遵循作用域链与行为模式
@@ -633,6 +643,45 @@ namespace interp {
                 );
             }
             return (*f.outer)[name];
+        }
+        // ---- Domain-aware resolution for library preset objects ----
+        // 库预置对象的限定域解析：
+        //  - `self::X` / `::X`：当前库的域成员 X（`::X` 是 `self::X` 的简写）；
+        //  - 库形态文件内的裸名 `X`：亦解析为本域成员；
+        //  - 其余 `http::client`：在注册表中按 域 `http` + 成员 `client` 拆分查找。
+        // The name and the domain are separate: a preset is declared with a
+        // bare name and reached through its domain, never stored with the
+        // domain glued on.
+        // 名字与限定域相分离：预置对象以裸名声明，经其限定域触达，绝不把限定域
+        // 粘在名字上存储。
+        std::string lookup = name;
+        bool domain_relative = false;   // self::X / ::X / in-module bare X
+        if (name.rfind("self::", 0) == 0) {
+            lookup = name.substr(6);
+            domain_relative = true;
+        } else if (name.rfind("::", 0) == 0) {
+            lookup = name.substr(2);
+            domain_relative = true;
+        } else if (name.find("::") == std::string::npos
+                   && !current_module().empty()) {
+            lookup = name;
+            domain_relative = true;
+        }
+        if (domain_relative) {
+            if (current_module().empty()) {
+                interp_error(
+                    "InterException",
+                    "'" + name + "' names the current library's namespace, but "
+                        "no library face is being interpreted here"
+                );
+            }
+            auto q = ::stdRT.getobj(current_module() + "::" + lookup);
+            if (q) return q;
+            interp_error(
+                "InterException",
+                "undefined variable '" + name + "' in library '"
+                    + current_module() + "'"
+            );
         }
         auto global = ::stdRT.getobj(name);
         if (global) {
@@ -742,20 +791,19 @@ namespace interp {
     }
 
     // Create the top-level object instances written in a library face
-    // (.synl), e.g. `-(io::OStream! io::out);` in lib/io.synl. The object's
-    // name is its full qualified name `io::out`, exactly as written: the
-    // leading `io` says which library's runtime space the object lives in,
-    // and the registry (`stdRT.defobj`) is keyed by that whole name — so a
-    // program reaches the object through the ordinary name resolution
-    // (`io::out`), the same single path every name takes. Nothing is split
-    // or special-cased at access time.
+    // (.synl), e.g. `-(io::OStream! out);` in lib/io.synl. The object is
+    // declared with a BARE name — `out` is the name, and the library (`io`)
+    // supplies the domain. The runtime stores it DOMAIN-first
+    // (`objs["io"]["out"]`), so a program reaches it as `io::out` by splitting
+    // the qualified name at lookup time; inside the defining library the bare
+    // name (or `::out` / `self::out`) also resolves. The name and the domain
+    // are separate — an object is never stored with the domain glued onto it.
     // 创建库形态（.synl）顶层的对象实例，如 lib/io.synl 中的
-    // `-(io::OStream! io::out);`。对象的名字就是书写出的全限定名
-    // `io::out`：前导的 `io` 表明该对象居于哪个库的运行空间，而注册表
-    //（`stdRT.defobj`）以整个名字为键——程序经由普通的名字解析
-    //（`io::out`）触达对象，与一切名字走的是同一条路径。访问期不做任何
-    // 拆分，也没有任何特判。
-    inline void define_global_vardef(AstNodePtr node) {
+    // `-(io::OStream! out);`——`out` 是名字，库（`io`）提供限定域。运行期按域
+    // 优先存储（`objs["io"]["out"]`），故程序经 `io::out` 访问——查找时拆分限定名；
+    // 定义库内部亦可用裸名（或 `::out` / `self::out`）解析。名字与限定域相分离，
+    // 绝不把限定域粘在名字上存储。
+    inline void define_global_vardef(AstNodePtr node, const std::string& libname) {
         // Same shape as exec_vardef: decl kids + an optional initializer.
         // 与 exec_vardef 同构：decl 子节点 + 可选初始化器。
         std::vector<AstNodePtr> decls;
@@ -772,24 +820,24 @@ namespace interp {
                     "a library-level object instance must be named"
                 );
             }
-            // A library object must be named inside its library's namespace:
-            // the name carries the library prefix (`io::out`), because an
-            // object — like a class — belongs to its library's runtime
-            // space, not to the program's bare scope.
-            // 库对象必须以其库的命名空间为名：名字带库前缀（`io::out`），
-            // 因为对象与类一样居于库的运行空间，而非程序的裸作用域。
-            if (d->name.find("::") == std::string::npos) {
+            // The declared name must be BARE: the domain is the library
+            // itself, supplied here — it is not glued onto the name by the
+            // author. `-(io::OStream! out);` declares `out` in domain `io`.
+            // 声明的名字必须为裸名：限定域即库本身（由此提供），不由作者拼接到名字上。
+            // `-(io::OStream! out);` 在域 `io` 中声明 `out`。
+            if (d->name.find("::") != std::string::npos) {
                 interp_error(
                     "InterException",
-                    "a library-level object must be named inside its "
-                        "library namespace, e.g. '-(io::OStream! io::out);' "
-                        "(got '" + d->name + "')"
+                    "a library-level object must be declared with a bare name; "
+                        "its library supplies the domain, e.g. "
+                        "'-(io::OStream! out);' (got '" + d->name + "')"
                 );
             }
-            if (::stdRT.getobj(d->name)) {
+            std::string qname = libname + "::" + d->name;
+            if (::stdRT.getobj(qname)) {
                 interp_error(
                     "InterException",
-                    "global object '" + d->name + "' is already defined"
+                    "global object '" + qname + "' is already defined"
                 );
             }
             auto obj = ::stdRT.make(d->value);
@@ -799,7 +847,7 @@ namespace interp {
                     "Cannot instantiate unknown type '" + d->value + "'."
                 );
             }
-            obj->give_name(d->name);
+            obj->give_name(qname);
             if (!d->kids.empty()) call_constructor(gf, obj, d->kids[0]);
             if (init) {
                 auto v = eval_expr(gf, init);
@@ -820,8 +868,8 @@ namespace interp {
             //     （`io::out:@new[...]`、`io::out:-(T v) << ...`）以
             //     ConstException 被拒。未冻结的预置曾静默接受成员注入，
             //     与其 '!' 自相矛盾。
-            ::stdRT.defobj(d->name, obj);
-            const_globals().insert(d->name);
+            ::stdRT.defobj(qname, obj);
+            const_globals().insert(qname);
             if (d->isConst) {
                 // Freeze the object itself so runtime injection is rejected
                 // (mirrors the '!' marker). Library objects are always class
@@ -2479,6 +2527,12 @@ namespace interp {
         ss << fin.rdbuf();
         parser::Parser par(ss.str());
         AstNodePtr lib = par.parse_program();
+        // While this library's face is being interpreted, its own top-level
+        // code resolves preset objects as bare `name` / `::name` / `self::name`
+        // within this library's domain.
+        // 解释本库形态期间，其顶层代码以裸名 / `::名` / `self::名` 在本库域内解析。
+        std::string saved_module = current_module();
+        current_module() = name;
         for (auto& item : lib->kids) {
             if (item->kind == "classdef") {
                 // A library's $Program is documentation only and must not
@@ -2500,11 +2554,12 @@ namespace interp {
                 // the whole run — io's `out` / `in`, for example.
                 // v1.30：库级对象实例。.synl 可创建随导入而来的成品对象，
                 // 并贯穿整个运行期——例如 io 的 out / in。
-                define_global_vardef(item);
+                define_global_vardef(item, name);
             }
             // Nested import nodes inside a library are ignored (flat layout).
             // 库内嵌套的 import 节点忽略（库为扁平布局）。
         }
+        current_module() = saved_module;
     }
 
     // ========================================================

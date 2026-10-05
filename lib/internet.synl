@@ -42,4 +42,4 @@ $Network {
 // Preset instance, arriving with the import (const global).
 // 随导入到来的预置实例（常数全局）。
 // 标准库工业化评估：L3 准工业级（正确、可测、文档齐、跨平台；wifi/蜂窝主动管理待补）。
--(internet::Network! internet::net);
+-(internet::Network! net);

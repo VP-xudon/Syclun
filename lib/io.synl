@@ -108,6 +108,6 @@ $ErrStream {
 // 程序找到本库运行空间的路径，对象与类一样居于其中。两者均为常数绑定
 //（名字永远指向同一对象）；其 `:=` / `=:` 行为不修改对象自身。
 // ------------------------------------------------------------
--(io::OStream! io::out);
--(io::IStream! io::in);
--(io::ErrStream! io::err);
+-(io::OStream! out);
+-(io::IStream! in);
+-(io::ErrStream! err);
