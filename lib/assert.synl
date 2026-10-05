@@ -40,7 +40,7 @@
 $Checker {
     @has_method[(target[std::Object], name[std::String]) ~> (result[std::Boolean]) { }];
     @has_changed[(target[std::Object]) ~> (result[std::Boolean]) { }];
-}
+};
 
 $Assert {
     @equal[(actual[std::Object], expected[std::Object]) ~> (result[std::Boolean]) { }];
@@ -56,7 +56,7 @@ $Assert {
     @run[(suite[assert::Suite]) ~> (results[std::Array]) { }];
     @tap[(suite[assert::Suite]) ~> (text[std::String]) { }];
     @json[(suite[assert::Suite]) ~> (text[std::String]) { }];
-}
+};
 
 $Suite {
     @suite[(name[std::String]) ~> (suite[assert::Suite]) { }];
@@ -64,4 +64,4 @@ $Suite {
     @run[(suite[assert::Suite]) ~> (results[std::Array]) { }];
     @tap[(suite[assert::Suite]) ~> (text[std::String]) { }];
     @json[(suite[assert::Suite]) ~> (text[std::String]) { }];
-}
+};

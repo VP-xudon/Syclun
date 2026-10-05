@@ -39,4 +39,4 @@ $Infix {
     // Reclaim the expression-state registry entry immediately.
     // 立即回收表达式状态注册表条目。
     @dispose[() ~> () { }];
-}
+};

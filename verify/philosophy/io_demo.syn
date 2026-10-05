@@ -18,4 +18,4 @@ $Program {
         // method style WITH newline / 方法风格，自带换行
         out.push_line(" | push_line: done");
     }];
-}
+};

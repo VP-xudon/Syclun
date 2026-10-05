@@ -56,7 +56,7 @@ $OStream {
 
     // Write raw bytes without encoding conversion. / 写原始字节，不做编码转换。
     @write_bytes[(data[std::String]) ~> () { }];
-}
+};
 
 $IStream {
     // Publish (read) one whitespace-delimited word from standard input as a
@@ -79,7 +79,7 @@ $IStream {
 
     // Read up to n bytes. / 读取至多 n 字节。
     @read[(n[std::Number]) ~> (text[std::String]) { }];
-}
+};
 
 // ErrStream — every method writes to stderr (mirror of OStream).
 // ErrStream —— 所有方法均写向 stderr（OStream 的镜像）。
@@ -91,7 +91,7 @@ $ErrStream {
     @flush[() ~> () { }];
     @format[(fmt[std::String], args[std::Array]) ~> () { }];
     @write_bytes[(data[std::String]) ~> () { }];
-}
+};
 
 // ------------------------------------------------------------
 // v1.30 preset objects / v1.30 预置对象

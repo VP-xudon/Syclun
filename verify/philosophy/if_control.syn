@@ -10,4 +10,4 @@ $Program {
             .else([{ result << b; }]);
         io::out.push_line(result);
     }];
-}
+};

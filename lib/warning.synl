@@ -34,4 +34,4 @@ $Raise {
     // 而非致命状况。
     @::[(code[std::String], message[std::String]) ~> () { }];
     // Queryable fields / 可查询字段：code[std::String], message[std::String]
-}
+};

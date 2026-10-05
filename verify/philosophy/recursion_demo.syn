@@ -20,4 +20,4 @@ $Program {
     @count[(n[std::Number]) -> (r[std::Number]) {
         r << self.count((n .+(1)));
     }];
-}
+};

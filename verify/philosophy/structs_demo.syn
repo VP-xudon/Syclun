@@ -60,4 +60,4 @@ $Program {
         out << "graph neighbors of 2: "; out << g.neighbors(-(std::Number n) << 2);  // [1,3]
         out << "graph shortest 1->4: "; out << g.shortest_path(-(std::Number n) << 1, -(std::Number n) << 4);  // [1,2,3,4]
     }];
-}
+};

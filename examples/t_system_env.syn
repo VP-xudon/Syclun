@@ -25,4 +25,4 @@ $Program {
         io::out.push_line("supports(nope)=");
         io::out.push_line(s.supports("nope"));
     }];
-}
+};

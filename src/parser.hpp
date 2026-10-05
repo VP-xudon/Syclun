@@ -380,6 +380,7 @@ namespace parser {
                 }
             }
             expect_symbol("}", "class body closing brace '}'");
+            expect_symbol(";", "statement terminator ';' after the class body");
             node->kids.push_back(body);
             return node;
         }
@@ -414,6 +415,7 @@ namespace parser {
                 }
             }
             expect_symbol("}", "contract body closing brace '}'");
+            expect_symbol(";", "statement terminator ';' after the contract body");
             node->kids.push_back(body);
             return node;
         }
@@ -1553,12 +1555,14 @@ namespace parser {
                          "(#name {...}), and — in library (.synl) files only "
                          "— object instances (-(Type name);).");
                 }
-                // A top-level definition is a statement and may be terminated
-                // by a semicolon. Tolerate an optional (possibly repeated) `;`
-                // so `};` / `&m; $C {...};` parse exactly like `}` / `&m; $C {...}`.
-                // 顶层定义是语句，可有分号结尾。容忍可选（乃至连续多个）的 `;`，
-                // 使 `};`、`&m; $C {...};` 与无分号写法等价可解析。
-                while (at("<symbol>", ";")) advance();
+                // Every top-level statement (import / class / contract / object
+                // instance) consumes exactly its own terminating `;` in its own
+                // parse routine, so there is no optional-semicolon tolerance
+                // here any more: `$C {...}` without a `;` is a syntax error, and
+                // a stray extra `;` at the top level is likewise rejected by the
+                // branch above. 顶层每条语句（导入 / 类 / 约束 / 对象实例）都在各自
+                // 的解析例程中消费掉恰好一个结尾 `;`，故此处不再容忍可选分号：
+                // `$C {...}` 缺 `;` 即语法错误，顶层多余的 `;` 同样被上面的分支拒绝。
             }
             return root;
         }

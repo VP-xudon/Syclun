@@ -62,4 +62,4 @@ $Program {
     @squared[(x[std::Number]) -> (answer[std::Number]) {
         answer << (x .*(x));
     }];
-}
+};

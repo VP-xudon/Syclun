@@ -6,4 +6,4 @@ $Program {
         error::Raise("ERROR", "something went wrong.");
         io::out << "this line must NOT print\n";
     }];
-}
+};

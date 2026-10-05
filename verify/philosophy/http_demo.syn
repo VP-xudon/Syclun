@@ -28,4 +28,4 @@ $Program {
         -(http::Response q) << http::client.request("GET", "http://127.0.0.1:8000/", hdr, "");
         out << " request status: "; out << q.status();
     }];
-}
+};

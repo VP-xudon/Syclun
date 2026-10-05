@@ -31,7 +31,7 @@ $Reactor {
     @await_all[(tasks[std::Array]) ~> (results[std::Tuple]) { }];
     @race[(tasks[std::Array]) ~> (result[std::Tuple]) { }];
     @all_settled[(tasks[std::Array]) ~> (results[std::Tuple]) { }];
-}
+};
 
 $Task {
     @await[(timeout[std::Number]) ~> (result[std::Tuple]) { }];
@@ -44,9 +44,9 @@ $Task {
     // Reclaim the task registry entry immediately (cancels a running thread).
     // 立即回收任务注册表条目（会取消仍在运行的线程）。
     @dispose[() ~> () { }];
-}
+};
 
 $Error {
     @message[() ~> (text[std::String]) { }];
     @kind[() ~> (text[std::String]) { }];
-}
+};

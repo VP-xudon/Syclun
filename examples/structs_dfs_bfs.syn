@@ -34,4 +34,4 @@ $Program {
         }]);
     g.dispose();
   }];
-}
+};

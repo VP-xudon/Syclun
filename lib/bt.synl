@@ -29,7 +29,7 @@ $Bluetooth {
     @disconnect[(address[std::String]) ~> (out[std::Boolean]) { }];
     // Whether the Bluetooth radio is powered on. / 蓝牙无线电是否开启。
     @enabled[() ~> (out[std::Boolean]) { }];
-}
+};
 
 // Preset instance, arriving with the import (const global).
 // 随导入到来的预置实例（常数全局）。

@@ -35,7 +35,7 @@ $Queue {
     // Reclaim the native queue state immediately (otherwise it lingers until
     // the object is collected). / 立即回收原生队列状态（否则滞留至对象被回收）。
     @dispose[() ~> () { }];
-}
+};
 
 $Stack {
     @push[(item[std::Object]) ~> () { }];
@@ -50,7 +50,7 @@ $Stack {
     @to_string[() ~> (s[std::String]) { }];
     // Reclaim the native stack state immediately. / 立即回收原生栈状态。
     @dispose[() ~> () { }];
-}
+};
 
 $Tree {
     @insert[(value[std::Number]) ~> () { }];
@@ -72,7 +72,7 @@ $Tree {
     @clear[() ~> () { }];
     // Reclaim the native tree state immediately. / 立即回收原生树状态。
     @dispose[() ~> () { }];
-}
+};
 
 $Map {
     @put[(key[std::Object], value[std::Object]) ~> () { }];
@@ -97,7 +97,7 @@ $Map {
     @clear[() ~> () { }];
     // Reclaim the native map state immediately. / 立即回收原生映射状态。
     @dispose[() ~> () { }];
-}
+};
 
 $Graph {
     @add_node[(id[std::Object]) ~> () { }];
@@ -138,4 +138,4 @@ $Graph {
     @tree_diameter[() ~> (arr[std::Array]) { }];
     // Reclaim the native graph state immediately. / 立即回收原生图状态。
     @dispose[() ~> () { }];
-}
+};

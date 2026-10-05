@@ -6,4 +6,4 @@ $Program {
         warning::Raise("DEPRECATED", "this feature will be removed.");
         io::out << "OK after warning\n";
     }];
-}
+};

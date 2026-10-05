@@ -57,4 +57,4 @@ $Program {
             -(std::Number n) << 30);
         out << "slow status: "; out << to.get(0);                        // "timeout"
     }];
-}
+};

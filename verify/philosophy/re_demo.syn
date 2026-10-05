@@ -28,4 +28,4 @@ $Program {
         out << "split by comma: ";
         out << r.split(-(std::String pat) << ",", -(std::String txt) << "x,y,z");
     }];
-}
+};

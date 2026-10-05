@@ -13,7 +13,7 @@ $Program {
         io::out.push_line(c.get());              // → 3
         io::out.push_line(c.describe());         // → Counter(value=3)
     }];
-}
+};
 
 $Counter {
     -(std::Number value);
@@ -38,4 +38,4 @@ $Counter {
     @describe[() ~> (text[std::String]) {
         text << "Counter(value=".+(value.to_string()).+(")");
     }];
-}
+};

@@ -11,4 +11,4 @@ $Program {
         s.wait(50);
         out << " after wait(50ms)";
     }];
-}
+};

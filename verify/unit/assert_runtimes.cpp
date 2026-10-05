@@ -567,7 +567,7 @@ namespace {
             "    std::repeat(std::Number(5)).then([{ n << n.+(std::Number(1)); }]);\n"
             "    io::out.push_line(n);\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "5"),
             "std::repeat(5) body runs 5 times -> 5");
 
@@ -583,7 +583,7 @@ namespace {
             "      .else([{ r << std::Number(2); }]);\n"
             "    io::out.push_line(r);\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "1"),
             "std::if(true) takes the then branch -> 1");
 
@@ -597,7 +597,7 @@ namespace {
             "      .else([{ r << std::Number(2); }]);\n"
             "    io::out.push_line(r);\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "2"),
             "std::if(false) takes the else branch -> 2");
 
@@ -612,7 +612,7 @@ namespace {
             "      .then([{ i << i.+(std::Number(1)); }]);\n"
             "    io::out.push_line(i);\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "3"),
             "std::while loops until condition false -> 3");
     }
@@ -747,12 +747,12 @@ namespace {
             "    -(io::OStream out);\n"
             "    out << c.get();\n"
             "  }];\n"
-            "}\n"
+            "};\n"
             "$Counter {\n"
             "  -(std::Number value);\n"
             "  @get[() ~> (result) { result << value; }];\n"
             "  @inc[() -> () { value << value.+(1); }];\n"
-            "}\n",
+            "};\n",
             "4"),
             "method rebind via re-injection 'c:@inc[...]' changes behavior (prints 4)");
 
@@ -769,12 +769,12 @@ namespace {
             "    -(io::OStream out);\n"
             "    out << c.get();\n"
             "  }];\n"
-            "}\n"
+            "};\n"
             "$Counter {\n"
             "  -(std::Number value);\n"
             "  @get[() ~> (result) { result << value; }];\n"
             "  @inc[() -> () { value << value.+(1); }];\n"
-            "}\n",
+            "};\n",
             "7"),
             "re-injection 'c:@inc[...]' on an existing method rebinds (prints 7)");
 
@@ -787,11 +787,11 @@ namespace {
             "    -(Consty c);\n"
             "    c:@inc[()->() { value << value.+(1); }];\n"
             "  }];\n"
-            "}\n"
+            "};\n"
             "$Consty {\n"
             "  -(std::Number value);\n"
             "  @!inc[() -> () { value << value.+(1); }];\n"
-            "}\n",
+            "};\n",
             "ConstException"),
             "rebinding a const method (@!inc) raises ConstException");
 
@@ -813,11 +813,11 @@ namespace {
             "    out << chk.has_changed(c);\n"
             "    out << \";\";\n"
             "  }];\n"
-            "}\n"
+            "};\n"
             "$Counter {\n"
             "  -(std::Number value);\n"
             "  @inc[() -> () { value << value.+(1); }];\n"
-            "}\n",
+            "};\n",
             "true;false;true;"),
             "Checker.has_method true; has_changed false before, true after rebind");
     }
@@ -848,7 +848,7 @@ namespace {
             "    std::repeat(std::Number(5)).then([{ n << n.+(std::Number(1)); }]);\n"
             "    out << n;\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "5"),
             "std::repeat accumulates via a captured closure; the accumulator keeps its scalar type (prints 5)");
 
@@ -863,7 +863,7 @@ namespace {
             "    out << x.+(1);\n"
             "    out << 1.+(x);\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "11"),
             "universal receiver delegates to held scalar (x.+(1) and 1.+(x) = 11)");
 
@@ -878,10 +878,10 @@ namespace {
             "    -(Box b);\n"
             "    out << b.inner;\n"
             "  }];\n"
-            "}\n"
+            "};\n"
             "$Box {\n"
             "  -(std::Number(7) inner);\n"
-            "}\n",
+            "};\n",
             "7"),
             "class member initializer `-(std::Number(7) inner)` sets inner to 7");
 
@@ -899,7 +899,7 @@ namespace {
             "      .then([{ m << m.+(std::Number(1)); }]);\n"
             "    out << m;\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "4"),
             "std::while threads its loop state, keeps its type, and compares via the delegated `<` (m=4)");
 
@@ -918,7 +918,7 @@ namespace {
             "    }]);\n"
             "    out << total;\n"
             "  }];\n"
-            "}\n",
+            "};\n",
             "3"),
             "nested std::repeat with closure capture accumulates correctly (3)");
 
@@ -934,12 +934,12 @@ namespace {
             "    out << b.peek();\n"
             "    b.touch();\n"
             "  }];\n"
-            "}\n"
+            "};\n"
             "$Box {\n"
             "  -(std::Number(7) inner);\n"
             "  @peek[() ~> (result) { result << self.inner; }];\n"
             "  @touch[() -> () {}];\n"
-            "}\n",
+            "};\n",
             "7"),
             "self keyword + empty method `@touch;` work (peek = 7)");
     }
@@ -2094,7 +2094,7 @@ namespace {
         check(expect_clean_run(
                   "$Addable {\n"
                   "  @add[(oth[std::Number])->(res[std::Number]){}];\n"
-                  "}\n"
+                  "};\n"
                   "$Program {\n"
                   "  @::[{\n"
                   "    -(obj);\n"
@@ -2111,7 +2111,7 @@ namespace {
         check(expect_runtime_error(
                   "$Addable {\n"
                   "  @add[(oth[std::Number])->(res[std::Number]){}];\n"
-                  "}\n"
+                  "};\n"
                   "$Program {\n"
                   "  @::[{ self.check_cs(1); }];\n"
                   "  @check_cs[(objs[Addable])->() { }];\n"

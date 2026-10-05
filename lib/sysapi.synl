@@ -44,4 +44,4 @@ $SysAPI {
     // current platform) without calling it.
     // 在不调用的前提下报告某 API 名是否已注册（即当前平台是否可用）。
     @supports[(api[std::String]) ~> (ok[std::Boolean]) { }];
-}
+};

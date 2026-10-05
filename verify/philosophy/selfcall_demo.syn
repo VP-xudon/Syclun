@@ -33,4 +33,4 @@ $Program {
     @greet[() -> (msg[std::String]) {
         msg << "hello from self";
     }];
-}
+};

@@ -35,7 +35,7 @@ $Re {
     @replace_fn[(pattern[std::String], text[std::String], callback[behavior], flags[std::String]) ~> (out[std::String]) { }];
     @split[(pattern[std::String], text[std::String], flags[std::String]) ~> (arr[std::Array]) { }];
     @test[(pattern[std::String], text[std::String], flags[std::String]) ~> (ok[std::Boolean]) { }];
-}
+};
 
 $Pattern {
     // Match against an already-compiled pattern.
@@ -49,7 +49,7 @@ $Pattern {
     @test[(text[std::String]) ~> (ok[std::Boolean]) { }];
     // Reclaim the compiled pattern state immediately. / 立即回收已编译模式状态。
     @dispose[() ~> () { }];
-}
+};
 
 $Match {
     // matched: Boolean, text: String, groups: Array of String,
@@ -57,7 +57,7 @@ $Match {
     // char_start/char_end: Number (UTF-8 code-point offsets, parallel to start/end).
     // matched：Boolean，text：String，groups：String 数组，
     // start/end：Number（字节偏移），char_start/char_end：Number（UTF-8 码点偏移，与 start/end 平行）。
-}
+};
 
 // ------------------------------------------------------------
 // v1.30 preset object / v1.30 预置对象

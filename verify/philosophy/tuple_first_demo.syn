@@ -23,4 +23,4 @@ $Program {
         -(std::Number asz) << arr.size();
         out << " array from tuple size = "; out << asz;
     }];
-}
+};

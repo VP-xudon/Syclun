@@ -35,4 +35,4 @@ $Program {
         // Freeze: one-way. 冻结：单向。
         box.#();
     }];
-}
+};

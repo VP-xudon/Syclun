@@ -52,4 +52,4 @@ $Program {
         out << "re.compile(123)      => ";
         out << r.compile(-(std::Number n) << 123);
     }];
-}
+};

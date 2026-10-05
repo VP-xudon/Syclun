@@ -47,4 +47,4 @@ $Program {
         out << (5 .<(Infinity));
         out << "\n";
     }];
-}
+};

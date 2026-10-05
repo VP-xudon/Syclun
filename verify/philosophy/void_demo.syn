@@ -17,7 +17,7 @@ $SideEffectDemo {
         -(io::OStream out);
         out << "void-only method ran for its side effect";
     }];
-}
+};
 
 $Program {
     @::[() -> () {
@@ -31,4 +31,4 @@ $Program {
         d.nothing();
         out << " after a void-only method";
     }];
-}
+};

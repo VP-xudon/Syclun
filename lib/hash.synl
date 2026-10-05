@@ -37,4 +37,4 @@ $Hash {
     @uuid_v4[() ~> (id[std::String]) { }];
     @random_bytes[(n[std::Number]) ~> (bytes[std::String]) { }];
     @hash_stream[(path[std::String]) ~> (digest[std::String]) { }];
-}
+};

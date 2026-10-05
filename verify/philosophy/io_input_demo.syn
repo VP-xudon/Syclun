@@ -13,4 +13,4 @@ $Program {
         out.push("You typed: ");
         out.push_line(name);
     }];
-}
+};

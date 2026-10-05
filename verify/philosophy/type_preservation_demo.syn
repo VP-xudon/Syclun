@@ -95,20 +95,20 @@ $Program {
         -(Pair pr); pr.a << 3; pr.b << 7;
         out << "17. pr.get_second() = "; out << pr.get_second(); out << "\n"; // 7
     }];
-}
+};
 
 $Counter {
     -(std::Number value);
     @get[() ~> (result) { result << value; }];
     @inc[() -> () { value << value.+(1); }];
-}
+};
 
 $Box {
     -(std::Number(7) inner);
     @twice[() -> (result) { result << self.inner.+(self.inner); }];
     @peek[() ~> (result) { result << self.inner; }];   // self access
     @touch[() -> () {}];                            // empty method body
-}
+};
 
 // A tiny pair with a `get_second` accessor, used by test 17.
 // 带 get_second 访问器的小类，供测试 17 使用。
@@ -116,4 +116,4 @@ $Pair {
     -(std::Number a);
     -(std::Number b);
     @get_second[() ~> (result) { result << b; }];
-}
+};

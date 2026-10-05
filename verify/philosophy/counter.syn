@@ -7,7 +7,7 @@ $Program {
         -(io::OStream out);
         out << c.get();
     }];
-}
+};
 
 $Counter {
     -(std::Number value);
@@ -17,4 +17,4 @@ $Counter {
     @inc[() -> () {
         value << value.+(1);
     }];
-}
+};

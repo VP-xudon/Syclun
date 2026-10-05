@@ -24,4 +24,4 @@ $Program {
         -(std::Number one) << 1;
         io::out.push_line(one./(zero));          // → Infinity
     }];
-}
+};

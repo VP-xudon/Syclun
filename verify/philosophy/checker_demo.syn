@@ -35,7 +35,7 @@ $Program {
         out << chk.has_changed(c);
         out << "\n";
     }];
-}
+};
 
 $Counter {
     -(std::Number value);
@@ -45,4 +45,4 @@ $Counter {
     @inc[() -> () {
         value << value.+(1);
     }];
-}
+};

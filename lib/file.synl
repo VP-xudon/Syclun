@@ -88,7 +88,7 @@ $File {
     // write_atomic: temp file + rename, so a crash leaves the original intact.
     // write_atomic：临时文件 + rename，崩溃时不损坏原文件。
     @write_atomic[(text[std::String]) ~> (ok[std::Boolean]) { }];
-}
+};
 
 // ------------------------------------------------------------
 // Preset object / 预置对象

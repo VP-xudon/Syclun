@@ -8,4 +8,4 @@ $Program {
         -(io::OStream out);
         out << f.read();
     }];
-}
+};

@@ -5,4 +5,4 @@ $Program {
         -(io::OStream out);
         out << num;
     }];
-}
+};

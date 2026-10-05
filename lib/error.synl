@@ -31,4 +31,4 @@ $Raise {
     // 它永不返回，故这实际上是单行 raise 语句。把 `error::Raise(...)`
     // 作为裸语句书写即预期用法。
     @::[(code[std::String], message[std::String]) ~> () { }];
-}
+};

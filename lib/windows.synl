@@ -61,7 +61,7 @@ $Screen {
     @mainloop[() ~> () { }];
     // Destroy the window (ends mainloop). / 销毁窗口（结束 mainloop）。
     @close[() ~> () { }];
-}
+};
 
 // 标准库工业化评估：L3 准工业级（正确、可测、文档齐、真正跨平台；
 // Win32 GDI / X11 / Cocoa 三套原生实现，详尽功能见《Syclun 标准库参考》）。

@@ -26,7 +26,7 @@ $Encoding {
     @unhex[(text[std::String]) ~> (data[std::String]) { }];
     @url_encode[(text[std::String]) ~> (text[std::String]) { }];
     @url_decode[(text[std::String]) ~> (text[std::String]) { }];
-}
+};
 
 // ------------------------------------------------------------
 // v1.30 preset object / v1.30 预置对象

@@ -32,4 +32,4 @@ $Program {
         -(std::Number r4) << e3.parse();
         out << "-(3+4) * 2 = "; out << r4;                // -14
     }];
-}
+};

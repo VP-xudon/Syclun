@@ -65,7 +65,7 @@ $Maths {
     @lcm[(a[std::Number], b[std::Number]) ~> (r[std::Number]) { }];
     @factorial[(n[std::Number]) ~> (r[std::Number]) { }];
     @comb[(n[std::Number], k[std::Number]) ~> (r[std::Number]) { }];
-}
+};
 
 // ------------------------------------------------------------
 // v1.30 preset object / v1.30 预置对象

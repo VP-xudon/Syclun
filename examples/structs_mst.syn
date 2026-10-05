@@ -28,4 +28,4 @@ $Program {
 
     g.dispose();
   }];
-}
+};

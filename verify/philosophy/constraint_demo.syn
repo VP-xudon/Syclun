@@ -47,7 +47,7 @@ $Program {
         -(std::Number r) << tool.add(2, 3);
         out << "tool.add(2,3) = "; out << r; out << "\n";
     }];
-}
+};
 
 // Negative counterpart (exits with ConstraintException):
 // 负向对应（以 ConstraintException 退出）：

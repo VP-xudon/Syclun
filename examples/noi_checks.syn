@@ -78,4 +78,4 @@ $Program {
       .then([{ io::out.push_line("   PASS"); }])
       .else([{ io::out.push_line("   FAIL"); }]);
   }];
-}
+};

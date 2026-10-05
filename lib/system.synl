@@ -57,4 +57,4 @@ $System {
     @os_version[() ~> (ver[std::String]) { }];
     @env_has[(name[std::String]) ~> (ok[std::Boolean]) { }];
     @supports[(capability[std::String]) ~> (ok[std::Boolean]) { }];
-}
+};

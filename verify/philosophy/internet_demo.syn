@@ -33,4 +33,4 @@ $Program {
         -(std::Array ports) << internet::net.scan_ports("127.0.0.1", 8000, 8005);
         out << " scan_ports(8000..8005): "; out << ports.size(); out << " open\n";
     }];
-}
+};

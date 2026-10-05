@@ -30,4 +30,4 @@ $Program {
 
         w.mainloop();
     }];
-}
+};

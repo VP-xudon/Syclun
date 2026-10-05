@@ -84,4 +84,4 @@ $Program {
     io::out.push_line(("玩家0 HP = ").+(hp0.to_string()));
     io::out.push_line(("玩家1 HP = ").+(hp1.to_string()));
   }];
-}
+};

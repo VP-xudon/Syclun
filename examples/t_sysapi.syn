@@ -17,4 +17,4 @@ $Program {
         r << api.call("sleep", p);
         io::out.push_line(r);   // -> {ok: true}
     }];
-}
+};

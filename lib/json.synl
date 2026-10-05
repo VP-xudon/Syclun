@@ -37,7 +37,7 @@ $Json {
     @parse[(text[std::String]) ~> (value[std::Object]) { }];
     @stringify[(value[std::Object]) ~> (text[std::String]) { }];
     @pretty[(value[std::Object]) ~> (text[std::String]) { }];
-}
+};
 
 // ------------------------------------------------------------
 // v1.30 preset object / v1.30 预置对象

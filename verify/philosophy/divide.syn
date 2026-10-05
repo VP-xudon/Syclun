@@ -7,11 +7,11 @@ $Program {
         out << q;
         out << r;
     }];
-}
+};
 
 $Math {
     @divide[(a, b) -> (q, r) {
         q << a./(b);
         r << a.%(b);
     }];
-}
+};
