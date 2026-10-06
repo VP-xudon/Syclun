@@ -11,8 +11,8 @@
 // 协商鸭子式流入实例（与 `x << v` 同通路），因此每个现有类都自动拥有可用的
 // 构造器：std::Number(5) 令其值成 5、std::String("hello") 令其值成 "hello"、
 // std::Array((1,2,3)) 用元组填满数组。类也可自定 `@::(args) -> ()` 构造。
-// Own methods MUST be called via `self.NAME(...)`.
-// 自身方法必须用 `self.NAME(...)` 调用。
+// Own methods are called as a bare `NAME(...)` (dispatch to the current instance).
+// 自身方法以裸 `NAME(...)` 调用（派发到当前实例）。
 // Member data is accessed by its bare name; `self.name` also works.
 // 成员数据用裸名访问；`self.name` 亦可。
 $Program {
@@ -44,8 +44,8 @@ $Program {
         out << (arr.size());
         out << ")\n";
 
-        out << "self.squared(6) = ";
-        out << self.squared(6);
+        out << "squared(6) = ";
+        out << squared(6);
         out << "\n";
 
         // member data: bare name AND self. both reach the same attribute

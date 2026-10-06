@@ -1826,7 +1826,7 @@ namespace {
             "&io;\n"
             "$Program {\n"
             "  @f[(std::Number! x) -> () { x << 1; }];\n"
-            "  @::[() -> () { self.f(0); }];\n"
+            "  @::[() -> () { f(0); }];\n"
             "};\n",
             "ConstException"),
             "const parameter: writing 'x << 1' inside the body is rejected");
@@ -1834,7 +1834,7 @@ namespace {
             "&io;\n"
             "$Program {\n"
             "  @f[(std::Number x) -> () { x << 1; }];\n"
-            "  @::[() -> () { self.f(0); }];\n"
+            "  @::[() -> () { f(0); }];\n"
             "};\n"),
             "non-const parameter: writing it stays legal (no over-blocking)");
     }
@@ -2101,7 +2101,7 @@ namespace {
                   "    obj:@add[(oth[std::Number])->(res[std::Number]) {\n"
                   "      res << oth;\n"
                   "    }];\n"
-                  "    self.check_cs(obj);\n"
+                  "    check_cs(obj);\n"
                   "  }];\n"
                   "  @check_cs[(objs[Addable])->() { }];\n"
                   "};\n"),
@@ -2113,7 +2113,7 @@ namespace {
                   "  @add[(oth[std::Number])->(res[std::Number]){}];\n"
                   "};\n"
                   "$Program {\n"
-                  "  @::[{ self.check_cs(1); }];\n"
+                  "  @::[{ check_cs(1); }];\n"
                   "  @check_cs[(objs[Addable])->() { }];\n"
                   "};\n",
                   "ConstraintException"),

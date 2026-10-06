@@ -39,7 +39,7 @@ $Program {
 
         // A constrained parameter: the actual (passed by pointer) must
         // satisfy the contract. 带约束的参数：作为指针传入的实参须满足约束。
-        self.use(a);
+        use(a);
     }];
 
     @use[(tool[Addable]) -> () {

@@ -3,10 +3,10 @@
 // 元组解构作流接收方的回归演示（文档 5.4.3）。
 //
 // Three shapes are exercised:
-//  1. method returning multiple outputs: (-(a), -(b)) << self.pair();
+//  1. method returning multiple outputs: (-(a), -(b)) << pair();
 //  2. a tuple literal on the right:       (-(a), -(b)) << (1, 2);
 //  3. a single scalar receiver binds the FIRST element (tuple-first):
-//                                           -(a) << self.pair();
+//                                           -(a) << pair();
 //  4. a constrained destructured variable is re-checked after binding.
 // 演示三种形态：方法返回多输出 / 右侧元组字面量 / 单标量接收方取首项；
 // 并对带约束的解构变量在绑定后重新校验约束。
@@ -16,7 +16,7 @@ $Program {
 
         // (1) method returns two outputs -> bind a=100, b=200
         // 方法返回两个输出 -> a=100, b=200
-        (-(std::Number a), -(std::Number b)) << self.pair();
+        (-(std::Number a), -(std::Number b)) << pair();
         out << "pair: "; out << a; out << " "; out << b; out << "\n";
 
         // (2) tuple literal on the right
@@ -26,12 +26,12 @@ $Program {
 
         // (3) single scalar receiver takes the FIRST element (tuple-first)
         // 单标量接收方取首项（元组首项解构）
-        -(std::Number first) << self.pair();
+        -(std::Number first) << pair();
         out << "first: "; out << first; out << "\n";
 
         // (4) constrained destructured variable is validated after binding
         // 带约束的解构变量在绑定后被校验
-        (-(std::Object[Addable] p), -(std::Object[Addable] q)) << self.pair();
+        (-(std::Object[Addable] p), -(std::Object[Addable] q)) << pair();
         out << "constrained: "; out << p; out << " "; out << q; out << "\n";
     }];
 

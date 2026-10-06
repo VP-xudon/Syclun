@@ -1,11 +1,14 @@
 &io;
-// Self method calls: an instance method MUST be invoked through `self.NAME(...)`.
-// A bare `NAME(...)` is now resolved as DATA (a local variable / member), never as
-// a hidden self-dispatch — so the data/behavior boundary stays clean.
-// 自调用：实例方法必须用 `self.NAME(...)` 显式调用。裸写 `NAME(...)` 现在被解析为
-// 数据（局部变量 / 成员），而非隐式自派发——数据 / 行为边界因此清晰。
-//   - explicit:  self.twice(21)     (`self` keyword = the current instance)
-//   - explicit:  self.greet()       (the `self` keyword also reads members)
+// Self method calls: a bare `NAME(...)` dispatches to a method of the current
+// instance. The old explicit `self.NAME(...)` form is retired — the `self.`
+// prefix is no longer written for a method call.
+// 自调用：裸 `NAME(...)` 即派发到当前实例的方法。旧的显式 `self.NAME(...)` 形式已
+// 退役——方法调用不再写 `self.` 前缀。
+//   - dispatch:  twice(21)          (a method of the current instance)
+//   - dispatch:  greet()            (likewise)
+// `self.` still reads members — it is just no longer needed to call a method:
+// a member field is reached as `self.field`.
+// `self.` 仍可读取成员——只是调用方法不再需要它：成员字段写作 `self.field`。
 // Input/output parameters are usable variables you operate on directly:
 // `answer << x` publishes x as the output.
 // 输入 / 输出参数都是可直接操作的变量：`answer << x` 把 x 公布为输出。
@@ -13,11 +16,11 @@ $Program {
     @::[() -> () {
         -(io::OStream out);
 
-        out << "self.twice(21) = ";
-        out << self.twice(21);
+        out << "twice(21) = ";
+        out << twice(21);
 
-        out << " | self.greet() = ";
-        -(std::String g) << self.greet();
+        out << " | greet() = ";
+        -(std::String g) << greet();
         out << g;
     }];
 

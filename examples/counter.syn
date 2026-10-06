@@ -1,8 +1,9 @@
 &io;
-// Classes hold state; an instance method MUST be called through `self.NAME(...)`.
-// A bare `NAME(...)` is resolved as DATA, never as a hidden self-dispatch.
-// 类持有状态；实例方法必须用 `self.NAME(...)` 调用。裸写 `NAME(...)` 被解析为
-// 数据，而非隐式自派发。
+// Classes hold state; an instance method is called as a bare `NAME(...)`,
+// which dispatches to the current instance. The old `self.NAME(...)` form is
+// retired.
+// 类持有状态；实例方法以裸 `NAME(...)` 调用，即派发到当前实例。旧的
+// `self.NAME(...)` 形式已退役。
 $Program {
     @::[{
         -(Counter c);
@@ -23,9 +24,9 @@ $Counter {
     }];
 
     @inc[() -> () {
-        // Instance methods call each other through `self.`.
-        // 实例方法之间经 `self.` 互相调用。
-        value << self.next_value();
+        // Instance methods call each other directly by bare name.
+        // 实例方法之间以裸名互相调用。
+        value << next_value();
     }];
 
     @next_value[() ~> (result[std::Number]) {

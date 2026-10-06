@@ -1535,6 +1535,26 @@ namespace interp {
                 return rb::first_of(rb::empty_result());
             }
             auto receiverObj = eval_expr(f, node->kids[0]);
+            // v1.33: the explicit self-call `self.name(...)` is retired — a bare
+            // `name(...)` now dispatches to the current instance, so the
+            // `self.` prefix is redundant. Reject it (only when `name` really is
+            // a method of self, so `self.field` and `self.closureField(...)`
+            // keep working). v1.33：显式自调用 `self.名(...)` 已退役——裸
+            // `名(...)` 即派发到当前实例，故 `self.` 前缀多余。仅当 `名` 确为 self
+            // 的方法时拒绝，故 `self.字段` 与 `self.闭包字段(...)` 仍可用。
+            if (node->kids[0]->kind == "name"
+                    && node->kids[0]->value == "self") {
+                auto scls =
+                    std::dynamic_pointer_cast<RuntimeClass>(receiverObj);
+                if (scls && scls->get_methods().count(node->value)) {
+                    interp_error(
+                        "InterException",
+                        "'self." + node->value + "(...)' is retired: a bare '"
+                            + node->value + "(...)' dispatches to the current "
+                            "instance (self)"
+                    );
+                }
+            }
             std::vector<RuntimeObjectPtr> args;
             for (auto& a : node->kids[1]->kids) {
                 args.push_back(eval_arg(f, a));
@@ -1646,15 +1666,13 @@ namespace interp {
             return rb::first_of(res);
         }
         if (k == "selfcall") {
-            // A bare `name(args)` is normally a self-dispatch to an instance
-            // method and must be written `self.name(args)`. But if `name`
-            // resolves to a local closure variable holding a behavior, it is
-            // called directly (so a closure-defined `@clos << [...]; clos();`
-            // works). Instance methods and bare data names keep the self. hint.
-            // 裸 `name(args)` 通常是自派发到实例方法，须写成 `self.name(args)`；
-            // 但若 name 解析为持有行为的局部闭包变量，则直接调用之（使闭包内
-            // `@clos << [...]; clos();` 可用）。实例方法与裸数据名仍保留
-            // self. 提示。
+            // A bare `name(args)` resolves, in order: a local/outer closure
+            // variable holding a behavior (so `@clos << [...]; clos();` works),
+            // then a constructor `TypeName(args)`, then a method of the current
+            // instance (self). The explicit `self.name(args)` form is retired.
+            // 裸 `name(args)` 依次解析：持有行为的局部 / 外层闭包变量（故
+            // `@clos << [...]; clos();` 可用）、构造函数 `类型名(实参)`、当前实例
+            // （self）的方法。显式 `self.name(args)` 形式已退役。
             RuntimeObjectPtr target = nullptr;
             if (f.locals.count(node->value)) {
                 target = f.locals[node->value];
@@ -1683,12 +1701,33 @@ namespace interp {
                 call_constructor(f, ctor_inst, node->kids[0]);
                 return ctor_inst;
             }
+            // Bare `name(args)` dispatches to a method of the current instance
+            // (self): the explicit `self.` prefix is retired. We reuse the very
+            // same invocation primitive as `recv.name(args)`, so a self-dispatch
+            // has identical semantics (signature check, return values, and the
+            // const / private guards all live in `invoke`).
+            // 裸 `name(args)` 派发到当前实例（self）的方法——显式 `self.` 前缀已退役。
+            // 复用与 `recv.name(args)` 相同的调用原语，故自派发语义完全一致
+            // （签名校验、返回值与常数 / 私有守卫皆在 `invoke` 内）。
+            if (f.self) {
+                auto scls = std::dynamic_pointer_cast<RuntimeClass>(f.self);
+                if (scls && scls->get_methods().count(node->value)) {
+                    std::vector<RuntimeObjectPtr> sargs;
+                    for (auto& a : node->kids[0]->kids) {
+                        sargs.push_back(eval_arg(f, a));
+                    }
+                    auto res = invoke(
+                        f.self, node->value,
+                        std::make_shared<std::vector<RuntimeObjectPtr>>(
+                            std::move(sargs)));
+                    return rb::first_of(res);
+                }
+            }
             interp_error(
                 "InterException",
-                "instance method '" + node->value
-                    + "' must be called as 'self." + node->value
-                    + "(...)' (a bare '" + node->value
-                    + "(...)' is resolved as data, not a method call)"
+                "cannot resolve '" + node->value + "': it is neither a local "
+                    "closure, nor a known type, nor a method of the current "
+                    "instance"
             );
         }
         if (k == "access") {
@@ -1756,6 +1795,26 @@ namespace interp {
         const std::string& k = node->kind;
         if (k == "call") {
             auto receiverObj = eval_expr(f, node->kids[0]);
+            // v1.33: the explicit self-call `self.name(...)` is retired — a bare
+            // `name(...)` now dispatches to the current instance, so the
+            // `self.` prefix is redundant. Reject it (only when `name` really is
+            // a method of self, so `self.field` and `self.closureField(...)`
+            // keep working). v1.33：显式自调用 `self.名(...)` 已退役——裸
+            // `名(...)` 即派发到当前实例，故 `self.` 前缀多余。仅当 `名` 确为 self
+            // 的方法时拒绝，故 `self.字段` 与 `self.闭包字段(...)` 仍可用。
+            if (node->kids[0]->kind == "name"
+                    && node->kids[0]->value == "self") {
+                auto scls =
+                    std::dynamic_pointer_cast<RuntimeClass>(receiverObj);
+                if (scls && scls->get_methods().count(node->value)) {
+                    interp_error(
+                        "InterException",
+                        "'self." + node->value + "(...)' is retired: a bare '"
+                            + node->value + "(...)' dispatches to the current "
+                            "instance (self)"
+                    );
+                }
+            }
             std::vector<RuntimeObjectPtr> args;
             for (auto& a : node->kids[1]->kids) {
                 args.push_back(eval_arg(f, a));
@@ -1767,14 +1826,27 @@ namespace interp {
             );
         }
         if (k == "selfcall") {
-            // Bare `name(args)` is not a self-dispatch (see eval_expr).
-            // 裸 `name(args)` 非自派发（见 eval_expr）。
+            // Bare `name(args)` dispatches to a method of the current instance
+            // (self) here too, returning its full value list for destructuring.
+            // 裸 `name(args)` 在此同样派发到当前实例（self）的方法，返回完整值表供解构。
+            if (f.self) {
+                auto scls = std::dynamic_pointer_cast<RuntimeClass>(f.self);
+                if (scls && scls->get_methods().count(node->value)) {
+                    std::vector<RuntimeObjectPtr> sargs;
+                    for (auto& a : node->kids[0]->kids) {
+                        sargs.push_back(eval_arg(f, a));
+                    }
+                    return invoke(
+                        f.self, node->value,
+                        std::make_shared<std::vector<RuntimeObjectPtr>>(
+                            std::move(sargs)));
+                }
+            }
             interp_error(
                 "InterException",
-                "instance method '" + node->value
-                    + "' must be called as 'self." + node->value
-                    + "(...)' (a bare '" + node->value
-                    + "(...)' is resolved as data, not a method call)"
+                "cannot resolve '" + node->value + "': it is neither a local "
+                    "closure, nor a known type, nor a method of the current "
+                    "instance"
             );
         }
         if (k == "flow") {
