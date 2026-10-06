@@ -172,7 +172,7 @@ namespace interp {
     RuntimeObjectPtr instantiate(const std::string& typeName);
     void define_class(AstNodePtr classdef, const std::string& libname = "");
     void define_contract(AstNodePtr contractdef);
-    void import_library(const std::string& name);
+    void import_library(const std::string& name, long long at_line = 0);
 
     // ========================================================
     // Error reporting / 错误上报
@@ -2545,7 +2545,7 @@ namespace interp {
     //  1. 上线其 C++ 底层（纯 Synth-OOP 库为空操作）。
     //  2. 若存在 lib/<name>.synl 则解释之，定义其中的类 / 约束。
     //     库中的 $Program 类被忽略。
-    inline void import_library(const std::string& name) {
+    inline void import_library(const std::string& name, long long at_line) {
         // (1) Native backend (if registered).
         // （1）原生底层（若已注册）。
         rb::init_native_lib(name);
@@ -2564,7 +2564,9 @@ namespace interp {
             // 的库。明确报错，而不是静默跳过——静默跳过曾让下游的「找不到方法」
             // 错误掩盖了真正原因（例如「maths 方法找不到」却毫无提示）。
             if (rb::native_lib_registry().count(name) == 0) {
-                diag::set_locus(diag::source_file(), 0, 0);
+                // Point at the offending `&name;` statement, not line 0.
+                // 锚定在出错的 `&名;` 语句处，而非第 0 行。
+                diag::set_locus(diag::source_file(), at_line, 1);
                 interp_error(
                     "InterException",
                     "cannot import library '" + name + "' (no such standard "
@@ -2690,7 +2692,7 @@ namespace interp {
                 // The `&module;` statement resolves the library from the
                 // standard-library directory.
                 // `&module;` 语句从标准库目录解析该库。
-                import_library(item->value);
+                import_library(item->value, item->line);
             } else if (item->kind == "vardef") {
                 // v1.30 rule: a user PROGRAM (.syn) must not declare global
                 // objects directly. Library faces (.synl) are where presets

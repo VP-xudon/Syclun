@@ -289,7 +289,18 @@ static void print_info(const std::string& lib_dir) {
 static int run_source(const std::string& source,
                       const std::string& lib_dir,
                       const std::string& src_name) {
-    interp::run_program(source, lib_dir, src_name);
+    // Diagnostics report the ABSOLUTE path of the source file, and so does
+    // every call-stack frame (they all carry diag::source_file()). This makes
+    // an error unambiguous no matter which directory it was triggered from.
+    // 诊断中的源文件一律显示绝对路径，调用栈各帧亦然（皆取 diag::source_file()），
+    // 使报错不受触发时工作目录的影响。
+    std::string name = src_name;
+    if (!name.empty()) {
+        std::error_code ec;
+        auto abs = std::filesystem::absolute(name, ec);
+        if (!ec) name = abs.string();
+    }
+    interp::run_program(source, lib_dir, name);
     return 0;
 }
 
